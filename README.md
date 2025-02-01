@@ -54,7 +54,7 @@
 - retriever
   - 전체 or cluster에서 쿼리에 대한 정답문서 조회
 - sampler
-  - p/n 선정 전략별(l2r, bm25....) 쿼리 학습 샘플 선정
+  - 샘플 선정 전략(l2r, bm25, ER, MIR, ...)
 - similarties
   - cosine, term score 등
 - utils
