@@ -52,12 +52,8 @@ def train(queries, docs, num_epochs):
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
-                pos_docs = [
-                    doc["text"] for doc in random.sample(list(docs.values()), 3)
-                ]
-                neg_docs = [
-                    doc["text"] for doc in random.sample(list(docs.values()), 3)
-                ]
+                pos_docs = [doc["text"] for doc in random.sample(list(docs.values()), 1)]
+                neg_docs = [doc["text"] for doc in random.sample(list(docs.values()), 3)]
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
                     model=model,
