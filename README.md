@@ -1,7 +1,7 @@
 # Continual Retrieval
 - Packages
+- Data
 - Components 
-- Flow
 - Contribution
 
 
@@ -10,9 +10,11 @@
 .
 ├── README.md
 ├── data
-├── model
-├── rankings
+│    ├── model
+│    ├── rankings
+│    └── sesions
 └── src
+    ├── main.py
     ├── cluster
     │   ├── __init__.py
     │   ├── management.py 
@@ -28,11 +30,21 @@
     │   ├── sampler.py
     │   ├── similarities.py
     │   └── utils.py
-    ├── train.py
-    ├── evaluate.py
-    └── unit_test.py
-
+    └── pipeline
+        ├── __init__.py
+        ├── bm25_ranking.py
+        ├── evaluate.py
+        ├── ground_truth_train_ranking.py
+        ├── proposal_train_ranking.py
+        └── random_train_ranking.py
 ```
+# Data
+- model
+  - checkpoint 경로
+- rankings
+  - evaluate.py에서 읽어가는 pipeline 랭킹 결과물
+- sessions
+  - .local 공용 폴더의 /raw/idea_validation 이하
 
 # Components
 ### cluster
@@ -54,17 +66,18 @@
 - retriever
   - 전체 or cluster에서 쿼리에 대한 정답문서 조회
 - sampler
-  - 샘플 선정 전략(l2r, bm25, ER, MIR, ...)
+  - 샘플 선정 전략(l2r, bm25, ER, MIR, GSS, OCS)
 - similarties
   - cosine, term score 등
 - utils
   - 시각화, collection 등
 
 
-### main
+### pipeline
 - train
 - evaluate
 - unit test
+각종 실험들
 
 
 # Contribution

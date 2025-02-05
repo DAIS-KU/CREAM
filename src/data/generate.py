@@ -2,96 +2,197 @@ from . import *
 from collections import defaultdict
 
 
-def sessioning(domains, query_sample_rate, doc_sample_rate, session_ratio, k):
+def check_query_answer_docs(domains):
     for domain in domains:
-        train_quries_path = f"./raw/merged/{domain}_queries.jsonl"
-        train_queries = read_jsonl(train_quries_path)
-        random.shuffle(train_queries)
-        total_query_cnt = len(train_queries)
-        answer_doc_ids = defaultdict(set)
-        exclude_doc_ids = set()
+        quries_path = f"./raw/merged/{domain}_queries.jsonl"
+        queries = read_jsonl(quries_path)
+        answer_doc_ids = set()
+        total_answer_doc_cnt = 0
+        for q in queries:
+            answer_doc_ids.update(q["answer_pids"])
+            total_answer_doc_cnt += len(q["answer_pids"])
+        answer_cnt = len(answer_doc_ids)
 
-        need_query_counts = [
-            k,
-            total_query_cnt * 0.2,
-            0,
-            0,
-        ]  # [round(total_query_cnt * ratio * query_sample_rate) for ratio in session_ratio]
-        print(f"need_query_counts: {need_query_counts}")
-        cnt0, cnt1, cnt2, cnt3 = 0, 0, 0, 0
-        for query in train_queries:
-            if cnt0 < need_query_counts[0]:
-                dest_path = f"./raw/idea_validation/train{k}_{domain}_queries.jsonl"
-                cnt0 += 1
-                answer_doc_ids[0].update(query["answer_pids"])
-            elif cnt1 < need_query_counts[1]:
-                dest_path = f"./raw/idea_validation/eval{k}_{domain}_queries.jsonl"
-                cnt1 += 1
-                # 전체 정답 제외
-                exclude_doc_ids.update(query["answer_pids"])
-                # 포함 정답 3개 선정
-                query["answer_pids"] = random.sample(
-                    query["answer_pids"], min(len(query["answer_pids"]), 3)
-                )
-                # 평가문서셋에 포함시킬 정답 업데이트
-                answer_doc_ids[1].update(query["answer_pids"])
-            elif cnt2 < need_query_counts[2]:
-                dest_path = f"./raw/idea_validation/train_queries.jsonl"
-                cnt2 += 1
-                answer_doc_ids[2].update(query["answer_pids"])
+        doc_path = f"./raw/merged/{domain}_docs.jsonl"
+        doc_cnt = count_jsonl_elements(doc_path)
+
+        print(
+            f"{domain} : answer {answer_cnt} / total {doc_cnt} = {answer_cnt/doc_cnt * 100}%, total_answer_doc_cnt: {total_answer_doc_cnt}"
+        )
+
+
+def exp_sessioning(
+    domains, domain_answer_rate, need_train_query_counts, need_test_query_counts
+):
+    for domain, ans_rate in zip(domains, domain_answer_rate):
+        queries = read_jsonl(f"./raw/merged/{domain}_queries.jsonl")
+        random.shuffle(queries)
+        answer_train_doc_ids, answer_test_doc_ids = defaultdict(set), defaultdict(set)
+
+        print(
+            f"need_train_query_counts: {need_train_query_counts}, need_test_query_counts: {need_test_query_counts}"
+        )
+        train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
+        test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
+        for query in queries:
+            # TRAIN
+            if train_cnt0 < need_train_query_counts[0]:
+                dest_path = f"./raw/idea_validation/train_session0_queries.jsonl"
+                train_cnt0 += 1
+                answer_train_doc_ids[0].update(query["answer_pids"])
+            elif train_cnt1 < need_train_query_counts[1]:
+                dest_path = f"./raw/idea_validation/train_session1_queries.jsonl"
+                train_cnt1 += 1
+                answer_train_doc_ids[1].update(query["answer_pids"])
+            elif train_cnt2 < need_train_query_counts[2]:
+                dest_path = f"./raw/idea_validation/train_session2_queries.jsonl"
+                train_cnt2 += 1
+                answer_train_doc_ids[2].update(query["answer_pids"])
+            elif train_cnt3 < need_train_query_counts[3]:
+                dest_path = f"./raw/idea_validation/train_session3_queries.jsonl"
+                train_cnt3 += 1
+                answer_train_doc_ids[3].update(query["answer_pids"])
+            # TEST
+            elif test_cnt0 < need_test_query_counts[0]:
+                dest_path = f"./raw/idea_validation/test_session0_queries.jsonl"
+                test_cnt0 += 1
+                answer_test_doc_ids[0].update(query["answer_pids"])
+            elif test_cnt1 < need_test_query_counts[1]:
+                dest_path = f"./raw/idea_validation/test_session1_queries.jsonl"
+                test_cnt1 += 1
+                answer_test_doc_ids[1].update(query["answer_pids"])
+            elif test_cnt2 < need_test_query_counts[2]:
+                dest_path = f"./raw/idea_validation/test_session2_queries.jsonl"
+                test_cnt2 += 1
+                answer_test_doc_ids[2].update(query["answer_pids"])
+            elif test_cnt3 < need_test_query_counts[3]:
+                dest_path = f"./raw/idea_validation/test_session3_queries.jsonl"
+                test_cnt3 += 1
+                answer_test_doc_ids[3].update(query["answer_pids"])
             else:
                 break
             append_to_jsonl(dest_path, query)
-        print(f"[DONE] Query {domain} | {cnt0} / {cnt1} / {cnt2} / {cnt3}")
+        print(
+            f"[DONE] Train Query {domain} | {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
+        )
+        print(
+            f"[DONE] Test Query {domain} | {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
+        )
 
-        train_doc_path = f"./raw/merged/{domain}_docs.jsonl"
-        train_docs = read_jsonl_as_dict(train_doc_path, id_field="doc_id")
-        total_doc_cnt = len(train_docs)
-        need_doc_counts = [
-            0,
-            100000,
-            0,
-            0,
-        ]  # [round(total_doc_cnt * ratio * doc_sample_rate) for ratio in session_ratio]
-        print(f"need_doc_counts: {need_doc_counts}")
+        doc_path = f"./raw/merged/{domain}_docs.jsonl"
+        docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+        train_need_doc_counts = [
+            len(answer_train_doc_ids[0]) / ans_rate,
+            len(answer_train_doc_ids[1]) / ans_rate,
+            len(answer_train_doc_ids[2]) / ans_rate,
+            len(answer_train_doc_ids[3]) / ans_rate,
+        ]
+        test_need_doc_counts = [
+            len(answer_test_doc_ids[0]) / ans_rate,
+            len(answer_test_doc_ids[1]) / ans_rate,
+            len(answer_test_doc_ids[2]) / ans_rate,
+            len(answer_test_doc_ids[3]) / ans_rate,
+        ]
+        print(
+            f"train_need_doc_counts: {train_need_doc_counts}, test_need_doc_counts: {test_need_doc_counts}"
+        )
 
-        cnt0, cnt1, cnt2, cnt3 = 0, 0, 0, 0
-        for doc_id in answer_doc_ids[0]:
-            dest_path = f"./raw/idea_validation/train{k}_{domain}_docs.jsonl"
-            cnt0 += 1
-            append_to_jsonl(dest_path, train_docs[doc_id])
+        # TRAIN
+        train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
+        for doc_id in answer_train_doc_ids[0]:
+            dest_path = f"./raw/idea_validation/train_session0_docs.jsonl"
+            train_cnt0 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_train_doc_ids[1]:
+            dest_path = f"./raw/idea_validation/train_session1_docs.jsonl"
+            train_cnt1 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_train_doc_ids[2]:
+            dest_path = f"./raw/idea_validation/train_session2_docs.jsonl"
+            train_cnt2 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_train_doc_ids[3]:
+            dest_path = f"./raw/idea_validation/train_session3_docs.jsonl"
+            train_cnt3 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        print(
+            f"[DONE] Train Document {domain} answer  {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
+        )
+        # TEST
+        test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
+        for doc_id in answer_test_doc_ids[0]:
+            dest_path = f"./raw/idea_validation/test_session0_docs.jsonl"
+            test_cnt0 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_test_doc_ids[1]:
+            dest_path = f"./raw/idea_validation/test_session1_docs.jsonl"
+            test_cnt1 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_test_doc_ids[2]:
+            dest_path = f"./raw/idea_validation/test_session2_docs.jsonl"
+            test_cnt2 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        for doc_id in answer_test_doc_ids[3]:
+            dest_path = f"./raw/idea_validation/test_session3_docs.jsonl"
+            test_cnt3 += 1
+            append_to_jsonl(dest_path, docs[doc_id])
+        print(
+            f"[DONE] Test Document {domain} answer  {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
+        )
 
-        # 정답 3개 반드시 포함
-        for doc_id in answer_doc_ids[1]:
-            dest_path = f"./raw/idea_validation/eval{k}_{domain}_docs.jsonl"
-            cnt1 += 1
-            append_to_jsonl(dest_path, train_docs[doc_id])
-
-        for doc_id in answer_doc_ids[2]:
-            dest_path = f"./raw/idea_validation/train_docs.jsonl"
-            cnt2 += 1
-            append_to_jsonl(dest_path, train_docs[doc_id])
-        print(f"[DONE] Document {domain} answer  {cnt0} / {cnt1} / {cnt2} / {cnt3}")
-
-        # 평가에 사용한 전체 정답 외 문서로 평가셋 채우기
         left_doc_ids = (
-            set(train_docs.keys()) - exclude_doc_ids
-        )  # - answer_doc_ids[0]- answer_doc_ids[1]- answer_doc_ids[2]
+            set(docs.keys())
+            - answer_train_doc_ids[0]
+            - answer_train_doc_ids[1]
+            - answer_train_doc_ids[2]
+            - answer_train_doc_ids[3]
+            - answer_test_doc_ids[0]
+            - answer_test_doc_ids[1]
+            - answer_test_doc_ids[2]
+            - answer_test_doc_ids[3]
+        )
         left_doc_ids = list(left_doc_ids)
         random.shuffle(left_doc_ids)
         for doc_cnt, doc_id in enumerate(left_doc_ids):
-            if cnt0 < need_doc_counts[0]:
-                dest_path = f"./raw/idea_validation/train{k}_{domain}_docs.jsonl"
-                cnt0 += 1
-            elif cnt1 < need_doc_counts[1]:
-                dest_path = f"./raw/idea_validation/eval{k}_{domain}_docs.jsonl"
-                cnt1 += 1
-            elif cnt2 < need_doc_counts[2]:
-                dest_path = f"./raw/idea_validation/test_docs.jsonl"
-                cnt2 += 1
+            # TRAIN
+            if train_cnt0 < train_need_doc_counts[0]:
+                dest_path = f"./raw/idea_validation/train_session0_docs.jsonl"
+                train_cnt0 += 1
+            elif train_cnt1 < train_need_doc_counts[1]:
+                dest_path = f"./raw/idea_validation/train_session1_docs.jsonl"
+                train_cnt1 += 1
+            elif train_cnt2 < train_need_doc_counts[2]:
+                dest_path = f"./raw/idea_validation/train_session2_docs.jsonl"
+                train_cnt2 += 1
+            elif train_cnt3 < train_need_doc_counts[3]:
+                dest_path = f"./raw/idea_validation/train_session3_docs.jsonl"
+                train_cnt3 += 1
+            # TEST
+            elif test_cnt0 < test_need_doc_counts[0]:
+                dest_path = f"./raw/idea_validation/test_session0_docs.jsonl"
+                test_cnt0 += 1
+            elif test_cnt1 < test_need_doc_counts[1]:
+                dest_path = f"./raw/idea_validation/test_session1_docs.jsonl"
+                test_cnt1 += 1
+            elif test_cnt2 < test_need_doc_counts[2]:
+                dest_path = f"./raw/idea_validation/test_session2_docs.jsonl"
+                test_cnt2 += 1
+            elif test_cnt3 < test_need_doc_counts[3]:
+                dest_path = f"./raw/idea_validation/test_session3_docs.jsonl"
+                test_cnt3 += 1
             else:
                 break
-            append_to_jsonl(dest_path, train_docs[doc_id])
+            append_to_jsonl(dest_path, docs[doc_id])
             if doc_cnt % 1000 == 0:
-                print(f"Document {domain} no-answer | {cnt0}/{cnt1}/{cnt2}/{cnt3}")
-        print(f"[DONE] Document {domain} no-answer | {cnt0}/{cnt1}/{cnt2}/{cnt3}")
+                print(
+                    f"Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+                )
+                print(
+                    f"Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+                )
+        print(
+            f"[DONE] Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+        )
+        print(
+            f"[DONE] Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+        )
