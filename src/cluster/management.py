@@ -30,7 +30,6 @@ def compute_sse(centroids, cluster_instances, devices):
                 compute_sse_for_partition,
                 partition,
                 centroids,
-                cluster_instances,
                 devices[idx],
             )
             for idx, partition in enumerate(partitions)
@@ -40,7 +39,8 @@ def compute_sse(centroids, cluster_instances, devices):
     return sse
 
 
-def compute_distances_for_partition(X_partition, centroids, device):
+def compute_distances_for_partition(args):
+    X_partition, centroids, device = args
     """특정 파티션에서 X와 centroids 간의 최소 거리 계산"""
     distances = []
     for x in X_partition:
@@ -80,7 +80,6 @@ def initialize_centroids(X, k, devices):
         probabilities = distances_tensor / distances_tensor.sum()
         next_centroid_index = torch.multinomial(probabilities, num_samples=1).item()
         centroids.append(X[next_centroid_index]["LSH_MAPS"])
-
     return centroids
 
 
@@ -93,7 +92,8 @@ def create_centroid(instances, instance_ids):
     return merged_hash
 
 
-def get_closest_clusters(partition, centroids, device):
+def get_closest_clusters(args):
+    partition, centroids, device = args
     with torch.cuda.device(device):
         closest_clusters = []
         for x in partition:
@@ -118,7 +118,13 @@ def kmeans_pp(X, k, max_iters, devices):
         partitions = np.array_split(X, len(devices))
         with ThreadPoolExecutor(max_workers=len(devices)) as executor:
             results = list(
-                executor.map(get_closest_clusters, partitions, centroids, devices)
+                executor.map(
+                    get_closest_clusters,
+                    [
+                        (partition, centroids, devices[idx])
+                        for idx, partition in enumerate(partitions)
+                    ],
+                )
             )
         closest_clusters = [
             closest_cluster for result in results for closest_cluster in result

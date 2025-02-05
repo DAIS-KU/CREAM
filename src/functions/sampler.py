@@ -3,9 +3,7 @@ def get_samples_in_clusters(
 ):
     query_token_embs = get_passage_embeddings(model, query["query"])
     distances = 1.0 - calculate_S_qd_regl_batch(query_token_embs, centroid_lsh_tensor)
-    _, indices = torch.topk(
-        distances, k=3, largest=False
-    )  # 반환값 다 텐서, 거리이므로 최단거리
+    _, indices = torch.topk(distances, k=3, largest=False)  # 반환값 다 텐서, 거리이므로 최단거리
     positive_id, negative_id, negative_2nd_id = (
         indices[0].item(),
         indices[1].item(),

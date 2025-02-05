@@ -26,13 +26,13 @@ class RandomProjectionLSH:
         return hash_table
 
     def get_final_vector(self, hash_table):
-        counter_map = defaultdict(int)
+        sparse_map = defaultdict(int)
         for key, values in hash_table.items():
-            counter_map[key] = torch.stack(values).sum(dim=0).cpu()
-        return counter_map
+            sparse_map[key] = torch.stack(values).sum(dim=0).cpu()
+        return sparse_map
 
     def encode(self, embeddings):
         device = embeddings.device
         hash_table = self._hash(embeddings, device)
-        counter_map = self.get_final_vector(hash_table)
-        return counter_map
+        sparse_map = self.get_final_vector(hash_table)
+        return sparse_map

@@ -1,8 +1,31 @@
 import torch
 from concurrent.futures import ThreadPoolExecutor
+from transformers import BertModel, BertTokenizer
+from cluster import RandomProjectionLSH
+
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=256):
+def get_passage_embeddings(model, passages, device, max_length=256):
+    batch_inputs = tokenizer(
+        passages,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=max_length,
+    )
+    batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
+    with torch.no_grad():
+        outputs = model(**batch_inputs).last_hidden_state
+    token_embeddings = outputs[:, 1:-1, :]
+    attention_mask = batch_inputs["attention_mask"][:, 1:-1]
+    token_embeddings = token_embeddings * (attention_mask[:, :, None].to(device))
+    return token_embeddings
+
+
+def _renew_queries_with_text(
+    model, lsh, query_batch, device, batch_size=2048, max_length=256
+):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
     query_ids = [q["qid"] for q in query_batch]
@@ -10,10 +33,11 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=
     for i in range(0, len(query_texts), batch_size):
         print(f"{device} | Query encoding batch {i}")
         query_batch_text = query_texts[i : i + batch_size]
-        query_batch_embeddings, query_batch_decoded_texts = (
-            get_passage_embeddings_with_text(
-                model, query_batch_text, device, max_length
-            )
+        (
+            query_batch_embeddings,
+            query_batch_decoded_texts,
+        ) = get_passage_embeddings_with_text(
+            model, query_batch_text, device, max_length
         )
         for query_batch_embedding in query_batch_embeddings:
             query_embeddings.append(query_batch_embedding.cpu())
@@ -31,7 +55,31 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=
     return new_q_data
 
 
-def _renew_docs(model, lsh, document_batch, device, batch_size=2048, max_length=256):
+def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=256):
+    torch.cuda.set_device(device)
+    query_texts = [q["query"] for q in query_batch]
+    query_ids = [q["qid"] for q in query_batch]
+    query_embeddings, query_hashes = [], []
+    for i in range(0, len(query_texts), batch_size):
+        print(f"{device} | Query encoding batch {i}")
+        query_batch_text = query_get_passage_embeddings(
+            model, query_batch_text, device, max_length
+        )
+        for query_batch_embedding in query_batch_embeddings:
+            query_embeddings.append(query_batch_embedding.cpu())
+            query_hashes.append(lsh.encode(query_batch_embedding))
+
+    new_q_data = {
+        qid: {"ID": qid, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        for qid, maps, emb in zip(query_ids, query_hashes, query_embeddings)
+    }
+    del query_ids, query_embeddings, query_hashes
+    return new_q_data
+
+
+def _renew_docs_with_text(
+    model, lsh, document_batch, device, batch_size=2048, max_length=256
+):
     torch.cuda.set_device(device)
     document_texts = [d["text"] for d in document_batch]
     document_ids = [d["doc_id"] for d in document_batch]
@@ -39,9 +87,10 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=2048, max_length=
     for i in range(0, len(document_texts), batch_size):
         print(f"{device} | Document encoding batch {i}")
         doc_batch_text = document_texts[i : i + batch_size]
-        doc_batch_embeddings, doc_batch_decoded_texts = (
-            get_passage_embeddings_with_text(model, doc_batch_text, device, max_length)
-        )
+        (
+            doc_batch_embeddings,
+            doc_batch_decoded_texts,
+        ) = get_passage_embeddings_with_text(model, doc_batch_text, device, max_length)
         for doc_batch_embedding in doc_batch_embeddings:
             document_embeddings.append(doc_batch_embedding.cpu())
             document_hashes.append(lsh.encode(doc_batch_embedding))
@@ -54,6 +103,29 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=2048, max_length=
         )
     }
     del document_ids, document_decoded_texts, document_embeddings, document_hashes
+    return new_d_data
+
+
+def _renew_docs(model, lsh, document_batch, device, batch_size=2048, max_length=256):
+    torch.cuda.set_device(device)
+    document_texts = [d["text"] for d in document_batch]
+    document_ids = [d["doc_id"] for d in document_batch]
+    document_embeddings, document_hashes = [], []
+    for i in range(0, len(document_texts), batch_size):
+        print(f"{device} | Document encoding batch {i}")
+        doc_batch_text = document_texts[i : i + batch_size]
+        doc_batch_embeddings = get_passage_embeddings(
+            model, doc_batch_text, device, max_length
+        )
+        for doc_batch_embedding in doc_batch_embeddings:
+            document_embeddings.append(doc_batch_embedding.cpu())
+            document_hashes.append(lsh.encode(doc_batch_embedding))
+
+    new_d_data = {
+        doc_id: {"ID": doc_id, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        for doc_id, maps, emb in zip(document_ids, document_hashes, document_embeddings)
+    }
+    del document_ids, document_embeddings, document_hashes
     return new_d_data
 
 

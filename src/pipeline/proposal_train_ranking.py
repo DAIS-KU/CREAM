@@ -2,11 +2,15 @@ import random
 import torch
 from transformers import BertModel, BertTokenizer
 
+from data import read_jsonl, renew_data
 from functions import get_samples_in_clusters
 from cluster import kmeans_pp
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+num_gpus = torch.cuda.device_count()
+devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def encode_texts(model, texts, device, max_length=256, is_cls=True):
@@ -115,20 +119,35 @@ def session_train(
     return loss_values
 
 
-def train(sesison_count=1, num_epochs=1, batch_size=32, positive_k=1, negative_k=3):
+# 현재 모델로 재임베딩 X 클러스터 상태에서 평가
+def train(
+    sesison_count=1,
+    num_epochs=1,
+    batch_size=32,
+    positive_k=1,
+    negative_k=3,
+    include_evaluate=True,
+):
     for session_number in range(sesison_count):
-        print(f"Running Session {session_number}")
+        print(f"Training Session {session_number}")
 
         # 새로운 세션 문서
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)
-        _, doc_data = renew_data(None, doc_data, 24, 768)
+        doc_data = read_jsonl(doc_path)[:1000]
+        _, doc_data = renew_data(
+            queries=None,
+            documents=doc_data,
+            nbits=16,
+            embedding_dim=768,
+            renew_q=False,
+            renew_d=True,
+        )
         print(f"Session {session_number} | Document count:{len(doc_data)}")
 
         # 초기 클러스터링 구축
         if session_number == 0:
-            centroids, labels, centroids_statics = kmeans_pp(
-                list(doc_data.values()), 10, 10, devices
+            centroids, labels = kmseans_pp(
+                X=list(doc_data.values()), k=10, max_iters=1, devices=devices
             )
         else:
             # 이전 세션 문서 일정량 제거된 클러스터 정보 반환
@@ -140,22 +159,27 @@ def train(sesison_count=1, num_epochs=1, batch_size=32, positive_k=1, negative_k
                 old_centroids_statics=centroids_statics,
             )
             # 새로운 세션 문서 클러스터 추가
-            centroids, centroids_statics, cluster_instances, labels = (
-                assign_instance_or_centroid(
-                    centroids=centroids,
-                    centroids_statics=centroids_statics,
-                    cluster_instances=cluster_instances,
-                    current_session_data=current_session_data,
-                    t=t,
-                )
-            )
-        # 구/신 세션 문서 병합된 클러스터 및 현재 세션 활성화 문서들 반환
-        cluster_instances, current_session_data, labels = (
-            update_cluster_and_current_session_data(
+            (
+                centroids,
+                centroids_statics,
+                cluster_instances,
+                labels,
+            ) = assign_instance_or_centroid(
+                centroids=centroids,
+                centroids_statics=centroids_statics,
                 cluster_instances=cluster_instances,
                 current_session_data=current_session_data,
-                labels=labels,
+                t=t,
             )
+        # 구/신 세션 문서 병합된 클러스터 및 현재 세션 활성화 문서들 반환
+        (
+            cluster_instances,
+            current_session_data,
+            labels,
+        ) = update_cluster_and_current_session_data(
+            cluster_instances=cluster_instances,
+            current_session_data=current_session_data,
+            labels=labels,
         )
 
         # 샘플링 및 대조학습 수행
@@ -175,5 +199,27 @@ def train(sesison_count=1, num_epochs=1, batch_size=32, positive_k=1, negative_k
         total_loss_values.append(loss_values)
         show_loss(total_loss_values)
 
-        model_path = f"./model/proposal_session_{session_number}.pth"
+        model_path = f"../data/model/proposal_session_{session_number}.pth"
         torch.save(model.state_dict(), model_path)
+
+        if include_evaluate:
+            print(f"Evaluate Session {session_number}")
+            eval_query_path = (
+                f"../data/sessions/test_session{session_number}_queries.jsonl"
+            )
+            eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
+
+            eval_query_data = read_jsonl(query_path)
+            eval_doc_data = read_jsonl(doc_path)
+
+            eval_query_count = len(eval_query_data)
+            eval_doc_count = len(eval_doc_data)
+            print(f"Query count:{query_count}, Document count:{doc_count}")
+
+            rankings_path = f"../data/rankings/proposal_{session_number}.txt"
+            result = process_queries_with_gpus(
+                query_data, centroids, cluster_instances, devices
+            )
+            write_file(rankings_path, result)
+            evaluate_dataset(query_data, rankings_path, doc_count)
+            del new_q_data, new_d_data

@@ -20,39 +20,27 @@ def get_passage_embeddings(model, passages, device, max_length=256):
 
 
 def get_top_k_documents(
-    query, closest_cluster_id, cluster_instances, k, device, term_score=False
+    query, closest_cluster_id, cluster_instances, k, device, batch_size=32
 ):
-    candidate_k, top_k = k, k
-    if term_score:
-        candidate_k = 10 * k
+    query_token_embs = query["TOKEN_EMBS"].to(device)
+    regl_scores = []
 
-    closest_cluster_instances = cluster_instances[closest_cluster_id]
-    bm25, doc_ids = get_bm25(closest_cluster_instances)
-    scores = bm25.get_scores(preprocess(query["TEXT"]))
-    top_k_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
-        :candidate_k
-    ]
-    top_k_doc_ids = [doc_ids[i] for i in top_k_indices]
-    if term_score:
-        regl_scores = []
+    cluster_docs = cluster_instances[closest_cluster_id]
+
+    for i in range(0, len(cluster_docs), batch_size):
+        batch_docs = cluster_docs[i : i + batch_size]
         combined_embs = torch.stack(
-            [
-                closest_cluster_instances[i]["TOKEN_EMBS"].to(device)
-                for i in top_k_indices
-            ],
-            dim=0,
+            [doc["TOKEN_EMBS"].to(device) for doc in batch_docs], dim=0
         )
-        regl_score = calculate_S_qd_regl_batch(
-            query["TOKEN_EMBS"].to(device), combined_embs, device
+        regl_score = calculate_S_qd_regl_batch(query_token_embs, combined_embs, device)
+        regl_scores.extend(
+            [(doc["ID"], regl_score[idx].item()) for idx, doc in enumerate(batch_docs)]
         )
-        regl_scores = [
-            (doc["ID"], regl_score[idx].item())
-            for idx, doc in enumerate(closest_cluster_instances)
-        ]
-        top_k_regl_docs = sorted(regl_scores, key=lambda x: x[1], reverse=True)[:top_k]
-        top_k_doc_ids = [x[0] for x in top_k_regl_docs]
 
-    return top_k_doc_ids
+    combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
+    top_k_regl_docs = combined_regl_scores[:k]
+    top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+    return top_k_regl_doc_ids
 
 
 def process_queries_on_gpu(
