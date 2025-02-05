@@ -6,7 +6,8 @@ torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-def encode_texts(model, texts, device, max_length=256):
+def encode_texts(model, texts, max_length=256):
+    device = model.device
     no_padding_inputs = tokenizer(
         texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
     )
@@ -57,28 +58,16 @@ def session_train(queries, docs, num_epochs):
                 ]
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
-                    model=model,
-                    texts=pos_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
+                    model=model, texts=pos_docs
                 )  # (positive_k, embedding_dim)
                 pos_docs_batch.append(pos_embeddings)
                 neg_embeddings = encode_texts(
-                    model=model,
-                    texts=neg_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
+                    model=model, texts=neg_docs
                 )  # (negative_k, embedding_dim)
                 neg_docs_batch.append(neg_embeddings)
 
             query_embeddings = encode_texts(
-                model=model,
-                texts=query_batch,
-                device=device,
-                max_length=256,
-                is_cls=True,
+                model=model, texts=query_batch
             )  # (batch_size, embedding_dim)
             positive_embeddings = torch.stack(
                 pos_docs_batch
@@ -115,15 +104,7 @@ def train(
 
         # 새로운 세션 문서
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)[:1000]
-        _, doc_data = renew_data(
-            queries=None,
-            documents=doc_data,
-            nbits=16,
-            embedding_dim=768,
-            renew_q=False,
-            renew_d=True,
-        )
+        doc_data = read_jsonl(doc_path)[:500]
         print(f"Session {session_number} | Document count:{len(doc_data)}")
 
         # 샘플링 및 대조학습 수행

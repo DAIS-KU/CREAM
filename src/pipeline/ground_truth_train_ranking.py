@@ -6,7 +6,8 @@ torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-def encode_texts(model, texts, device, max_length=256):
+def encode_texts(model, texts, max_length=256):
+    device = model.device
     no_padding_inputs = tokenizer(
         texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
     )
@@ -67,26 +68,17 @@ def session_train(queries, docs, method, num_epochs):
                 pos_embeddings = encode_texts(
                     model=model,
                     texts=pos_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
                 )  # (positive_k, embedding_dim)
                 pos_docs_batch.append(pos_embeddings)
                 neg_embeddings = encode_texts(
                     model=model,
                     texts=neg_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
                 )  # (negative_k, embedding_dim)
                 neg_docs_batch.append(neg_embeddings)
 
             query_embeddings = encode_texts(
                 model=model,
                 texts=query_batch,
-                device=device,
-                max_length=256,
-                is_cls=True,
             )  # (batch_size, embedding_dim)
             positive_embeddings = torch.stack(
                 pos_docs_batch
