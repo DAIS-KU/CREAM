@@ -7,13 +7,16 @@ from collections import defaultdict
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
+MAX_SCORE = 254
+
 
 def compute_sse_for_partition(partition, centroids, cluster_instances, device):
     sse = 0
     for k in partition:
         for x in cluster_instances[k]:
             sse += (
-                1.0 - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroids[k], device)
+                MAX_SCORE
+                - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroids[k], device)
             ) ** 2
     return sse
 
@@ -47,7 +50,9 @@ def compute_distances_for_partition(args):
         min_distance = float("inf")
         x_emb = x["TOKEN_EMBS"]
         for centroid in centroids:
-            distance = (1.0 - calculate_S_qd_regl_dict(x_emb, centroid, device)) ** 2
+            distance = (
+                MAX_SCORE - calculate_S_qd_regl_dict(x_emb, centroid, device)
+            ) ** 2
             min_distance = min(min_distance, distance)
         distances.append(min_distance)
     return distances
@@ -94,16 +99,19 @@ def create_centroid(instances, instance_ids):
 
 def get_closest_clusters(args):
     partition, centroids, device = args
+    # print(f'get_closest_clusters centroids: {len(centroids)}')
     with torch.cuda.device(device):
         closest_clusters = []
         for x in partition:
             distances = []
             for centroid in centroids:
                 distance = (
-                    1.0 - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid, device)
+                    MAX_SCORE
+                    - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid, device)
                 ) ** 2
                 distances.append(distance)
             closest_cluster = torch.argmin(torch.tensor(distances)).item()
+            # print(f'closest_cluster: {closest_cluster}, distances: {len(distances)}')
             closest_clusters.append(closest_cluster)
         return closest_clusters
 
@@ -129,8 +137,11 @@ def kmeans_pp(X, k, max_iters, devices):
         closest_clusters = [
             closest_cluster for result in results for closest_cluster in result
         ]
+        unique_clusters = sorted(set(closest_clusters))
+        cluster_to_idx = {cluster: idx for idx, cluster in enumerate(unique_clusters)}
         for i, closest_cluster in enumerate(closest_clusters):
-            clusters[closest_cluster].append(i)
+            clusters[cluster_to_idx[closest_cluster]].append(i)
+        # print(f'iter_num {iter_num} | clusters.keys():{clusters.keys()}')
 
         new_centroids = []
         for k in sorted(clusters.keys()):
@@ -142,7 +153,9 @@ def kmeans_pp(X, k, max_iters, devices):
     cluster_instances = defaultdict(list)
     for k in sorted(clusters.keys()):
         cluster_instances[k] = [X[idx] for idx in clusters[k]]
+        print(f"cluster {k} size: {len(cluster_instances[k])}")
 
+    print(f"centroids : {len(centroids)}")
     return centroids, cluster_instances
 
 
@@ -163,13 +176,17 @@ def find_closest_cluster_id(query, centroids, device):
     query_tokens = query["TOKEN_EMBS"]
     distances = []
     for centroid in centroids:
-        distance = (1.0 - calculate_S_qd_regl_dict(query_tokens, centroid, device)) ** 2
+        distance = (
+            MAX_SCORE - calculate_S_qd_regl_dict(query_tokens, centroid, device)
+        ) ** 2
         distances.append(distance)
     closest_cluster = torch.argmin(torch.tensor(distances)).item()
     return closest_cluster
 
 
-def find_best_k_experiment(doc_path, start, end, gap, max_iters, devices):
+def find_best_k_experiment(start, end, gap, max_iters):
+    doc_path = f"../data/sessions/train_session0_docs.jsonl"
+    devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
     doc_data = read_jsonl(doc_path)
 
     doc_count = len(doc_data)

@@ -56,3 +56,10 @@ def draw_elbow(k_values, sse):
     plt.grid(alpha=0.5)
     plt.legend(fontsize=10)
     plt.show()
+
+
+def write_file(rank_file_path, result):
+    with open(rank_file_path, "w") as f:
+        for key, values in result.items():
+            line = f"{key} " + " ".join(map(str, values)) + "\n"
+            f.write(line)

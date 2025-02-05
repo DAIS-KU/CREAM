@@ -1,9 +1,7 @@
 from collections import defaultdict
 from typing import List
 
-from .data import *
-from .cluster import *
-from .functions.utils import process_queries_with_gpus
+from data import *
 
 
 def evaluate_dataset(query_path, rankings_path, doc_count):
@@ -41,29 +39,3 @@ def evaluate_dataset(query_path, rankings_path, doc_count):
         f"Avg Success@{top_k_success}: {success / num_q * 100:.1f}\n",
         f"Avg Recall@{top_k_recall}: {recall / num_q * 100:.1f}\n",
     )
-
-
-def write_file(rank_file_path, result):
-    with open(rank_file_path, "w") as f:
-        for key, values in result.items():
-            line = f"{key} " + " ".join(map(str, values)) + "\n"
-            f.write(line)
-
-
-def do_retrieval_expermient(query_path, doc_path):
-    query_data = read_jsonl(query_path)
-    doc_data = read_jsonl(doc_path)
-
-    query_count = len(query_data)
-    doc_count = len(doc_data)
-    print(f"Query count:{query_count}, Document count:{doc_count}")
-    query_data, doc_data = renew_data(query_data, doc_data, 24, 768)
-
-    centroids, cluster_instances = kmeans_pp(list(doc_data.values()), 10, 10, devices)
-    result = process_queries_with_gpus(
-        query_data, centroids, cluster_instances, devices
-    )
-
-    rankings_path = f"./rankings/cluster_retriever.txt"
-    write_file(rankings_path, result)
-    evaluate_dataset(query_path, rankings_path, doc_count)

@@ -2,9 +2,15 @@ import random
 import torch
 from transformers import BertModel, BertTokenizer
 
-from data import read_jsonl, renew_data
-from functions import get_samples_in_clusters
-from cluster import kmeans_pp
+from data import read_jsonl, renew_data, read_jsonl_as_dict
+from functions import (
+    evaluate_dataset,
+    InfoNCELoss,
+    show_loss,
+    get_top_k_documents,
+    write_file,
+)
+from cluster import kmeans_pp, get_samples_in_clusters
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -13,7 +19,8 @@ num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
-def encode_texts(model, texts, device, max_length=256, is_cls=True):
+def encode_texts(model, texts, max_length=256):
+    device = model.device
     no_padding_inputs = tokenizer(
         texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
     )
@@ -21,31 +28,32 @@ def encode_texts(model, texts, device, max_length=256, is_cls=True):
         key: value.to(device) for key, value in no_padding_inputs.items()
     }
     outputs = model(**no_padding_inputs).last_hidden_state
-    if is_cls:
-        embedding = outputs[:, 0, :]  # [CLS]만 사용
-    else:
-        embedding = outputs[0, 1:-1, :]  # [CLS]와 [SEP] 제외
+    embedding = outputs[:, 0, :]  # [CLS]만 사용
     return embedding
 
 
 def session_train(
     query_path,
+    doc_path,
     model,
     num_epochs,
-    batch_size,
     cluster_instances,
-    best_centroids,
-    current_session_data,
-    centroids_statics,
-    loss_fn,
-    optimizer,
-    positive_k,
-    negative_k,
+    centroids,
+    # current_session_data,
+    # centroids_statics,
+    positive_k=1,
+    negative_k=3,
+    learning_rate=2e-5,
+    batch_size=32,
 ):
-    queries = load_jsonl(query_path)
+    loss_fn = InfoNCELoss()
+    learning_rate = learning_rate
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    queries = read_jsonl(query_path)[:96]
+    docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     query_cnt = len(queries)
     loss_values = []
-    centroid_lsh_tensor = torch.stack(best_centroids)
 
     for epoch in range(num_epochs):
         total_loss = 0
@@ -54,7 +62,6 @@ def session_train(
             0,
             0,
         )
-        # print_cluster_instances(1.0, model, best_centroids, cluster_instances, centroids_statics)
 
         for start_idx in range(0, query_cnt, batch_size):
             end_idx = min(start_idx + batch_size, query_cnt)
@@ -68,7 +75,7 @@ def session_train(
                     model=model,
                     query=query,
                     cluster_instances=cluster_instances,
-                    centroid_lsh_tensor=centroid_lsh_tensor,
+                    centroids=centroids,
                     positive_k=positive_k,
                     negative_k=negative_k,
                 )
@@ -79,8 +86,8 @@ def session_train(
                 if len(positive_ids) < positive_k or len(negative_ids) < negative_k:
                     lack_of_sample_queries += 1
 
-                pos_docs = [current_session_data[_id]["TEXT"] for _id in positive_ids]
-                neg_docs = [current_session_data[_id]["TEXT"] for _id in negative_ids]
+                pos_docs = [docs[_id]["text"] for _id in positive_ids]
+                neg_docs = [docs[_id]["text"] for _id in negative_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
@@ -119,21 +126,19 @@ def session_train(
     return loss_values
 
 
-# 현재 모델로 재임베딩 X 클러스터 상태에서 평가
 def train(
     sesison_count=1,
     num_epochs=1,
-    batch_size=32,
-    positive_k=1,
-    negative_k=3,
     include_evaluate=True,
 ):
+    total_loss_values = []
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
+        model_path = f"../data/model/proposal_session_{session_number}.pth"
 
         # 새로운 세션 문서
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)[:1000]
+        doc_data = read_jsonl(doc_path)[:100]
         _, doc_data = renew_data(
             queries=None,
             documents=doc_data,
@@ -146,7 +151,7 @@ def train(
 
         # 초기 클러스터링 구축
         if session_number == 0:
-            centroids, labels = kmseans_pp(
+            centroids, cluster_instances = kmeans_pp(
                 X=list(doc_data.values()), k=10, max_iters=1, devices=devices
             )
         else:
@@ -172,54 +177,67 @@ def train(
                 t=t,
             )
         # 구/신 세션 문서 병합된 클러스터 및 현재 세션 활성화 문서들 반환
-        (
-            cluster_instances,
-            current_session_data,
-            labels,
-        ) = update_cluster_and_current_session_data(
-            cluster_instances=cluster_instances,
-            current_session_data=current_session_data,
-            labels=labels,
-        )
+        # (
+        #     cluster_instances,
+        #     current_session_data,
+        #     labels,
+        # ) = update_cluster_and_current_session_data(
+        #     cluster_instances=cluster_instances,
+        #     current_session_data=current_session_data,
+        #     labels=labels,
+        # )
 
         # 샘플링 및 대조학습 수행
-        loss_values = train(
-            query_path=f"./raw/sessions/train_session{session_number}_queries.jsonl",
+        model = BertModel.from_pretrained("bert-base-uncased").to(devices[0])
+        if session_number != 0:
+            model.load_state_dict(torch.load(model_path))
+        model.train()
+
+        loss_values = session_train(
+            query_path=f"../data/sessions/train_session{session_number}_queries.jsonl",
+            doc_path=doc_path,
             model=model,
             num_epochs=num_epochs,
-            batch_size=batch_size,
+            centroids=centroids,
             cluster_instances=cluster_instances,
-            best_centroids=centroids,
-            current_session_data=current_session_data,
-            loss_fn=loss_fn,
-            optimizer=optimizer,
-            positive_k=positive_k,
-            negative_k=negative_k,
+            # current_session_data=current_session_data,
         )
-        total_loss_values.append(loss_values)
+        total_loss_values.extend(loss_values)  # append
         show_loss(total_loss_values)
-
-        model_path = f"../data/model/proposal_session_{session_number}.pth"
         torch.save(model.state_dict(), model_path)
 
-        if include_evaluate:
-            print(f"Evaluate Session {session_number}")
-            eval_query_path = (
-                f"../data/sessions/test_session{session_number}_queries.jsonl"
-            )
-            eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
 
-            eval_query_data = read_jsonl(query_path)
-            eval_doc_data = read_jsonl(doc_path)
+# TODO 현재 모델로 재임베딩 X 클러스터 상태에서 평가
+def evaluate(sesison_count=1):
+    for session_number in range(sesison_count):
+        print(f"Evaluate Session {session_number}")
+        eval_query_path = f"../data/sessions/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
 
-            eval_query_count = len(eval_query_data)
-            eval_doc_count = len(eval_doc_data)
-            print(f"Query count:{query_count}, Document count:{doc_count}")
+        eval_query_data = read_jsonl(eval_query_path)[:20]
+        eval_doc_data = read_jsonl(eval_doc_path)[:100]
 
-            rankings_path = f"../data/rankings/proposal_{session_number}.txt"
-            result = process_queries_with_gpus(
-                query_data, centroids, cluster_instances, devices
-            )
-            write_file(rankings_path, result)
-            evaluate_dataset(query_data, rankings_path, doc_count)
-            del new_q_data, new_d_data
+        eval_query_count = len(eval_query_data)
+        eval_doc_count = len(eval_doc_data)
+        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+
+        rankings_path = f"../data/rankings/proposal_{session_number}.txt"
+        model_path = f"../data/model/proposal_session_{session_number}.pth"
+        # result = process_queries_with_gpus(
+        #     query_data, centroids, cluster_instances, devices
+        # )
+        new_q_data, new_d_data = renew_data(
+            queries=eval_query_data,
+            documents=eval_doc_data,
+            nbits=0,
+            embedding_dim=768,
+            model_path=model_path,
+            renew_q=True,
+            renew_d=True,
+        )
+        result = get_top_k_documents(new_q_data, new_d_data, k=10)
+
+        rankings_path = f"../data/rankings/proposal_{session_number}.txt"
+        write_file(rankings_path, result)
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
+        del new_q_data, new_d_data

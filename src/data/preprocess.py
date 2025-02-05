@@ -1,7 +1,7 @@
 import torch
 from concurrent.futures import ThreadPoolExecutor
-from transformers import BertModel, BertTokenizer
 from cluster import RandomProjectionLSH
+from transformers import BertModel, BertTokenizer
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
@@ -62,7 +62,8 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=
     query_embeddings, query_hashes = [], []
     for i in range(0, len(query_texts), batch_size):
         print(f"{device} | Query encoding batch {i}")
-        query_batch_text = query_get_passage_embeddings(
+        query_batch_text = query_texts[i : i + batch_size]
+        query_batch_embeddings = get_passage_embeddings(
             model, query_batch_text, device, max_length
         )
         for query_batch_embedding in query_batch_embeddings:
@@ -157,7 +158,15 @@ def _renew_data(
     return new_q_data, new_d_data
 
 
-def renew_data(queries, documents, nbits, embedding_dim, renew_q=True, renew_d=True):
+def renew_data(
+    queries,
+    documents,
+    nbits,
+    embedding_dim,
+    model_path=None,
+    renew_q=True,
+    renew_d=True,
+):
     num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
     print(f"Using {num_gpus} GPUs: {devices}")
@@ -165,7 +174,11 @@ def renew_data(queries, documents, nbits, embedding_dim, renew_q=True, renew_d=T
     models, hashes = [], []
     random_vectors = torch.randn(nbits, embedding_dim)
     for device in devices:
-        models.append(BertModel.from_pretrained("bert-base-uncased").to(device))
+        model = BertModel.from_pretrained("bert-base-uncased").to(device)
+        if model_path is not None:
+            model.load_state_dict(torch.load(model_path))
+            model.eval()
+        models.append(model)
         hashes.append(
             RandomProjectionLSH(
                 random_vectors=random_vectors, embedding_dim=embedding_dim
