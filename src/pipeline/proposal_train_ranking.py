@@ -11,6 +11,7 @@ from functions import (
     write_file,
 )
 from cluster import kmeans_pp, get_samples_in_clusters
+import time
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -56,13 +57,14 @@ def session_train(
     loss_values = []
 
     for epoch in range(num_epochs):
-        total_loss = 0
+        total_loss, total_sec, batch_cnt = 0, 0, 0
         lack_of_positive_samples, lack_of_negative_samples, lack_of_sample_queries = (
             0,
             0,
             0,
         )
 
+        start_time = time.time()
         for start_idx in range(0, query_cnt, batch_size):
             end_idx = min(start_idx + batch_size, query_cnt)
             print(f"batch {start_idx}-{end_idx}")
@@ -123,6 +125,13 @@ def session_train(
             print(
                 f"Lack of positives: {lack_of_positive_samples}, Lack of negatives : {lack_of_negative_samples} for queries {lack_of_sample_queries}"
             )
+            batch_cnt += 1
+        end_time = time.time()
+        execution_time = end_time - start_time
+        total_sec += execution_time
+        print(
+            f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
+        )
     return loss_values
 
 
@@ -134,7 +143,6 @@ def train(
     total_loss_values = []
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
-        model_path = f"../data/model/proposal_session_{session_number}.pth"
 
         # 새로운 세션 문서
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
@@ -151,9 +159,12 @@ def train(
 
         # 초기 클러스터링 구축
         if session_number == 0:
+            start_time = time.time()
             centroids, cluster_instances = kmeans_pp(
                 X=list(doc_data.values()), k=10, max_iters=1, devices=devices
             )
+            end_time = time.time()
+            print(f"Spend {end_time-start_time} seconds for clustering warming up.")
         else:
             # 이전 세션 문서 일정량 제거된 클러스터 정보 반환
             centroids, cluster_instances, centroids_statics = evict_cluster_instances(
@@ -190,8 +201,10 @@ def train(
         # 샘플링 및 대조학습 수행
         model = BertModel.from_pretrained("bert-base-uncased").to(devices[0])
         if session_number != 0:
+            model_path = f"../data/model/proposal_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path))
         model.train()
+        new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
         loss_values = session_train(
             query_path=f"../data/sessions/train_session{session_number}_queries.jsonl",
@@ -199,12 +212,12 @@ def train(
             model=model,
             num_epochs=num_epochs,
             centroids=centroids,
-            cluster_instances=cluster_instances,
+            cluster_instances=cluster_instances
             # current_session_data=current_session_data,
         )
         total_loss_values.extend(loss_values)  # append
         show_loss(total_loss_values)
-        torch.save(model.state_dict(), model_path)
+        torch.save(model.state_dict(), new_model_path)
 
 
 # TODO 현재 모델로 재임베딩 X 클러스터 상태에서 평가
@@ -226,6 +239,8 @@ def evaluate(sesison_count=1):
         # result = process_queries_with_gpus(
         #     query_data, centroids, cluster_instances, devices
         # )
+
+        start_time = time.time()
         new_q_data, new_d_data = renew_data(
             queries=eval_query_data,
             documents=eval_doc_data,
@@ -235,7 +250,13 @@ def evaluate(sesison_count=1):
             renew_q=True,
             renew_d=True,
         )
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for encoding.")
+
+        start_time = time.time()
         result = get_top_k_documents(new_q_data, new_d_data, k=10)
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for retrieval.")
 
         rankings_path = f"../data/rankings/proposal_{session_number}.txt"
         write_file(rankings_path, result)

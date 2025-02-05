@@ -5,6 +5,12 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
+import time
+
+
+from data import read_jsonl
+from functions import write_file, evaluate_dataset
+from collections import defaultdict
 
 
 def preprocess(text, remove_stopwords=True, stemming=True, lemmatization=True):
@@ -49,9 +55,11 @@ def get_top_k_documents(query, bm25, doc_ids, k=10):
     return top_k_doc_ids
 
 
+# python -c "import nltk; nltk.download('stopwords')"
+# python -c "import nltk; nltk.download('punkt')"
 def do_expermient(query_path, doc_path, session_number):
-    query_data = load_jsonl(query_path)
-    doc_data = load_jsonl(doc_path)
+    query_data = read_jsonl(query_path)[:100]
+    doc_data = read_jsonl(doc_path)[:100]
 
     query_count = len(query_data)
     doc_count = len(doc_data)
@@ -74,3 +82,15 @@ def do_expermient(query_path, doc_path, session_number):
     rankings_path = f"../data/rankings/bm25-{session_number}.txt"
     write_file(rankings_path, result)
     evaluate_dataset(query_path, rankings_path, doc_count)
+
+
+def evaluate(sesison_count=1):
+    for session_number in range(sesison_count):
+        print(f"Evaluate Session {session_number}")
+        eval_query_path = f"../data/sessions/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
+
+        start_time = time.time()
+        do_expermient(eval_query_path, eval_doc_path, session_number)
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for retrieval.")

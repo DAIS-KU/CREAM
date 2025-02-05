@@ -4,6 +4,8 @@ from cluster import kmeans_pp, compute_sse
 
 import torch
 
+import time
+
 
 def find_best_k(doc_data, start, end, gap, max_iters, devices):
     X = list(doc_data.values())
@@ -11,10 +13,13 @@ def find_best_k(doc_data, start, end, gap, max_iters, devices):
     sse = []
     k_values = range(start, end + 1, gap)
     for _k in k_values:
+        start_time = time.time()
         centroids, cluster_instances = kmeans_pp(X, _k, max_iters, devices)
         _sse = compute_sse(centroids, cluster_instances, devices)
         sse.append(_sse)
-        print(f"K:{_k} | _sse: {_sse}")
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"K:{_k} | _sse: {_sse} ({execution_time} sec)")
     draw_elbow(k_values, sse)
 
 
@@ -26,7 +31,15 @@ def find_best_k_experiment(start, end, gap, max_iters):
 
     doc_count = len(doc_data)
     print(f"Document count:{doc_count}")
-    _, doc_data = renew_data(None, doc_data, 24, 768, False, True)
+    _, doc_data = renew_data(
+        queries=None,
+        documents=doc_data,
+        nbits=24,
+        embedding_dim=768,
+        model_path=None,
+        renew_q=False,
+        renew_d=True,
+    )
     print(f"doc_data: {len(doc_data)}")
 
     find_best_k(doc_data, start, end, gap, max_iters, devices)

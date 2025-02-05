@@ -17,7 +17,7 @@ def compute_sse_for_partition(partition, centroids, cluster_instances, device):
                 MAX_SCORE
                 - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroids[k], device)
             ) ** 2
-    return sse
+    return sse.item()
 
 
 def compute_sse(centroids, cluster_instances, devices):
@@ -32,6 +32,7 @@ def compute_sse(centroids, cluster_instances, devices):
                 compute_sse_for_partition,
                 partition,
                 centroids,
+                cluster_instances,
                 devices[idx],
             )
             for idx, partition in enumerate(partitions)

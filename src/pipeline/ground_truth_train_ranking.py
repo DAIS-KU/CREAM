@@ -2,8 +2,20 @@ import random
 import torch
 from transformers import BertModel, BertTokenizer
 
+from functions import (
+    InfoNCELoss,
+    show_loss,
+    get_top_k_documents,
+    write_file,
+    evaluate_dataset,
+)
+from data import read_jsonl, read_jsonl_as_dict, renew_data
+
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+num_gpus = torch.cuda.device_count()
+devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def encode_texts(model, texts, max_length=256):
@@ -19,7 +31,9 @@ def encode_texts(model, texts, max_length=256):
     return embedding
 
 
-def session_train(queries, docs, method, num_epochs):
+def session_train(query_path, model, doc_path, num_epochs):
+    queries = read_jsonl(query_path)[:64]
+    docs = read_jsonl_as_dict(doc_path, "doc_id")
     random.shuffle(queries)
     query_cnt = len(queries)
     loss_values = []
@@ -29,19 +43,15 @@ def session_train(queries, docs, method, num_epochs):
     current_device_index = torch.cuda.current_device()
     device = torch.device(f"cuda:{current_device_index}")
 
-    model = BertModel.from_pretrained("bert-base-uncased").to(device)
-    model.train()
-    model_path = f"../data/model/ground_truth_in_batch.pth"
-
     loss_fn = InfoNCELoss()
     learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
     batch_size = 32
 
     for epoch in range(num_epochs):
-        total_loss = 0
+        total_loss, total_sec, batch_cnt = 0, 0, 0
 
+        start_time = time.time()
         for start_idx in range(0, query_cnt, batch_size):
             end_idx = min(start_idx + batch_size, query_cnt)
             print(f"batch {start_idx}-{end_idx}")
@@ -53,7 +63,6 @@ def session_train(queries, docs, method, num_epochs):
                 query = queries[qid]
                 pos_doc = docs[random.sample(query["answer_pids"], 1)[0]]["text"]
                 batch_pos_docs.append(pos_doc)
-                pos_docs_batch.append(pos_doc)
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
@@ -101,7 +110,13 @@ def session_train(queries, docs, method, num_epochs):
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
             )
-
+            batch_cnt += 1
+        end_time = time.time()
+        execution_time = end_time - start_time
+        total_sec += execution_time
+        print(
+            f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
+        )
     return loss_values
 
 
@@ -110,37 +125,27 @@ def train(
     num_epochs=1,
     include_evaluate=True,
 ):
+    total_loss_values = []
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
-        model_path = f"../data/model/gt_session_{session_number}.pth"
 
-        # 새로운 세션 문서
-        doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)[:500]
-        _, doc_data = renew_data(
-            queries=None,
-            documents=doc_data,
-            nbits=16,
-            embedding_dim=768,
-            renew_q=False,
-            renew_d=True,
-        )
-        print(f"Session {session_number} | Document count:{len(doc_data)}")
-
-        # 샘플링 및 대조학습 수행
         model = BertModel.from_pretrained("bert-base-uncased").to(devices[0])
         if session_number != 0:
+            model_path = f"../data/model/gt_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path))
+        new_model_path = f"../data/model/gt_session_{session_number}.pth"
         model.train()
 
+        # 전처리가 필요한가...?
         loss_values = session_train(
             query_path=f"../data/sessions/train_session{session_number}_queries.jsonl",
             model=model,
+            doc_path=f"../data/sessions/train_session{session_number}_docs.jsonl",
             num_epochs=num_epochs,
         )
-        total_loss_values.append(loss_values)
+        total_loss_values.extend(loss_values)
         show_loss(total_loss_values)
-        torch.save(model.state_dict(), model_path)
+        torch.save(model.state_dict(), new_model_path)
 
 
 def evaluate(sesison_count=1):
@@ -149,15 +154,17 @@ def evaluate(sesison_count=1):
         eval_query_path = f"../data/sessions/test_session{session_number}_queries.jsonl"
         eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
 
-        eval_query_data = read_jsonl(query_path)
-        eval_doc_data = read_jsonl(doc_path)
+        eval_query_data = read_jsonl(eval_query_path)[:10]
+        eval_doc_data = read_jsonl(eval_doc_path)[:100]
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
-        print(f"Query count:{query_count}, Document count:{doc_count}")
+        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
         rankings_path = f"../data/rankings/gt_{session_number}.txt"
         model_path = f"../data/model/gt_session_{session_number}.pth"
+
+        start_time = time.time()
         new_q_data, new_d_data = renew_data(
             queries=eval_query_data,
             documents=eval_doc_data,
@@ -167,9 +174,15 @@ def evaluate(sesison_count=1):
             renew_q=True,
             renew_d=True,
         )
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for encoding.")
+
+        start_time = time.time()
         result = get_top_k_documents(new_q_data, new_d_data, k=10)
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for retrieval.")
 
         rankings_path = f"../data/rankings/gt_{session_number}.txt"
         write_file(rankings_path, result)
-        evaluate_dataset(method, domain, query_path, rankings_path, doc_count)
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
         del new_q_data, new_d_data
