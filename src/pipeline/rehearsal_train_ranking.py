@@ -1,6 +1,7 @@
 import random
 import torch
 from transformers import BertModel, BertTokenizer
+from functions import rehearsal_sampling
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -21,7 +22,7 @@ def encode_texts(model, texts, device, max_length=256, is_cls=True):
     return embedding
 
 
-def train(queries, docs, num_epochs):
+def train(queries, docs, num_epochs, method):
     random.shuffle(queries)
     query_cnt = len(queries)
     loss_values = []
@@ -33,7 +34,7 @@ def train(queries, docs, num_epochs):
 
     model = BertModel.from_pretrained("bert-base-uncased").to(device)
     model.train()
-    model_path = f"../data/model/random_sampling.pth"
+    model_path = f"../data/model/{method}_sampling.pth"
 
     loss_fn = InfoNCELoss()
     learning_rate = 2e-5
@@ -52,9 +53,7 @@ def train(queries, docs, num_epochs):
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
-                pos_docs = [
-                    doc["text"] for doc in random.sample(list(docs.values()), 1)
-                ]
+                pos_docs = rehearsal_sampling(query=query, method=method)
                 neg_docs = [
                     doc["text"] for doc in random.sample(list(docs.values()), 3)
                 ]
