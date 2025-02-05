@@ -18,7 +18,9 @@
     ├── cluster
     │   ├── __init__.py
     │   ├── management.py 
-    │   └── prototype.py
+    │   ├── prototype.py 
+    │   ├── retriever.py 
+    │   └── sampler.py
     ├── data
     │   ├── __init__.py
     │   ├── generate.py
@@ -26,6 +28,8 @@
     │   └── preprocess.py
     ├── functions
     │   ├── __init__.py
+    │   ├── evaluate.py
+    │   ├── loss.py
     │   ├── retriever.py
     │   ├── sampler.py
     │   ├── similarities.py
@@ -33,10 +37,10 @@
     └── pipeline
         ├── __init__.py
         ├── bm25_ranking.py
-        ├── evaluate.py
         ├── ground_truth_train_ranking.py
         ├── proposal_train_ranking.py
-        └── random_train_ranking.py
+        ├── random_train_ranking.py
+        └── rehearsal_train_ranking.py
 ```
 # Data
 - model
@@ -53,6 +57,10 @@
   - 클러스터 프로토타입, 인스턴스 매핑, 통계 관리 
 - prototype
   - RP-LSH
+- retriever
+  - 클러스터 내 리트리버
+- sampler
+  - 클러스터 내 샘플링
 
 ### data
 - loader
@@ -63,8 +71,12 @@
   - 전체 데이터 인코딩 등
 
 ### functions
-- retriever
+- evaluate
   - 전체 or cluster에서 쿼리에 대한 정답문서 조회
+- loss
+  - InfoNCELoss
+- retriever
+  - 클러스터 없는(전체문서) 리트리버
 - sampler
   - 샘플 선정 전략(l2r, bm25, ER, MIR, GSS, OCS)
 - similarties
@@ -72,13 +84,10 @@
 - utils
   - 시각화, collection 등
 
-
-### pipeline
-- train
-- evaluate
-- unit test
-각종 실험들
+### pipeline, main
+각종 실험들, 엔트리 포인트
 
 
 # Contribution
 - black으로 린팅
+- python main.py --exp=proposal 와 같이 실행
