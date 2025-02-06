@@ -12,6 +12,7 @@ MAX_SCORE = 254
 def compute_sse_for_partition(partition, centroids, cluster_instances, device):
     sse = 0
     for k in partition:
+        print(f"compute_sse_for_partition {k}, #instance {len(cluster_instances[k])}")
         for x in cluster_instances[k]:
             sse += (
                 MAX_SCORE
@@ -44,6 +45,9 @@ def compute_sse(centroids, cluster_instances, devices):
 
 def compute_distances_for_partition(args):
     X_partition, centroids, device = args
+    print(
+        f"{device} compute_distances_for_partition | #X {len(X_partition)}, #centroids {len(centroids)}"
+    )
     """특정 파티션에서 X와 centroids 간의 최소 거리 계산"""
     distances = []
     for x in X_partition:
@@ -60,31 +64,33 @@ def compute_distances_for_partition(args):
 
 def initialize_centroids(X, k, devices):
     print("Initialize centroid")
-    n_samples = len(X)
-    centroids = []
-    first_centroid = X[np.random.randint(0, n_samples)]["LSH_MAPS"]
-    centroids.append(first_centroid)
+    random_indices = np.random.randint(0, n_samples, size=k)
+    centroids = [X[i]["LSH_MAPS"] for i in random_indices]
+    # n_samples = len(X)
+    # centroids = []
+    # first_centroid = X[np.random.randint(0, n_samples)]["LSH_MAPS"]
+    # centroids.append(first_centroid)
 
-    partitions = np.array_split(X, len(devices))
-    for _ in range(1, k):
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(devices)
-        ) as executor:
-            distances_list = list(
-                executor.map(
-                    compute_distances_for_partition,
-                    [
-                        (partition, centroids, devices[idx])
-                        for idx, partition in enumerate(partitions)
-                    ],
-                )
-            )
-        distances = [distance for result in distances_list for distance in result]
+    # partitions = np.array_split(X, len(devices))
+    # for _ in range(1, k):
+    #     with concurrent.futures.ThreadPoolExecutor(
+    #         max_workers=len(devices)
+    #     ) as executor:
+    #         distances_list = list(
+    #             executor.map(
+    #                 compute_distances_for_partition,
+    #                 [
+    #                     (partition, centroids, devices[idx])
+    #                     for idx, partition in enumerate(partitions)
+    #                 ],
+    #             )
+    #         )
+    #     distances = [distance for result in distances_list for distance in result]
 
-        distances_tensor = torch.tensor(distances, device=devices[0])
-        probabilities = distances_tensor / distances_tensor.sum()
-        next_centroid_index = torch.multinomial(probabilities, num_samples=1).item()
-        centroids.append(X[next_centroid_index]["LSH_MAPS"])
+    #     distances_tensor = torch.tensor(distances, device=devices[0])
+    #     probabilities = distances_tensor / distances_tensor.sum()
+    #     next_centroid_index = torch.multinomial(probabilities, num_samples=1).item()
+    #     centroids.append(X[next_centroid_index]["LSH_MAPS"])
     return centroids
 
 
@@ -153,9 +159,9 @@ def kmeans_pp(X, k, max_iters, devices):
     cluster_instances = defaultdict(list)
     for k in sorted(clusters.keys()):
         cluster_instances[k] = [X[idx] for idx in clusters[k]]
-        print(f"cluster {k} size: {len(cluster_instances[k])}")
+    #     print(f"cluster {k} size: {len(cluster_instances[k])}")
 
-    print(f"centroids : {len(centroids)}")
+    # print(f"centroids : {len(centroids)}")
     return centroids, cluster_instances
 
 

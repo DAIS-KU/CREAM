@@ -27,7 +27,7 @@ def find_best_k_experiment(start, end, gap, max_iters):
     doc_path = f"../data/sessions/train_session0_docs.jsonl"
     num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
-    doc_data = read_jsonl(doc_path)[:100]
+    doc_data = read_jsonl(doc_path)
 
     doc_count = len(doc_data)
     print(f"Document count:{doc_count}")
