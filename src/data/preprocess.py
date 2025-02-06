@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 from cluster import RandomProjectionLSH
 from transformers import BertModel, BertTokenizer
 
+from concurrent.futures import ProcessPoolExecutor
+
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
