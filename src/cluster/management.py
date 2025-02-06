@@ -5,6 +5,7 @@ import numpy as np
 from collections import defaultdict
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 MAX_SCORE = 9999
 
@@ -128,10 +129,10 @@ def initialize_centroids(X, k, devices):
 
 
 def create_centroid(instances, instance_ids):
-    instance_hashes = [instances[id]["LSH_MAPS"] for id in instance_ids]
     merged_hash = defaultdict(lambda: torch.zeros(768))
-    for hash_map in instance_hashes:
-        for key, value in hash_map.items():
+    # 254 * #instance_ids
+    for _id in instance_ids:
+        for key, value in instances[_id]["LSH_MAPS"].items():
             merged_hash[key] += value
     return merged_hash
 
@@ -151,8 +152,8 @@ def get_closest_clusters(args):
                 distances = (
                     MAX_SCORE - calculate_S_qd_regl_dict(batch_tensor, centroid, device)
                 ) ** 2
-                batch_clusters.append(distances)
-            distances_tensor = torch.stack(batch_clusters, dim=0)  # (batch, k)
+                batch_clusters.append(distances)  # (batch_size,)
+            distances_tensor = torch.stack(batch_clusters, dim=1)  # (batch, k)
             closest_batch_clusters = torch.argmin(distances_tensor, dim=1)  # (batch,)
             closest_clusters.extend(closest_batch_clusters.tolist())
 
@@ -163,10 +164,9 @@ def kmeans_pp(X, k, max_iters, devices):
     centroids = initialize_centroids(X, k, devices)
 
     for iter_num in range(max_iters):
-        print(
-            f"Starting iteration {iter_num + 1} | centroids: #{len(centroids)}, {' '.join(str(tensor.shape) for tensor in centroids)}"
-        )
-        batch_size = 1024
+        print(f"Starting iteration {iter_num + 1} | centroids: #{len(centroids)}")
+        start_time = time.time()
+        batch_size = 512
         clusters = defaultdict(list)
 
         partitions = np.array_split(X, len(devices))
@@ -187,14 +187,15 @@ def kmeans_pp(X, k, max_iters, devices):
         cluster_to_idx = {cluster: idx for idx, cluster in enumerate(unique_clusters)}
         for i, closest_cluster in enumerate(closest_clusters):
             clusters[cluster_to_idx[closest_cluster]].append(i)
-        print(f"iter_num {iter_num} | clusters.keys():{len(list(clusters.keys()))}")
 
-        new_centroids = []
+        centroids = []
         for k in sorted(clusters.keys()):
             cluster_indices = clusters[k]
+            print(f"clsuter {k} create new centroid.(instance {len(cluster_indices)})")
             new_centroid = create_centroid(X, cluster_indices)
-            new_centroids.append(new_centroid)
-        centroids = new_centroids
+            centroids.append(new_centroid)
+        end_time = time.time()
+        print(f"iter_num {iter_num} | execution_time: {end_time-start_time} sec.")
 
     cluster_instances = defaultdict(list)
     for k in sorted(clusters.keys()):

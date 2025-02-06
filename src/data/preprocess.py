@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cluster import RandomProjectionLSH
 from transformers import BertModel, BertTokenizer
 
+import time
 from concurrent.futures import ProcessPoolExecutor
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -199,6 +200,7 @@ def renew_data(
     )
 
     print("Query-Document encoding started.")
+    start_time = time.time()
     with ThreadPoolExecutor(max_workers=num_gpus) as executor:
         results = list(
             executor.map(
@@ -212,7 +214,8 @@ def renew_data(
                 [renew_d for _ in range(num_gpus)],
             )
         )
-    print("Query-Document encoding ended.")
+    end_time = time.time()
+    print(f"Query-Document encoding ended.({end_time-start_time} sec.)")
 
     new_q_data = {}
     new_d_data = {}

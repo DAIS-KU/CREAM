@@ -30,6 +30,6 @@ if __name__ == "__main__":
     elif args.exp == "bm25":
         bm25_evaluate()
     elif args.exp == "find_k":
-        find_best_k_experiment(start=200, end=1000, gap=200, max_iters=5)
+        find_best_k_experiment(start=200, end=600, gap=100, max_iters=5)
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

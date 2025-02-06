@@ -10,7 +10,7 @@ import time
 def find_best_k(doc_data, start, end, gap, max_iters, devices):
     X = list(doc_data.values())
     print(len(X))
-    sse = []
+    sse, execution_times = [], []
     k_values = range(start, end + 1, gap)
     for _k in k_values:
         start_time = time.time()
@@ -19,8 +19,9 @@ def find_best_k(doc_data, start, end, gap, max_iters, devices):
         sse.append(_sse)
         end_time = time.time()
         execution_time = end_time - start_time
-        print(f"K:{_k} | _sse: {_sse} ({execution_time} sec)")
-    draw_elbow(k_values, sse)
+        execution_times.append(execution_time)
+    for k, _sse, et in zip(k_values, sse, execution_times):
+        print(f"k {k}: sse {_sse} ({et} sec.)")
 
 
 def find_best_k_experiment(start, end, gap, max_iters):
