@@ -207,6 +207,51 @@ def kmeans_pp(X, k, max_iters, devices):
     return centroids, cluster_instances
 
 
+def get_cluster_statistics(centroids, cluster_instances, devices):
+    centroids_statistics = {}
+
+    for k in cluster_instances:
+        instances = cluster_instances[k]
+        centroid = centroids[k]
+
+        num_devices = len(devices)
+        batches = [instances[i::num_devices] for i in range(num_devices)]
+
+        def process_batch(batch, device):
+            S1, S2, N = 0.0, 0.0, 0
+            centroid_tensor = torch.tensor(centroid, device=device)
+
+            for x in batch:
+                token_embs = torch.tensor(
+                    x["TOKEN_EMBS"], device=device
+                )  # 입력 텐서 변환
+                x_dist = MAX_SCORE - calculate_S_qd_regl_dict(
+                    token_embs, centroid_tensor, device
+                )
+
+                S1 += x_dist
+                S2 += x_dist**2
+                N += 1
+
+            return {"S1": S1, "S2": S2, "N": N}
+
+        results = []
+        with ThreadPoolExecutor(max_workers=num_devices) as executor:
+            futures = {
+                executor.submit(process_batch, batches[i], devices[i]): i
+                for i in range(num_devices)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+        S1_total = sum(r["S1"] for r in results)
+        S2_total = sum(r["S2"] for r in results)
+        N_total = sum(r["N"] for r in results)
+
+        centroids_statistics[k] = {"S1": S1_total, "S2": S2_total, "N": N_total}
+
+    return centroids_statistics
+
+
 def find_closest_cluster_id(query, centroids, device):
     query_tokens = query["TOKEN_EMBS"]
     distances = []

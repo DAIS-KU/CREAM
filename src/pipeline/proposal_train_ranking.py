@@ -11,6 +11,7 @@ from functions import (
 )
 from cluster import (
     kmeans_pp,
+    get_cluster_statistics,
     get_samples_in_clusters,
     evict_cluster_instances,
     assign_instance_or_centroid,
@@ -171,6 +172,7 @@ def train(
                 max_iters=1,
                 devices=devices,
             )
+            # cluster_statistics = get_cluster_statistics(centroids, cluster_instances, devices)
             end_time = time.time()
             print(f"Spend {end_time-start_time} seconds for clustering warming up.")
         else:

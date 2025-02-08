@@ -26,6 +26,14 @@ def encode_texts(model, texts, device, max_length=256):
     return embedding
 
 
+def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
+    scores = torch.nn.functional.cosine_similarity(
+        query_emb.unsqueeze(0), current_data_embs, dim=1
+    )
+    top_k_scores, top_k_indices = torch.topk(scores, k)
+    return top_k_indices.tolist()
+
+
 def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
     random.shuffle(queries)
     query_cnt = len(queries)
@@ -50,7 +58,9 @@ def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
-                pos_docs = []  # buffer.retrieve(...)
+                pos_docs = [
+                    doc["text"] for doc in random.sample(list(docs.values()), 1)
+                ]  # [get_top_k_documents_by_cosine(...)] + buffer.retrieve(...)
                 neg_docs = [
                     doc["text"] for doc in random.sample(list(docs.values()), 3)
                 ]
