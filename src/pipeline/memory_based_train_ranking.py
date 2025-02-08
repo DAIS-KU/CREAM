@@ -34,6 +34,7 @@ def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
     return top_k_indices.tolist()
 
 
+# https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
     random.shuffle(queries)
     query_cnt = len(queries)

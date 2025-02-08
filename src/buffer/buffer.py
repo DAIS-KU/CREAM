@@ -3,20 +3,9 @@ from .reservoir_update import Reservoir_update
 from .mir_retrieve import MIR_retrieve
 from .gss_greedy_update import GSSGreedyUpdate
 
-# from .our_retrieve import Our_retrieve
-# from .our_update import OurUpdate
+from .l2r_retrieve import L2R_retrieve
+from .l2r_update import L2RUpdate
 
-# from .our_retrieve_emb import Our_retrieve_emb
-# from .our_update_emb import OurUpdateEmb
-
-# from .our_retrieve_emb_cosine import Our_retrieve_emb_cosine
-# from .our_update_emb_cosine import OurUpdateEmbCosine
-
-# from .our_retrieve_emb_vertical import Our_retrieve_emb_vertical
-# from .our_update_emb_vertical import OurUpdateEmbVertical
-
-# from .our_retrieve_emb_horizontal import Our_retrieve_emb_horizontal
-# from .our_update_emb_horizontal import OurUpdateEmbHorizontal
 
 from .arguments import DataArguments, TevatronTrainingArguments
 
@@ -30,20 +19,12 @@ import json
 retrieve_methods = {
     "random": Random_retrieve,
     "mir": MIR_retrieve,
-    # 'our': Our_retrieve,
-    # # 'our_emb': Our_retrieve_emb,
-    # 'our_emb_cosine': Our_retrieve_emb_cosine,
-    # 'our_emb_vertical': Our_retrieve_emb_vertical,
-    # 'our_emb_horizontal': Our_retrieve_emb_horizontal,
+    "our": L2R_retrieve,
 }
 update_methods = {
     "random": Reservoir_update,
     "gss": GSSGreedyUpdate,
-    # 'our': OurUpdate,
-    # # 'our_emb': OurUpdateEmb,
-    # 'our_emb_cosine': OurUpdateEmbCosine,
-    # 'our_emb_vertical': OurUpdateEmbVertical,
-    # 'our_emb_horizontal': OurUpdateEmbHorizontal,
+    "our": L2RUpdate,
 }
 
 
