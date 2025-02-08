@@ -45,3 +45,10 @@ def append_to_jsonl(file_path, data):
     with open(file_path, "a") as f:
         json_line = json.dumps(data)
         f.write(json_line + "\n")
+
+
+def write_file(rank_file_path, result):
+    with open(rank_file_path, "w") as f:
+        for key, values in result.items():
+            line = f"{key} " + " ".join(map(str, values)) + "\n"
+            f.write(line)

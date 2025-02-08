@@ -1,8 +1,7 @@
-import random
 import torch
 from transformers import BertModel, BertTokenizer
 
-from data import read_jsonl, renew_data, read_jsonl_as_dict
+from data import read_jsonl, renew_data, read_jsonl_as_dict, write_file
 from functions import (
     evaluate_dataset,
     InfoNCELoss,

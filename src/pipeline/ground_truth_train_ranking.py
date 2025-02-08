@@ -9,7 +9,8 @@ from functions import (
     write_file,
     evaluate_dataset,
 )
-from data import read_jsonl, read_jsonl_as_dict, renew_data
+from data import read_jsonl, read_jsonl_as_dict, renew_data, write_file
+import time
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -37,8 +38,6 @@ def session_train(query_path, model, doc_path, num_epochs):
     random.shuffle(queries)
     query_cnt = len(queries)
     loss_values = []
-    validation_values = []
-    accuracy_values = []
 
     current_device_index = torch.cuda.current_device()
     device = torch.device(f"cuda:{current_device_index}")

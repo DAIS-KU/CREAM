@@ -8,7 +8,7 @@ from nltk.stem import WordNetLemmatizer
 import time
 
 
-from data import read_jsonl
+from data import read_jsonl, write_file
 from functions import write_file, evaluate_dataset
 from collections import defaultdict
 
