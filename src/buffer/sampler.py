@@ -1,5 +1,5 @@
 # https://github.com/caiyinqiong/L-2R/tree/main/src/tevatron/buffer
-def rehearsal_sampling(query, method):
+def memory_based_sampling(query, method):
     if method == "ER":
         pass
     elif method == "MIR":

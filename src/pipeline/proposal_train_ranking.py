@@ -10,7 +10,13 @@ from functions import (
     get_top_k_documents,
     write_file,
 )
-from cluster import kmeans_pp, get_samples_in_clusters
+from cluster import (
+    kmeans_pp,
+    get_samples_in_clusters,
+    evict_cluster_instances,
+    assign_instance_or_centroid,
+    update_cluster_and_current_session_data,
+)
 import time
 
 torch.autograd.set_detect_anomaly(True)
@@ -147,7 +153,7 @@ def train(
         # 새로운 세션 문서
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl(doc_path)[:100]
-        _, doc_data = renew_data(
+        _, current_session_data = renew_data(
             queries=None,
             documents=doc_data,
             nbits=16,
@@ -155,47 +161,45 @@ def train(
             renew_q=False,
             renew_d=True,
         )
-        print(f"Session {session_number} | Document count:{len(doc_data)}")
+        print(f"Session {session_number} | Document count:{len(current_session_data)}")
 
         # 초기 클러스터링 구축
         if session_number == 0:
             start_time = time.time()
             centroids, cluster_instances = kmeans_pp(
-                X=list(doc_data.values()), k=10, max_iters=1, devices=devices
+                X=list(current_session_data.values()),
+                k=10,
+                max_iters=1,
+                devices=devices,
             )
             end_time = time.time()
             print(f"Spend {end_time-start_time} seconds for clustering warming up.")
         else:
-            # 이전 세션 문서 일정량 제거된 클러스터 정보 반환
-            centroids, cluster_instances, centroids_statics = evict_cluster_instances(
-                a=1.0,
-                model=model,
-                old_centroids=centroids,
-                old_cluster_instances=cluster_instances,
-                old_centroids_statics=centroids_statics,
-            )
-            # 새로운 세션 문서 클러스터 추가
-            (
-                centroids,
-                centroids_statics,
-                cluster_instances,
-                labels,
-            ) = assign_instance_or_centroid(
-                centroids=centroids,
-                centroids_statics=centroids_statics,
-                cluster_instances=cluster_instances,
-                current_session_data=current_session_data,
-                t=t,
-            )
-        # 구/신 세션 문서 병합된 클러스터 및 현재 세션 활성화 문서들 반환
-        # (
-        #     cluster_instances,
-        #     current_session_data,
-        #     labels,
-        # ) = update_cluster_and_current_session_data(
-        #     cluster_instances=cluster_instances,
-        #     current_session_data=current_session_data,
-        #     labels=labels,
+            pass
+        #     # 이전 세션 문서 일정량 제거된 클러스터 정보 반환
+        #     centroids, cluster_instances, centroids_statics = evict_cluster_instances(
+        #         a=1.0,
+        #         model=model,
+        #         old_centroids=centroids,
+        #         old_cluster_instances=cluster_instances,
+        #         old_centroids_statics=centroids_statics,
+        #     )
+        #     # 새로운 세션 문서 클러스터 추가
+        #     (centroids, centroids_statics, cluster_instances) = (
+        #         assign_instance_or_centroid(
+        #             centroids=centroids,
+        #             centroids_statics=centroids_statics,
+        #             cluster_instances=cluster_instances,
+        #             current_session_data=doc_data,
+        #             t=session_number,
+        #         )
+        #     )
+        # # 구/신 세션 문서 병합된 클러스터 및 현재 세션 활성화 문서들 반환
+        # (cluster_instances, current_session_data) = (
+        #     update_cluster_and_current_session_data(
+        #         cluster_instances=cluster_instances,
+        #         current_session_data=current_session_data,
+        #     )
         # )
 
         # 샘플링 및 대조학습 수행
@@ -212,7 +216,7 @@ def train(
             model=model,
             num_epochs=num_epochs,
             centroids=centroids,
-            cluster_instances=cluster_instances
+            cluster_instances=cluster_instances,
             # current_session_data=current_session_data,
         )
         total_loss_values.extend(loss_values)  # append

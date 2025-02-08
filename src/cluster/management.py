@@ -6,8 +6,9 @@ from collections import defaultdict
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import time
+import math
 
-MAX_SCORE = 9999
+MAX_SCORE = 999
 
 
 def compute_sse_for_partition(
@@ -216,3 +217,151 @@ def find_closest_cluster_id(query, centroids, device):
         distances.append(distance)
     closest_cluster = torch.argmin(torch.tensor(distances)).item()
     return closest_cluster
+
+
+def calculate_mean(S1, N):
+    mean_S1 = S1 / N
+    return mean_S1
+
+
+def calculate_rms(S1, S2, N):
+    mean_S1 = S1 / N
+    mean_S2 = S2 / N
+    rms = math.sqrt(mean_S2 - mean_S1**2)
+    return rms
+
+
+def evict_cluster_instances(
+    a, model, old_centroids, old_cluster_instances, old_centroids_statics
+):
+    # 오래된 문서 버리고, 현재 인코더로 재임베딩...?
+    print("evict_cluster_instances started.")
+    new_centroids, new_cluster_instances, new_centroids_statics = (
+        [],
+        defaultdict(list),
+        {},
+    )
+    for old_idx, centroid in enumerate(old_centroids):
+        MEAN = calculate_mean(
+            S1=old_centroids_statics[old_idx]["S1"],
+            N=old_centroids_statics[old_idx]["N"],
+        )
+        BOUNDARY = MEAN
+        print(f"cluster {old_idx} | BOUNDARY: {BOUNDARY} | MEAN: {MEAN}")
+        temp_cluster_instances = []
+        if len(old_cluster_instances[old_idx]) != 0:
+            tmp_centroids_statics = {"S1": 0, "S2": 0, "N": 0, "TOKEN_EMBS": None}
+            for x in old_cluster_instances[old_idx]:
+                x_dist = MAX_SCORE - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid)
+                if x_dist <= BOUNDARY:
+                    tmp_centroids_statics["S1"] = tmp_centroids_statics["S1"] + x_dist
+                    tmp_centroids_statics["S2"] = (
+                        tmp_centroids_statics["S2"] + x_dist**2
+                    )
+                    tmp_centroids_statics["N"] = tmp_centroids_statics["N"] + 1
+                    tmp_centroids_statics["TOKEN_EMBS"] = x[
+                        "TOKEN_EMBS"
+                    ]  # 1개만 남을까봐
+                    temp_cluster_instances.append(x)
+        # evict 결과 유효한 클러스터이면 통계값/프로토타입/해당 클러스터 인스턴스 갱신
+        if len(temp_cluster_instances) != 0:
+            new_centroid = create_centroid(
+                old_cluster_instances, [x["ID"] for x in temp_cluster_instances]
+            )
+            new_centroids.append(new_centroid)
+            new_idx = len(new_centroids) - 1
+            new_cluster_instances[new_idx] = temp_cluster_instances
+            new_centroids_statics[new_idx] = tmp_centroids_statics
+            print(f"cluster {old_idx} is alive.")
+        # evict 결과 빈 클러스터이면 통계값/프로토타입/해당 클러스터 인스턴스 제거
+        else:
+            del old_centroids_statics[old_idx]
+            del old_cluster_instances[old_idx]
+            print(f"cluster {old_idx} is removed.")
+
+    del old_centroids
+    print("evict_cluster_instances ended.")
+    return new_centroids, new_cluster_instances, new_centroids_statics
+
+
+def get_initial_max_boundary(centroids_statics, closest_cluster, centroids):
+    centroid_token_embs = centroids_statics[closest_cluster]["TOKEN_EMBS"]
+    distances = []
+    for i, centroid in enumerate(centroids):
+        if i == closest_cluster:
+            continue
+        else:
+            distances.append(
+                MAX_SCORE - calculate_S_qd_regl_dict(centroid_token_embs, centroid)
+            )
+    min_dist = torch.min(distances)
+    return min_dist
+
+
+def assign_instance_or_centroid(
+    centroids, centroids_statics, cluster_instances, current_session_data, t
+):
+    # 새로운 데이터를 클러스터에 추가, 새로운 데이터에 어느 클러스터에 할당되어있는지 추가
+    print("assign_instance_or_centroid started.")
+    X = list(current_session_data.values())
+
+    for i, x in enumerate(X):
+        distances = [
+            MAX_SCORE - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid)
+            for centroid in centroids
+        ]
+        closest_cluster = torch.argmin(distances).item()
+
+        # 데이터 포인트 1개일 때 통계정보가 없으므로 가장 가까운 다른 클러스터까지의 거리로 max_boundary 휴리스틱으로 사용
+        # 그렇지 않다면 RMS이내인지 학인, 아니면 새로운 centroid으로 할당
+        s1, s2, n = (
+            centroids_statics[closest_cluster]["S1"],
+            centroids_statics[closest_cluster]["S2"],
+            centroids_statics[closest_cluster]["N"],
+        )
+        if (
+            n == 1
+            and distances[closest_cluster]
+            <= get_initial_max_boundary(centroids_statics, closest_cluster, centroids)
+        ) or distances[closest_cluster] <= calculate_mean(
+            S1=s1, N=n
+        ) + t * calculate_rms(
+            S1=s1, S2=s2, N=n
+        ):
+            cluster_instances[closest_cluster].append(x)
+            centroids_statics[closest_cluster] = {
+                "S1": centroids_statics[closest_cluster]["S1"]
+                + distances[closest_cluster],
+                "S2": centroids_statics[closest_cluster]["S2"]
+                + distances[closest_cluster] ** 2,
+                "N": centroids_statics[closest_cluster]["N"] + 1,
+            }
+        else:
+            centroids.append(x["LSH_MAPS"])
+            closest_cluster = len(centroids) - 1
+            cluster_instances[closest_cluster].append(x)
+            centroids_statics[closest_cluster] = {
+                "S1": 0,
+                "S2": 0,
+                "N": 1,
+                "TOKEN_EMBS": x["TOKEN_EMBS"],
+            }
+    print("assign_instance_or_centroid ended.")
+    return centroids, centroids_statics, cluster_instances
+
+
+def update_cluster_and_current_session_data(cluster_instances, current_session_data):
+    print("update_cluster_and_current_session_data started.")
+    # 필요없는 정보 제거, 가용 정보(현재 클러스터의 문서들+현재 세션 문서들) 갱신
+    for key in cluster_instances:
+        print(f"{key} : {len(cluster_instances[key])}")
+        for x in cluster_instances[key]:
+            if "LSH_MAPS" in x:
+                del x["LSH_MAPS"]
+            if "TOKEN_EMBS" in x:
+                del x["TOKEN_EMBS"]
+            current_session_data[x["ID"]] = x
+
+    torch.cuda.empty_cache()
+    print("update_cluster_and_current_session_data ended.")
+    return cluster_instances, current_session_data
