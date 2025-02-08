@@ -5,7 +5,7 @@ from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents, write_
 
 from data import read_jsonl, write_file, renew_data
 import time
-from buffer import memory_based_sampling, memory_update
+from buffer import Buffer, DataArguments, TevatronTrainingArguments
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -26,7 +26,7 @@ def encode_texts(model, texts, device, max_length=256):
     return embedding
 
 
-def session_train(queries, docs, method, model, num_epochs):
+def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
     random.shuffle(queries)
     query_cnt = len(queries)
     loss_values = []
@@ -50,7 +50,7 @@ def session_train(queries, docs, method, model, num_epochs):
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
-                pos_docs = memory_based_sampling(query=query, method=method)
+                pos_docs = []  # buffer.retrieve(...)
                 neg_docs = [
                     doc["text"] for doc in random.sample(list(docs.values()), 3)
                 ]
@@ -97,8 +97,8 @@ def session_train(queries, docs, method, model, num_epochs):
 
             total_loss += loss.item()
             loss_values.append(loss.item())
-            memory_update(query=query, pos_docs=pos_docs, method=method)
-            
+            # buffer.update(...)
+
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
             )
@@ -120,9 +120,11 @@ def train(method, session_count=1, num_epochs=1):
             model.load_state_dict(torch.load(model_path))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
+        # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/arguments.py#L48
+        buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
 
         loss_values = session_train(
-            query_data, doc_data, num_epochs, method, session_number
+            query_data, doc_data, num_epochs, method, buffer, session_number
         )
         torch.save(model.state_dict(), new_model_path)
 
