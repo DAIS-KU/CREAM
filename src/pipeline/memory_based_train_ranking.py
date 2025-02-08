@@ -2,9 +2,10 @@ import random
 import torch
 from transformers import BertModel, BertTokenizer
 from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents, write_file
-from buffer import memory_based_sampling
+
 from data import read_jsonl, write_file, renew_data
 import time
+from buffer import memory_based_sampling, memory_update
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -96,6 +97,8 @@ def session_train(queries, docs, method, model, num_epochs):
 
             total_loss += loss.item()
             loss_values.append(loss.item())
+            memory_update(query=query, pos_docs=pos_docs, method=method)
+            
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
             )
