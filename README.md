@@ -15,6 +15,14 @@
 │    └── sesions
 └── src
     ├── main.py
+    ├── buffer
+    │   ├── __init__.py
+    │   ├── buffer_utils.py 
+    │   ├── gss_greedy_update.py 
+    │   ├── mir_retrieve.py 
+    │   ├── random_retrieve.py 
+    │   ├── reservoir_update.py 
+    │   ├── sampler.py
     ├── cluster
     │   ├── __init__.py
     │   ├── management.py 
@@ -31,7 +39,6 @@
     │   ├── evaluate.py
     │   ├── loss.py
     │   ├── retriever.py
-    │   ├── sampler.py
     │   ├── similarities.py
     │   └── utils.py
     └── pipeline
@@ -41,7 +48,7 @@
         ├── proposal_train_ranking.py
         ├── random_train_ranking.py
         ├── find_optimized_cluster.py
-        └── rehearsal_train_ranking.py
+        └── memory_based_train_ranking.py
 ```
 # Data
 - model
@@ -52,6 +59,9 @@
   - .local 공용 폴더의 /raw/idea_validation 이하
 
 # Components
+### buffer
+- 쿼리버퍼 내 샘플 선정 전략(l2r, bm25, ER, MIR, GSS, OCS)
+
 ### cluster
 - management
   - 클러스터 초기화 및 평가(kmeans++)
@@ -78,8 +88,6 @@
   - InfoNCELoss
 - retriever
   - 클러스터 없는(전체문서) 리트리버
-- sampler
-  - 샘플 선정 전략(l2r, bm25, ER, MIR, GSS, OCS)
 - similarties
   - cosine, term score 등
 - utils
