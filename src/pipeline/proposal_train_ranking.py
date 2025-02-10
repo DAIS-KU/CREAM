@@ -66,11 +66,6 @@ def session_train(
 
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
-        lack_of_positive_samples, lack_of_negative_samples, lack_of_sample_queries = (
-            0,
-            0,
-            0,
-        )
 
         start_time = time.time()
         for start_idx in range(0, query_cnt, batch_size):
@@ -135,9 +130,6 @@ def session_train(
             loss_values.append(loss.item())  # loss.item()
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
-            )
-            print(
-                f"Lack of positives: {lack_of_positive_samples}, Lack of negatives : {lack_of_negative_samples} for queries {lack_of_sample_queries}"
             )
             batch_cnt += 1
         end_time = time.time()
