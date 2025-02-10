@@ -100,3 +100,60 @@ def get_samples_in_clusters(
         f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
     )
     return positive_samples, negative_samples
+
+
+def get_samples_in_clusters_v2(
+    model, query, cluster_instances, centroids, positive_k=1, negative_k=3
+):
+    device = model.device
+    query_token_embs = get_passage_embeddings(model, query["query"])
+    distances = []
+
+    for centroid in centroids:
+        distances.append(calculate_S_qd_regl_dict(query_token_embs, centroid, device))
+
+    # 거리 기반으로 정렬 (가장 가까운 1개, 가장 먼 k개)
+    sorted_distances, sorted_indices = torch.sort(
+        torch.stack(distances), descending=False
+    )
+
+    positive_id = sorted_indices[0].item()  # 가장 가까운 클러스터 (positive)
+    negative_ids = sorted_indices[
+        -negative_k:
+    ].tolist()  # 가장 먼 k개 클러스터 (negative)
+
+    print(f"positive_id:{positive_id} | negative_ids:{negative_ids}")
+
+    # positive sample: 가장 가까운 클러스터에서 top-1 문서 선택
+    positive_samples = []
+    pos_docs = cluster_instances[positive_id]
+    if len(pos_docs) != 0:
+        pos_doc_tensor = torch.stack([doc["TOKEN_EMBS"] for doc in pos_docs])
+        pos_doc_scores = calculate_S_qd_regl_batch(
+            query_token_embs, pos_doc_tensor, device
+        )
+        _, pos_doc_top_k_indices = torch.topk(pos_doc_scores, k=1)  # top-1 문서 선택
+        positive_samples.extend(
+            [pos_docs[pidx]["ID"] for pidx in pos_doc_top_k_indices.tolist()]
+        )
+
+    # negative samples: 가장 먼 클러스터들에서 각각 top-1 문서 선택
+    negative_samples = []
+    for neg_id in negative_ids:
+        neg_docs = cluster_instances[neg_id]
+        if len(neg_docs) != 0:
+            neg_doc_tensor = torch.stack([doc["TOKEN_EMBS"] for doc in neg_docs])
+            neg_doc_scores = calculate_S_qd_regl_batch(
+                query_token_embs, neg_doc_tensor, device
+            )
+            _, neg_bottom_k_indices = torch.topk(
+                neg_doc_scores, k=1, largest=False
+            )  # top-1 문서 선택
+            negative_samples.extend(
+                [neg_docs[nidx]["ID"] for nidx in neg_bottom_k_indices.tolist()]
+            )
+
+    print(
+        f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
+    )
+    return positive_samples, negative_samples

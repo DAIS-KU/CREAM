@@ -1,5 +1,6 @@
 import torch
 from transformers import BertModel, BertTokenizer
+import random
 
 from data import read_jsonl, renew_data, read_jsonl_as_dict, write_file
 from functions import (
@@ -13,6 +14,7 @@ from cluster import (
     kmeans_pp,
     get_cluster_statistics,
     get_samples_in_clusters,
+    get_samples_in_clusters_v2,
     evict_cluster_instances,
     assign_instance_or_centroid,
     update_cluster_and_current_session_data,
@@ -76,10 +78,16 @@ def session_train(
             print(f"batch {start_idx}-{end_idx}")
 
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
+            batch_pos_docs = []  # 현재 batch의 모든 positive 문서 저장
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
-                positive_ids, negative_ids = get_samples_in_clusters(
+                pos_doc = docs[random.sample(query["answer_pids"], 1)[0]]["text"]
+                batch_pos_docs.append(pos_doc)
+
+            for qid in range(start_idx, end_idx):
+                query = queries[qid]
+                positive_ids, negative_ids = get_samples_in_clusters_v2(
                     model=model,
                     query=query,
                     cluster_instances=cluster_instances,
@@ -87,15 +95,15 @@ def session_train(
                     positive_k=positive_k,
                     negative_k=negative_k,
                 )
-                if len(positive_ids) < positive_k:
-                    lack_of_positive_samples += 1
-                if len(negative_ids) < negative_k:
-                    lack_of_negative_samples += 1
-                if len(positive_ids) < positive_k or len(negative_ids) < negative_k:
-                    lack_of_sample_queries += 1
+                gt_pos_docs = [batch_pos_docs[qid - start_idx]]
+                # batch 내 다른 positive 문서 중 3개 샘플링 (현재 query의 positive 문서는 제외)
+                available_neg_docs = [doc for doc in batch_pos_docs if doc != pos_doc]
+                gt_neg_docs = random.sample(
+                    available_neg_docs, min(3, len(available_neg_docs))
+                )
 
-                pos_docs = [docs[_id]["text"] for _id in positive_ids]
-                neg_docs = [docs[_id]["text"] for _id in negative_ids]
+                pos_docs = gt_pos_docs  # + [docs[_id]["text"] for _id in positive_ids]
+                neg_docs = gt_neg_docs + [docs[_id]["text"] for _id in negative_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(

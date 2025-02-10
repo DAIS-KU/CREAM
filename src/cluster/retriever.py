@@ -1,6 +1,13 @@
 import torch
 from concurrent.futures import ThreadPoolExecutor
 
+from transformers import BertTokenizer
+from .management import find_closest_cluster_id
+from functions import calculate_S_qd_regl_batch
+
+
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
 
 def get_passage_embeddings(model, passages, device, max_length=256):
     batch_inputs = tokenizer(
