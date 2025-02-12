@@ -24,6 +24,7 @@ class GSSGreedyUpdate(object):
         self.train_params = train_params
 
     def update(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called GSSGreedyUpdate.update()")
         batch_size = len(qid_lst)
         n_doc = len(docids_lst) // len(qid_lst)
         docids_neg_lst = np.array(docids_lst).reshape(batch_size, n_doc)[
@@ -58,6 +59,10 @@ class GSSGreedyUpdate(object):
                     cur_q_lst,
                     cur_d_lst,
                 )  # 从buffer随机采样几个batch计算他们的梯度，并计算batch_x整体与他们的梯度最大相似度， batch_sim=实数，mem_grads=[mem_strength,模型总参数量]
+                """
+                x는 buffer에서 임의로 몇 개의 배치를 샘플링하여 그들의 **기울기(gradient)**를 계산하고, batch_x와 그 샘플링된 배치들의 기울기 간 최대 유사도를 계산합니다. 
+                이때 batch_sim은 계산된 유사도 값(실수)이고, mem_grads는 **기억 강도(mem_strength)**와 모델의 총 파라미터 수를 포함하는 리스트입니다.
+                """
                 if batch_sim < 0:
                     buffer_score = torch.Tensor(self.buffer_score[qid]).to(
                         self.train_params.device

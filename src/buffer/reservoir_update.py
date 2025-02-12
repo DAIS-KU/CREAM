@@ -7,6 +7,7 @@ class Reservoir_update(object):
         super().__init__()
 
     def update(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called Reservoir_update.update()")
         batch_size = len(qid_lst)
         n_doc = len(docids_lst) // len(qid_lst)
         docids_lst = (

@@ -10,6 +10,7 @@ class Random_retrieve(object):
         self.num_retrieve = params.mem_batch_size  # memory data要使用的 batch size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called Random_retrieve.retrieve()")
         num_retrieve = self.num_retrieve
         for qid in qid_lst:
             num_retrieve = min(num_retrieve, len(buffer.buffer_qid2dids[qid]))

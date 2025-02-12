@@ -16,6 +16,7 @@ class MIR_retrieve(object):
         self.num_retrieve = params.mem_batch_size  # memory data要使用的 batch size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called MIR_retrieve.retrieve()")
         subsample = self.subsample
         for qid in qid_lst:
             subsample = min(subsample, len(buffer.buffer_qid2dids[qid]))

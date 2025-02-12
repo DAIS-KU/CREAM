@@ -21,6 +21,7 @@ class L2RUpdate(object):
         self.candidate_neg_docids = collections.defaultdict(set)
 
     def update(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called L2RUpdate.update()")
         pos_docids = kwargs["pos_docids"]
         for qid, docids in pos_docids.items():
             self.pos_docids[qid].update(docids)

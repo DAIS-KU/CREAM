@@ -20,6 +20,7 @@ class L2R_retrieve(object):
         self.mem_bz = params.mem_batch_size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
+        print("Called L2R_retrieve.retrieve()")
         model_temp = copy.deepcopy(buffer.model)
         grad_dims = []
         for param in model_temp.parameters():

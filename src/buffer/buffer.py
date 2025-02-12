@@ -60,6 +60,9 @@ class Buffer(torch.nn.Module):
             else:
                 self.n_seen_so_far, self.buffer_qid2dids = pickle.load(pkl_file)
             pkl_file.close()
+            print(
+                f"Load n_seen_so_far: {self.n_seen_so_far}, buffer_qid2dids:{self.buffer_qid2dids}"
+            )
 
             if params.compatible:
                 pkl_file = open(
@@ -73,7 +76,7 @@ class Buffer(torch.nn.Module):
         )  # {'qid':query text}
         self.did2doc = self.read_data(
             is_query=False, data_path=params.doc_data
-        )  # {'docid':doc text}
+        )  # {'doc_id':doc text}
         print("total did2doc:", len(self.did2doc))
 
         if self.params.update_method == "gss":
@@ -95,9 +98,9 @@ class Buffer(torch.nn.Module):
             for line in f:
                 data = json.loads(line)
                 if is_query:
-                    id2text[data["query_id"]] = data["query"]
+                    id2text[data["qid"]] = data["query"]
                 else:
-                    id2text[data["docid"]] = (
+                    id2text[data["doc_id"]] = (
                         data["title"]
                         + self.params.passage_field_separator
                         + data["text"]

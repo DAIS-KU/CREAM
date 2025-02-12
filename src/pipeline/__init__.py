@@ -10,3 +10,4 @@ from .random_train_ranking import evaluate as rand_evaluate
 from .bm25_ranking import evaluate as bm25_evaluate
 
 from .find_optimized_cluster import find_best_k_experiment
+from .test_buffer import test_buffer
