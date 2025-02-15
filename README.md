@@ -9,6 +9,7 @@
 ```
 .
 ├── README.md
+├── docs
 ├── data
 │    ├── model
 │    ├── rankings
@@ -17,12 +18,14 @@
     ├── main.py
     ├── buffer
     │   ├── __init__.py
+    │   ├── arguments.py 
     │   ├── buffer_utils.py 
+    │   ├── buffer.py 
     │   ├── gss_greedy_update.py 
     │   ├── mir_retrieve.py 
+    │   ├── model.py
     │   ├── random_retrieve.py 
-    │   ├── reservoir_update.py 
-    │   ├── sampler.py
+    │   └── reservoir_update.py 
     ├── cluster
     │   ├── __init__.py
     │   ├── management.py 
@@ -48,8 +51,12 @@
         ├── proposal_train_ranking.py
         ├── random_train_ranking.py
         ├── find_optimized_cluster.py
-        └── memory_based_train_ranking.py
+        ├── memory_based_train_ranking.py
+        └── test_buffer.py
 ```
+# Documents
+- 함께 개발하는데 필요한 정보(분석, 공유, 논의사항)들을 기록해주세요...!
+
 # Data
 - model
   - checkpoint 경로
