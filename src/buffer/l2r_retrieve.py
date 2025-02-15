@@ -1,11 +1,17 @@
 import torch
 import torch.nn.functional as F
-from .buffer_utils import random_retrieve, get_grad_vector, cosine_similarity
+from .buffer_utils import (
+    random_retrieve,
+    get_grad_vector,
+    cosine_similarity,
+    cosine_similarity_3d,
+)
 import copy
 import numpy as np
 import collections
 
 
+# https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/buffer/our_retrieve_emb_cosine.py#L9
 class L2R_retrieve(object):
     def __init__(self, params, train_params, **kwargs):
         super().__init__()
@@ -20,56 +26,66 @@ class L2R_retrieve(object):
         self.mem_bz = params.mem_batch_size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
-        print("Called L2R_retrieve.retrieve()")
         model_temp = copy.deepcopy(buffer.model)
-        grad_dims = []
-        for param in model_temp.parameters():
-            grad_dims.append(param.data.numel())
+        model_temp.eval()
 
         batch_size = len(qid_lst)
         n_doc = len(docids_lst) // len(qid_lst)
         docids_pos_lst = np.array(docids_lst).reshape(batch_size, n_doc)[
-            :, 0
-        ]  # 去掉pos passage
+            :, :1
+        ]  # pos passage
         docids_neg_lst = np.array(docids_lst).reshape(batch_size, n_doc)[
             :, 1:
         ]  # 去掉pos passage
         q_lst, d_lst = kwargs["q_lst"], kwargs["d_lst"]
 
-        res_d_lst = {"input_ids": [], "attention_mask": []}
-        res_pos_did_lst = collections.defaultdict(set)
+        res_d_lst = collections.defaultdict(list)
         res_neg_did_lst = collections.defaultdict(set)
-        for i, qid in enumerate(qid_lst):
-            ############## 处理new data #############
-            cur_q_lst = {}  # [1, 32], cuda
-            for key, val in q_lst.items():
-                cur_q_lst[key] = val[i : i + 1]
-            cur_d_lst = {}  # [n, 128], cuda
-            for key, val in d_lst.items():
-                cur_d_lst[key] = val.reshape(batch_size, n_doc, -1)[i]
-            avg_grad, each_grad = self.get_batch_sim(
-                model_temp, grad_dims, cur_q_lst, cur_d_lst
-            )  # avg_grad 是个向量，each_grad=[new_upsample-1, 参数个数]
-            index_new = self.get_new_data(
-                avg_grad, each_grad, self.new_bz, self.alpha, self.beta
-            )  # 得到选择出来的新数据的负例下标, cuda
-            res_pos_did_lst[qid].add(docids_pos_lst[i])  # 正例
-            res_neg_did_lst[qid].update(
-                docids_neg_lst[i][index_new.cpu()]
-            )  # 选择出来的负例
-            for key, val in cur_d_lst.items():
-                res_d_lst[key].append(val[:1])  # 正例
-                res_d_lst[key].append(val[index_new + 1])  # 选择出来的负例
 
-            ############### 处理mem data ##############
-            mem_upsample = min(self.mem_upsample, len(buffer.buffer_qid2dids[qid]))
-            mem_bz = min(mem_upsample, self.mem_bz)
-            if mem_bz == 0 or mem_upsample == 0:
-                continue
-            mem_upsample_docids = random_retrieve(
-                buffer.buffer_qid2dids[qid], mem_upsample
-            )
-            mem_doc_lst = [buffer.did2doc[did] for did in mem_upsample_docids]
+        ############## 处理new data #############
+        if self.params.compatible:  # 正例用 old embedding
+            identity = torch.arange(len(qid_lst)) * n_doc
+            doc_oldemb = []
+            for docid in docids_pos_lst[:, 0]:
+                doc_oldemb.append(buffer.buffer_did2emb[int(docid)])
+            doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(
+                self.train_params.device
+            )  # [num_q, 768]
+            new_model_out = model_temp(q_lst, d_lst, identity, doc_oldemb)
+        else:
+            new_model_out = model_temp(q_lst, d_lst)
+        index_new = self.get_new_data(
+            new_model_out, self.new_bz, self.alpha, self.beta
+        )  # 得到选择出来的新数据的负例下标[batch_size, new_bz], cuda
+        for i, qid in enumerate(qid_lst):
+            res_neg_did_lst[qid].update(
+                docids_neg_lst[i][index_new[i].cpu()]
+            )  # 选择出来的负例
+        index_new = torch.cat(
+            (torch.zeros_like(index_new[:, :1]), index_new + 1), dim=-1
+        )  # [batch_size, new_bz+1]
+        for key, val in d_lst.items():
+            val = val.reshape(batch_size, -1, val.size(-1))
+            res_d_lst[key].append(
+                torch.gather(
+                    val, 1, index_new.unsqueeze(dim=2).repeat(1, 1, val.size(-1))
+                )
+            )  # [batch_size, new_bz+1, 128]
+
+        ############### 处理mem data ##############
+        buffer_len = min([len(buffer.buffer_qid2dids[qid]) for qid in qid_lst])
+        mem_upsample = min(self.mem_upsample, buffer_len)
+        mem_bz = min(mem_upsample, self.mem_bz)
+        if mem_upsample > 0 and mem_bz > 0:
+            mem_upsample_docids_lst = []
+            for i, qid in enumerate(qid_lst):
+                mem_upsample_docids = random_retrieve(
+                    buffer.buffer_qid2dids[qid], mem_upsample
+                )
+                mem_upsample_docids_lst.extend(
+                    docids_pos_lst[i].tolist() + mem_upsample_docids
+                )  # 把正例也加进去
+            mem_doc_lst = [buffer.did2doc[did] for did in mem_upsample_docids_lst]
             mem_doc_lst = buffer.tokenizer.batch_encode_plus(
                 mem_doc_lst,
                 add_special_tokens=True,
@@ -80,97 +96,143 @@ class L2R_retrieve(object):
                 return_token_type_ids=False,
                 return_tensors="pt",
             )
-            for key, value in mem_doc_lst.items():
-                mem_doc_lst[key] = value.to(self.train_params.device)
-            mem_each_grad = self.get_each_sim(
-                model_temp, grad_dims, cur_q_lst, cur_d_lst, mem_doc_lst
-            )  # [new_upsample, 参数个数]
-            index_mem = self.get_mem_data(mem_each_grad, each_grad, mem_bz)
+            if self.params.compatible:  # 全部用old embedding，不需要再过模型
+                identity = torch.arange(len(mem_upsample_docids_lst))
+                doc_oldemb = []
+                for docid in mem_upsample_docids_lst:
+                    doc_oldemb.append(buffer.buffer_did2emb[int(docid)])
+                doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(
+                    self.train_params.device
+                )  # .to('cuda:1')  # [num_q*(1+mem_upsample), 768]
+                index_mem = self.get_mem_data(
+                    new_model_out, index_new, doc_oldemb, mem_bz
+                )  # [batch_size, mem_bz]
+            else:
+                for key, value in mem_doc_lst.items():
+                    mem_doc_lst[key] = value.to(
+                        "cuda:1"
+                    )  # mem_doc_lst = [batch_size*(1+mem_upsample), 128]
+                mem_q_lst = {}
+                for key, value in q_lst.items():
+                    mem_q_lst[key] = q_lst[key].clone().to("cuda:1")
+                model_temp = model_temp.to("cuda:1")
+                mem_model_out = model_temp(mem_q_lst, mem_doc_lst)
+                mem_p_reps = mem_model_out.p_reps  # [bz*n, 768]
+                index_mem = self.get_mem_data(
+                    new_model_out, index_new, mem_p_reps, mem_bz
+                )  # [batch_size, mem_bz]
+            index_mem = (
+                index_mem.to(self.train_params.device) + 1
+            )  # [batch_size, mem_bz]
             for key, val in mem_doc_lst.items():
-                res_d_lst[key].append(val[index_mem])  # 选择出来的memory负例
+                val = val.to(self.train_params.device).reshape(
+                    batch_size, -1, val.size(-1)
+                )  # # [batch_size, mem_upsample, 128]
+                res_d_lst[key].append(
+                    torch.gather(
+                        val, 1, index_mem.unsqueeze(dim=2).repeat(1, 1, val.size(-1))
+                    )
+                )  # [batch_size, mem_bz, 128]
+
         for key, val in res_d_lst.items():
-            res_d_lst[key] = torch.cat(val, dim=0)
-        return res_d_lst, res_pos_did_lst, res_neg_did_lst
+            val = torch.cat(val, dim=1)  # [batch_size, new_bz+mem_bz+1, 128]
+            res_d_lst[key] = val.reshape(
+                -1, val.size(-1)
+            )  # [batch_size*(new_bz+mem_bz+1), 128]
+        if self.params.compatible:
+            doc_oldemb = doc_oldemb.reshape(
+                batch_size, -1, doc_oldemb.size(-1)
+            )  # # [batch_size, 1+ mem_upsample, 768]
+            doc_oldemb = torch.cat(
+                (
+                    doc_oldemb[:, :1, :],
+                    torch.gather(
+                        doc_oldemb,
+                        1,
+                        index_mem.unsqueeze(dim=2).repeat(1, 1, doc_oldemb.size(-1)),
+                    ),
+                ),
+                dim=1,
+            )  # # [batch_size, 1+ mem_bz, 768]
+            doc_oldemb = doc_oldemb.reshape(
+                -1, doc_oldemb.size(-1)
+            )  # [batch_size*(1+mem_bz), 768]
+            return doc_oldemb, res_d_lst, None, res_neg_did_lst
+        return res_d_lst, None, res_neg_did_lst
 
-    def get_each_sim(self, model_temp, grad_dims, q_lst, d_lst, mem_doc_lst):
-        num_doc = mem_doc_lst["input_ids"].size(0)
-        mem_grads = torch.zeros(num_doc, sum(grad_dims), dtype=torch.float32).to(
-            self.train_params.device
-        )
-        for i in range(num_doc):
-            doc_lst = {}
-            for key, value in mem_doc_lst.items():
-                doc_lst[key] = torch.cat(
-                    (d_lst[key][:1], value[i : i + 1]), dim=0
-                )  # [2, 128]
+    def get_mem_data(self, new_model_out, index_new, mem_p_reps, mem_bz):
+        new_q_reps = new_model_out.q_reps
+        new_p_reps = new_model_out.p_reps
+        new_p_reps = new_p_reps.reshape(
+            new_q_reps.size(0), -1, new_p_reps.size(1)
+        )  # [bz, n, 768]
+        choiced_new_reps = torch.gather(
+            new_p_reps, 1, index_new.unsqueeze(dim=2).repeat(1, 1, new_p_reps.size(-1))
+        )[
+            :, 1:, :
+        ]  # [batch_size, new_bz, 768]
+        if not self.params.compatible:
+            choiced_new_reps = choiced_new_reps.to("cuda:1")
 
-            model_temp.zero_grad()
-            loss = model_temp.forward(q_lst, doc_lst, False).loss  # 不使用inbatch_loss
-            loss.backward()
-            mem_grads[i].data.copy_(
-                get_grad_vector(
-                    model_temp.parameters, grad_dims, self.train_params.device
-                )
-            )
-        return mem_grads
+        p_reps = mem_p_reps  # mem_model_out.p_reps  # [bz*n, 768]
+        p_reps = p_reps.reshape(new_q_reps.size(0), -1, p_reps.size(1))  # [bz, n, 768]
+        neg_p_reps = p_reps[:, 1:, :]  # [bz, n-1, 768]
 
-    def get_mem_data(self, mem_each_grad, new_each_grad, mem_bz):
-        inter_sim = cosine_similarity(
-            mem_each_grad, new_each_grad
-        )  # [mem_upsample, new_upsample-1]
-        inter_sim_diag = torch.diag(inter_sim)
-        inter_sim_sum = torch.sum(inter_sim, dim=-1)
+        inter_sim = cosine_similarity_3d(
+            neg_p_reps, choiced_new_reps
+        )  # [bz, n-1, new_bz]
+        inter_sim_sum = torch.sum(inter_sim, dim=-1)  # [bz, n-1]
         inter_sim = (
-            (inter_sim_sum - inter_sim_diag) * (-1.0) / (inter_sim.size(1) - 1)
-        )  # [mem_upsample, 1]
+            inter_sim_sum * (-1.0) / inter_sim.size(-1)
+        )  # [bz, n-1], 相似度尽可能小
 
-        indexs = inter_sim.sort(dim=0, descending=True)[1][:mem_bz]
+        indexs = inter_sim.sort(dim=1, descending=True)[1][:, :mem_bz]
         return indexs
 
-    def get_batch_sim(self, model_temp, grad_dims, q_lst, d_lst):
-        model_temp.zero_grad()
-        loss = model_temp.forward(q_lst, d_lst, False).loss  # 不使用inbatch_loss
-        loss.backward()
-        avg_grad = get_grad_vector(
-            model_temp.parameters, grad_dims, self.train_params.device
+    def get_new_data(self, new_model_out, new_bz, alpha, beta):
+        q_reps = new_model_out.q_reps  # [8, 768]
+        print("q_reps: ", q_reps.shape)
+        p_reps = new_model_out.p_reps  # [8*n, 768]
+        print("p_reps: ", p_reps.shape)
+        p_reps = p_reps.reshape(q_reps.size(0), -1, p_reps.size(1))  # [8, n, 768]
+
+        q_reps_norm = q_reps.norm(p=2, dim=1, keepdim=True)  # [8, 1]
+        q_reps = q_reps.unsqueeze(dim=1)  # [8, 1, 768]
+        p_q = (
+            torch.matmul(p_reps, q_reps.transpose(1, 2))
+            * q_reps
+            / (q_reps_norm * q_reps_norm).unsqueeze(dim=2).clamp(min=1e-8)
+        )  # p在q方向上的投影向量, [8, n, 768]
+        neg = p_q[:, 1:, :]  # [8, n-1, 768]
+        pos = p_q[:, :1, :].repeat(1, neg.size(1), 1)  # [8, n-1, 768]
+        dis = F.pairwise_distance(
+            neg.reshape(-1, neg.size(-1)), pos.reshape(-1, pos.size(-1)), p=2.0
+        ).reshape(
+            neg.size(0), -1
+        )  # [8, n-1], 尽可能大
+        print(f"p_q:{p_q.shape}, pos:{pos.shape}, neg:{neg.shape}")
+        # pos:tensor([], size=(1, 0, 768), grad_fn=<RepeatBackward0>), neg:tensor([], size=(1, 0, 768), grad_fn=<SliceBackward0>)
+
+        neg_p_reps = p_reps[:, 1:, :]  # [8, n-1, 768]
+        inter_sim = cosine_similarity_3d(neg_p_reps, neg_p_reps)  # [8, n-1, n-1]
+        inter_sim_sum = torch.sum(inter_sim, dim=-1)  # [8, n-1]
+        inter_sim = (inter_sim_sum - torch.ones_like(inter_sim_sum)) / (
+            inter_sim.size(-1) - 1
+        )  # [8, n-1], 尽可能小
+        print(
+            f"neg_p_reps:{neg_p_reps.shape}, inter_sim:{inter_sim.shape}, inter_sim_sum:{inter_sim_sum.shape}"
         )
 
-        num_doc = d_lst["input_ids"].size(0)
-        mem_grads = torch.zeros(num_doc - 1, sum(grad_dims), dtype=torch.float32).to(
-            self.train_params.device
-        )  # [num_mem_subs, grad_total_dims]
-        for i in range(1, num_doc):
-            doc_lst = {}
-            for key, value in d_lst.items():
-                doc_lst[key] = torch.cat(
-                    (value[:1], value[i : i + 1]), dim=0
-                )  # [2, 128]
+        # norm dis
+        mean_dis = torch.mean(dis, dim=-1, keepdim=True)  # [8, 1]
+        std_dis = torch.std(dis, dim=-1, keepdim=True)  # [8, 1]
+        dis = (dis - mean_dis) / std_dis
 
-            model_temp.zero_grad()
-            loss = model_temp.forward(q_lst, doc_lst, False).loss  # 不使用inbatch_loss
-            loss.backward()
-            mem_grads[i - 1].data.copy_(
-                get_grad_vector(
-                    model_temp.parameters, grad_dims, self.train_params.device
-                )
-            )
+        # norm inter_sim
+        mean_inter_sim = torch.mean(inter_sim, dim=-1, keepdim=True)  # [8, 1]
+        std_inter_sim = torch.std(inter_sim, dim=-1, keepdim=True)  # [8, 1]
+        inter_sim = (inter_sim - mean_inter_sim) / std_inter_sim
 
-        return avg_grad, mem_grads
-
-    def get_new_data(self, avg_grad, each_grad, new_bz, alpha, beta):
-        avg_sim = cosine_similarity(each_grad, avg_grad.unsqueeze(0)).squeeze(
-            dim=-1
-        )  # [new_upsample-1]
-
-        inter_sim = cosine_similarity(
-            each_grad, each_grad
-        )  # [new_upsample-1, new_upsample-1]
-        inter_sim_diag = torch.diag(inter_sim)
-        inter_sim_sum = torch.sum(inter_sim, dim=-1)
-        inter_sim = (
-            (inter_sim_sum - inter_sim_diag) * (-1.0) / (inter_sim.size(1) - 1)
-        )  # [new_upsample-1]
-
-        sim = alpha * avg_sim + beta * inter_sim
-        indexs = sim.sort(dim=0, descending=True)[1][:new_bz]
+        sim = alpha * dis - beta * inter_sim
+        indexs = sim.sort(dim=1, descending=True)[1][:, :new_bz]
         return indexs

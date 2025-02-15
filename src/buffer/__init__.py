@@ -1,2 +1,3 @@
 from .buffer import Buffer
-from .arguments import DataArguments, TevatronTrainingArguments
+from .arguments import *
+from .model import DenseModel

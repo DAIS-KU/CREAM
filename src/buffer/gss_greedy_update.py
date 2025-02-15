@@ -128,7 +128,9 @@ class GSSGreedyUpdate(object):
         )
 
         model_temp.zero_grad()
-        loss = model_temp.forward(q_lst, d_lst, False).loss  # 不使用inbatch_loss
+        # identity, old_emb는 compatible시 사용하는 것인데, gss는 compatible하지 않으므로
+        # (q_lst, doc_lst, False)에서 (q_lst, doc_lst, None, None)으로 수정
+        loss = model_temp.forward(q_lst, d_lst, None, None).loss  # 不使用inbatch_loss
         loss.backward()
         batch_grad = get_grad_vector(
             model_temp.parameters, grad_dims, self.train_params.device
@@ -173,7 +175,11 @@ class GSSGreedyUpdate(object):
                 )  # [gss_batch_size+1, 128]
 
             model_temp.zero_grad()
-            loss = model_temp.forward(q_lst, doc_lst, False).loss  # 不使用inbatch_loss
+            # identity, old_emb는 compatible시 사용하는 것인데, gss는 compatible하지 않으므로
+            # (q_lst, doc_lst, False)에서 (q_lst, doc_lst, None, None)으로 수정
+            loss = model_temp.forward(
+                q_lst, doc_lst, None, None
+            ).loss  # 不使用inbatch_loss
             loss.backward()
             mem_grads[i].data.copy_(
                 get_grad_vector(
@@ -196,7 +202,11 @@ class GSSGreedyUpdate(object):
                 )  # [2, 128]
 
             model_temp.zero_grad()
-            loss = model_temp.forward(q_lst, doc_lst, False).loss  # 不使用inbatch_loss
+            # identity, old_emb는 compatible시 사용하는 것인데, gss는 compatible하지 않으므로
+            # (q_lst, doc_lst, False)에서 (q_lst, doc_lst, None, None)으로 수정
+            loss = model_temp.forward(
+                q_lst, doc_lst, None, None
+            ).loss  # 不使用inbatch_loss
             loss.backward()
             this_grad = get_grad_vector(
                 model_temp.parameters, grad_dims, self.train_params.device
