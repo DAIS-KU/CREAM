@@ -27,7 +27,7 @@ def generate_test_buffer(method):
     buffer_qid2dids = defaultdict(
         list, {"5": ["15"], "6": ["16"], "7": ["17"], "8": ["18"]}
     )
-    n_seen_so_far = 4
+    n_seen_so_far = defaultdict(int, {"5": 1, "6": 1, "7": 1, "8": 1})
     if "gss" in method:
         buffer_score = 0.5
         with open("../data/buffer.pkl", "wb") as output:
@@ -139,15 +139,17 @@ def random_retrieve_reservoir_update(method):
         TevatronTrainingArguments(output_dir=output_dir),
     )
     retrieval_result = buffer.retrieve(
-        qid_lst=qid_lst, docids_lst=docids_lst, q_lst=prepared[0], d_lst=prepared[1]
+        qid_lst=qid_lst,
+        docids_lst=docids_lst,
     )
-    # print(f"retrieval_result: {retrieval_result}")
+    print(f"random_retrieve_reservoir_update retrieval_result: {retrieval_result}")
     buffer.save(output_dir)
 
     update_result = buffer.update(
-        qid_lst=qid_lst, docids_lst=docids_lst, q_lst=prepared[0], d_lst=prepared[1]
-    )
-    print(f"update_result: {update_result}")
+        qid_lst=qid_lst,
+        docids_lst=docids_lst,
+    )  # list: [num_q, 각 q에 대해 교체된 버퍼의 인덱스]
+    print(f"random_retrieve_reservoir_update update_result: {update_result}")
 
 
 def mir_retrieve_reservoir_update(method):
@@ -175,13 +177,11 @@ def mir_retrieve_reservoir_update(method):
     retrieval_result = buffer.retrieve(
         qid_lst=qid_lst, docids_lst=docids_lst, q_lst=prepared[0], d_lst=prepared[1]
     )
-    # print(f"retrieval_result: {retrieval_result}")
+    print(f"mir_retrieve_reservoir_update retrieval_result: {retrieval_result}")
     buffer.save(output_dir)
 
-    update_result = buffer.update(
-        qid_lst=qid_lst, docids_lst=docids_lst, q_lst=prepared[0], d_lst=prepared[1]
-    )
-    print(f"update_result: {update_result}")
+    update_result = buffer.update(qid_lst=qid_lst, docids_lst=docids_lst)
+    print(f"mir_retrieve_reservoir_update update_result: {update_result}")
 
 
 def random_retrieve_gss_greedy_retrieve_update(method):

@@ -5,7 +5,13 @@ from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents, write_
 
 from data import read_jsonl, write_file, renew_data
 import time
-from buffer import Buffer, DataArguments, TevatronTrainingArguments
+from buffer import (
+    Buffer,
+    DataArguments,
+    TevatronTrainingArguments,
+    DenseModel,
+    ModelArguments,
+)
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -61,10 +67,10 @@ def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
                 query = queries[qid]
                 pos_docs = [
                     doc["text"] for doc in random.sample(list(docs.values()), 1)
-                ]  # [get_top_k_documents_by_cosine(...)] + buffer.retrieve(...)
+                ]  # [get_top_k_documents_by_cosine(...)]
                 neg_docs = [
                     doc["text"] for doc in random.sample(list(docs.values()), 3)
-                ]
+                ]  # buffer.retrieve(...)
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
                     model=model,
@@ -108,7 +114,6 @@ def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
 
             total_loss += loss.item()
             loss_values.append(loss.item())
-            # buffer.update(...)
 
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
@@ -125,19 +130,28 @@ def train(method, session_count=1, num_epochs=1):
         query_data = read_jsonl(query_path)
         doc_data = read_jsonl(doc_path)
 
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[0])
+        model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+        output_dir = "../data/model"
+        training_args = TevatronTrainingArguments(output_dir=output_dir)
+        model = DenseModel.build(
+            model_args,
+            training_args,
+            cache_dir=model_args.cache_dir,
+        )
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
         # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/arguments.py#L48
+        # Buffer 객체 선언 시 내부엣 arg path에서 buffer.pkl 읽어오거나 메모리 콜렉션 초기화
         buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
 
         loss_values = session_train(
             query_data, doc_data, num_epochs, method, buffer, session_number
         )
         torch.save(model.state_dict(), new_model_path)
+        # buffer.save(...) # L2R의 경우 buffer.replace()후 save()를 호출
 
 
 def evaluate(method, sesison_count=1):
