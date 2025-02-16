@@ -24,4 +24,8 @@
 
 # Discussion
 - 작성한 베이스라인 파이프라인상 개별 쿼리로 각 샘플링 후 loss업데이트 시에만 배치 작업하고 있음, 배치 형태 입출력 파악필요한가?
-- hhuggingface Dataset, Collator, DataLoader, Trianer를 사용해야할까?
+- huggingface Dataset, Collator, DataLoader, Trianer를 사용해야할까? tevatron library를 사용해야할까?
+  - 일단 직접 구현 후 필요시 적용
+  - functions.load_collated_data(): Dataset+Collator+DataLoader의 결과인 inputs 생성하는 함수(prepare_inputs의 입력)
+  - functions.prepare_inputs(): TevatronTrainer의 _prepare_inputs() 메소드.
+  - memory_based_train_ranking.py에서는 쿼리가 아니라 functions.prepare_inputs를 순회하여 학습한다.

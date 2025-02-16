@@ -147,6 +147,7 @@ def train(method, session_count=1, num_epochs=1):
         # Buffer 객체 선언 시 내부엣 arg path에서 buffer.pkl 읽어오거나 메모리 콜렉션 초기화
         buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
 
+        # TODO prepare_inputs() 호출
         loss_values = session_train(
             query_data, doc_data, num_epochs, method, buffer, session_number
         )
