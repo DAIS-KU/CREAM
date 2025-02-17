@@ -1,9 +1,14 @@
 import random
 import torch
-from transformers import BertModel, BertTokenizer
-from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents, write_file
+from transformers import BertTokenizer
+from functions import (
+    SimpleContrastiveLoss,
+    evaluate_dataset,
+    get_top_k_documents,
+    write_file,
+)
 
-from data import read_jsonl, write_file, renew_data
+from data import read_jsonl, write_file, renew_data, prepare_inputs
 import time
 from buffer import (
     Buffer,
@@ -20,18 +25,6 @@ num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
-def encode_texts(model, texts, device, max_length=256):
-    no_padding_inputs = tokenizer(
-        texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
-    )
-    no_padding_inputs = {
-        key: value.to(device) for key, value in no_padding_inputs.items()
-    }
-    outputs = model(**no_padding_inputs).last_hidden_state
-    embedding = outputs[:, 0, :]
-    return embedding
-
-
 def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
     scores = torch.nn.functional.cosine_similarity(
         query_emb.unsqueeze(0), current_data_embs, dim=1
@@ -41,14 +34,13 @@ def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
-    random.shuffle(queries)
-    query_cnt = len(queries)
+def session_train(inputs, model, num_epochs):
+    input_cnt = len(
+        inputs
+    )  # (q_lst, d_lst, identity, old_emb) List[Dict[str, Union[torch.Tensor, Any]]]
     loss_values = []
-    current_device_index = torch.cuda.current_device()
-    device = torch.device(f"cuda:{current_device_index}")
 
-    loss_fn = InfoNCELoss()
+    loss_fn = SimpleContrastiveLoss()
     learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -57,56 +49,16 @@ def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
     for epoch in range(num_epochs):
         total_loss = 0
 
-        for start_idx in range(0, query_cnt, batch_size):
-            end_idx = min(start_idx + batch_size, query_cnt)
+        for start_idx in range(0, input_cnt, batch_size):
+            end_idx = min(start_idx + batch_size, input_cnt)
             print(f"batch {start_idx}-{end_idx}")
 
-            query_batch, pos_docs_batch, neg_docs_batch = [], [], []
-
-            for qid in range(start_idx, end_idx):
-                query = queries[qid]
-                pos_docs = [
-                    doc["text"] for doc in random.sample(list(docs.values()), 1)
-                ]  # [get_top_k_documents_by_cosine(...)]
-                neg_docs = [
-                    doc["text"] for doc in random.sample(list(docs.values()), 3)
-                ]  # buffer.retrieve(...)
-                query_batch.append(query["query"])
-                pos_embeddings = encode_texts(
-                    model=model,
-                    texts=pos_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
-                )  # (positive_k, embedding_dim)
-                pos_docs_batch.append(pos_embeddings)
-                neg_embeddings = encode_texts(
-                    model=model,
-                    texts=neg_docs,
-                    device=device,
-                    max_length=256,
-                    is_cls=True,
-                )  # (negative_k, embedding_dim)
-                neg_docs_batch.append(neg_embeddings)
-
-            query_embeddings = encode_texts(
-                model=model,
-                texts=query_batch,
-                device=device,
-                max_length=256,
-                is_cls=True,
-            )  # (batch_size, embedding_dim)
-            positive_embeddings = torch.stack(
-                pos_docs_batch
-            )  # (batch_size, positive_k, embedding_dim)
-            negative_embeddings = torch.stack(
-                neg_docs_batch
-            )  # (batch_size, negative_k, embedding_dim)
-            print(
-                f"query: {query_embeddings.shape}, pos: {positive_embeddings.shape} | negs: {negative_embeddings.shape}"
-            )
-
-            loss = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+            input_batch = []
+            for _id in range(start_idx, end_idx):
+                input_embeddings = model(inputs[_id])
+                input_batch.append(input_embeddings)
+            print(f"input_batch: {input_embeddings.shape}")
+            loss = loss_fn(input_batch)
 
             optimizer.zero_grad()
             loss.backward()
@@ -116,19 +68,18 @@ def session_train(queries, docs, method, model, buffer: Buffer, num_epochs):
             loss_values.append(loss.item())
 
             print(
-                f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
+                f"Processed {end_idx}/{input_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
             )
     return loss_values
 
 
 def train(method, session_count=1, num_epochs=1):
+    buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
         query_path = f"../data/sessions/train_session{session_number}_queries.jsonl"
         doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
-
-        query_data = read_jsonl(query_path)
-        doc_data = read_jsonl(doc_path)
+        inputs = prepare_inputs(query_path, doc_path, buffer, method)
 
         model_args = ModelArguments(model_name_or_path="bert-base-uncased")
         output_dir = "../data/model"
@@ -143,16 +94,12 @@ def train(method, session_count=1, num_epochs=1):
             model.load_state_dict(torch.load(model_path))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
-        # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/arguments.py#L48
-        # Buffer 객체 선언 시 내부엣 arg path에서 buffer.pkl 읽어오거나 메모리 콜렉션 초기화
-        buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
 
-        # TODO prepare_inputs() 호출
-        loss_values = session_train(
-            query_data, doc_data, num_epochs, method, buffer, session_number
-        )
+        loss_values = session_train(inputs, num_epochs, method, buffer, session_number)
         torch.save(model.state_dict(), new_model_path)
-        # buffer.save(...) # L2R의 경우 buffer.replace()후 save()를 호출
+        if method == "our":
+            buffer.replace()
+        buffer.save(output_dir)
 
 
 def evaluate(method, sesison_count=1):

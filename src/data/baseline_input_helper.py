@@ -1,35 +1,44 @@
-from typing import Dict, List, Tuple, Optional, Any, Union
-from transformers import BertTokenizer
+from typing import Dict, List, Tuple, Any, Union
+from transformers import BertTokenizer, BatchEncoding
 import torch
+import random
+import numpy as np
+
+from .loader import read_jsonl, read_jsonl_as_dict
 
 max_q_len: int = 32
 max_p_len: int = 128
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 
 
 def _prepare_inputs(
-    self, inputs: Tuple[Dict[str, Union[torch.Tensor, Any]], ...]
+    inputs: Tuple[Dict[str, Union[torch.Tensor, Any]], ...],
+    buffer,
+    cl_method,
+    new_batch_size,
+    mem_batch_size,
+    compatible,
 ) -> List[Dict[str, Union[torch.Tensor, Any]]]:
     prepared = []
     for x in inputs[2:]:
         for key, val in x.items():
-            x[key] = val.to(self.args.device)
+            x[key] = val.to(device)
         prepared.append(x)
 
-    if self.data_args.cl_method == "er":
-        if not self.data_args.compatible:
+    if cl_method == "er":
+        if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_passage = self.buffer.retrieve(
+            mem_passage = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
-                lr=self._get_learning_rate(),
+                # lr=self._get_learning_rate(),
             )  # ER: [num_q * mem_bz, d_len], cpu; MIR: [num_q, mem_bz, d_len], gpu
-            self.buffer.update(
+            buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
@@ -53,14 +62,14 @@ def _prepare_inputs(
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_docids_lst, mem_passage = self.buffer.retrieve(
+            mem_docids_lst, mem_passage = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
-                lr=self._get_learning_rate(),
+                # lr=self._get_learning_rate(),
             )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
-            self.buffer.update(
+            buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
@@ -98,24 +107,24 @@ def _prepare_inputs(
                 doc_oldemb = []
                 for i, docids in enumerate(all_docids_lst):
                     docids = int(docids)
-                    if docids in self.buffer.buffer_did2emb:
+                    if docids in buffer.buffer_did2emb:
                         identity.append(i)
-                        doc_oldemb.append(self.buffer.buffer_did2emb[docids])
+                        doc_oldemb.append(buffer.buffer_did2emb[docids])
                 identity = torch.tensor(identity)
-                doc_oldemb = torch.tensor(np.array(doc_oldemb), device=self.args.device)
+                doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
-    elif self.data_args.cl_method == "our":
-        if not self.data_args.compatible:
+    elif cl_method == "our":
+        if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_passage, pos_docids, candidate_neg_docids = self.buffer.retrieve(
+            mem_passage, pos_docids, candidate_neg_docids = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
             )  # [num_q*(new_bz+mem_bz), d_len]
-            self.buffer.update(
+            buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 pos_docids=pos_docids,
@@ -128,15 +137,13 @@ def _prepare_inputs(
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_emb, mem_passage, pos_docids, candidate_neg_docids = (
-                self.buffer.retrieve(
-                    qid_lst=qid_lst,
-                    docids_lst=docids_lst,
-                    q_lst=prepared[0],
-                    d_lst=prepared[1],
-                )
+            mem_emb, mem_passage, pos_docids, candidate_neg_docids = buffer.retrieve(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
             )  # [num_q*(1+mem_bz), 768],gpu; [num_q*(new_bz+mem_bz), d_len],gpu
-            self.buffer.update(
+            buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 pos_docids=pos_docids,
@@ -149,19 +156,17 @@ def _prepare_inputs(
 
                 identity = []  # [1+mem_batch_size, num_q]
                 pos_identity = torch.arange(len(qid_lst)) * (
-                    1 + self.data_args.new_batch_size + self.data_args.mem_batch_size
+                    1 + new_batch_size + mem_batch_size
                 )
                 identity.append(pos_identity)
-                for i in range(self.data_args.mem_batch_size):
-                    identity.append(
-                        pos_identity + i + 1 + self.data_args.new_batch_size
-                    )
+                for i in range(mem_batch_size):
+                    identity.append(pos_identity + i + 1 + new_batch_size)
                 identity = torch.stack(identity, dim=0).transpose(0, 1).reshape(-1)
                 prepared.append(identity)
 
                 prepared.append(mem_emb)
-    elif self.data_args.cl_method == "incre":
-        if self.data_args.compatible:
+    elif cl_method == "incre":
+        if compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
             docids_lst = torch.tensor(docids_lst).reshape(
                 len(qid_lst), -1
@@ -172,8 +177,8 @@ def _prepare_inputs(
 
             doc_oldemb = []  # [num_q, 768]
             for docid in docids_lst[:, 0]:  # 对于incre，只有正例是old doc
-                doc_oldemb.append(self.buffer.buffer_did2emb[int(docid)])
-            doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(self.args.device)
+                doc_oldemb.append(buffer.buffer_did2emb[int(docid)])
+            doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(device)
             prepared.append(doc_oldemb)
     else:
         print("not implement...")
@@ -230,11 +235,55 @@ def collate(features):
     return qq_id, dd_id, q_collated, d_collated
 
 
+def getitem(
+    query, docs, train_n_passages=8
+) -> Tuple[BatchEncoding, List[BatchEncoding]]:
+    qry_id = query["qid"]
+    qry = query["query"]
+    encoded_query = create_one_example(qry, is_query=True)
+
+    psg_ids = []
+    encoded_passages = []
+
+    pos_id = query["answer_pids"][0]
+    pos_psg = docs[pos_id]["text"]
+    psg_ids.append(pos_id)
+    encoded_passages.append(create_one_example(pos_psg))
+
+    negative_size = train_n_passages - 1
+    doc_keys = list(docs.keys())
+    valid_neg_keys = list(set(doc_keys) - set(query["answer_pids"]))
+    neg_ids = random.sample(valid_neg_keys, negative_size)
+
+    for neg_id in neg_ids:
+        psg_ids.append(neg_id)
+        encoded_passages.append(create_one_example(docs[neg_id]["text"]))
+    return qry_id, psg_ids, encoded_query, encoded_passages
+
+
 def load_inputs(query_path, doc_path):
-    pass
+    queries = read_jsonl(query_path)
+    docs = read_jsonl_as_dict(doc_path, key="doc_id")
+    inputs = []
+    for query in queries:
+        features = getitem(query, docs)
+        input = collate(features)
+        inputs.append(input)
+    return inputs
 
 
-def prepare_inputs(query_path, doc_path):
+# https://github.com/caiyinqiong/L-2R/blob/main/run_example.sh
+def prepare_inputs(
+    query_path,
+    doc_path,
+    buffer,
+    cl_method,
+    new_batch_size=2,
+    mem_batch_size=2,
+    compatible=False,
+):
     inputs = load_inputs(query_path, doc_path)
-    prepared_inputs = _prepare_inputs(inputs)
+    prepared_inputs = _prepare_inputs(
+        inputs, buffer, cl_method, new_batch_size, mem_batch_size, compatible
+    )
     return prepared_inputs

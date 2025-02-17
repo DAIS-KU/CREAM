@@ -4,7 +4,6 @@ from cluster import RandomProjectionLSH
 from transformers import BertModel, BertTokenizer
 
 import time
-from concurrent.futures import ProcessPoolExecutor
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 

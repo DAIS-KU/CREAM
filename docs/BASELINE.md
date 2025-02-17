@@ -15,6 +15,9 @@
 # Input형태
 - Dataset -> Collator -> DataLoader 를 거쳐 trainer의 _prepare_inputs의 inputs값으로 들어갑니다.
   - Dataset에서는 input_ids만 포함된 dict
+    - positive_passage_no_shuffle=False "always use the first positive passage" (negative_passage_no_shuffle=False)
+    - 총 8개 샘플학습
+    - 최초 세션에서는 positive, negative 모두 주어져야함(아마 다른 문서의 positive)
   - Collator에서 pad, attn_mask 추가
   - DataLoader에서 미니배치구성
 - inputs = qid_lst, did_lst, q_lst, d_lst
@@ -29,3 +32,4 @@
   - functions.load_collated_data(): Dataset+Collator+DataLoader의 결과인 inputs 생성하는 함수(prepare_inputs의 입력)
   - functions.prepare_inputs(): TevatronTrainer의 _prepare_inputs() 메소드.
   - memory_based_train_ranking.py에서는 쿼리가 아니라 functions.prepare_inputs를 순회하여 학습한다.
+- 구현되어 있는 Loss를 우리도 사용하게 수정?

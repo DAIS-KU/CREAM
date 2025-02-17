@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 
 class InfoNCELoss(nn.Module):
@@ -34,3 +35,21 @@ class InfoNCELoss(nn.Module):
         # Cross-entropy loss 계산
         loss = F.cross_entropy(logits, labels)
         return loss
+
+
+class SimpleContrastiveLoss:
+
+    def __call__(
+        self, x: Tensor, y: Tensor, target: Tensor = None, reduction: str = "mean"
+    ):
+        if target is None:
+            target_per_qry = y.size(0) // x.size(0)
+            target = torch.arange(
+                0,
+                x.size(0) * target_per_qry,
+                target_per_qry,
+                device=x.device,
+                dtype=torch.long,
+            )
+        logits = torch.matmul(x, y.transpose(0, 1))
+        return F.cross_entropy(logits, target, reduction=reduction)
