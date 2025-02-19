@@ -6,7 +6,7 @@ from buffer import (
     DenseModel,
     ModelArguments,
 )
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel, Trainer
 from collections import defaultdict
 from typing import List
 

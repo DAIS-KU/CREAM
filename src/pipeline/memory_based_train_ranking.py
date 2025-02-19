@@ -58,10 +58,13 @@ def session_train(inputs, model, num_epochs):
                 input_embeddings = model(inputs[_id])
                 input_batch.append(input_embeddings)
             print(f"input_batch: {input_embeddings.shape}")
+            # EncoderOutput(loss=loss, scores=scores, q_reps=q_reps, p_reps=p_reps)의 loss를 사용해도 되는건가???
+            # SimpleContrastiveLoss(x: Tensor, y: Tensor, ...)이면 loss_fn(x=q_reps, y=p_reps)로 사용해야 하는건가???
             loss = loss_fn(input_batch)
 
             optimizer.zero_grad()
             loss.backward()
+            # del input_batch
             optimizer.step()
 
             total_loss += loss.item()
