@@ -9,6 +9,7 @@ from functions import (
     show_loss,
     get_top_k_documents,
     write_file,
+    write_line,
 )
 from cluster import (
     kmeans_pp,
@@ -18,6 +19,7 @@ from cluster import (
     evict_cluster_instances,
     assign_instance_or_centroid,
     update_cluster_and_current_session_data,
+    process_queries_with_gpus,
 )
 import time
 
@@ -54,6 +56,7 @@ def session_train(
     negative_k=3,
     learning_rate=2e-5,
     batch_size=32,
+    use_label=False,
 ):
     loss_fn = InfoNCELoss()
     learning_rate = learning_rate
@@ -73,12 +76,6 @@ def session_train(
             print(f"batch {start_idx}-{end_idx}")
 
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
-            batch_pos_docs = []  # 현재 batch의 모든 positive 문서 저장
-
-            for qid in range(start_idx, end_idx):
-                query = queries[qid]
-                pos_doc = docs[random.sample(query["answer_pids"], 1)[0]]["text"]
-                batch_pos_docs.append(pos_doc)
 
             for qid in range(start_idx, end_idx):
                 query = queries[qid]
@@ -90,15 +87,11 @@ def session_train(
                     positive_k=positive_k,
                     negative_k=negative_k,
                 )
-                gt_pos_docs = [batch_pos_docs[qid - start_idx]]
-                # batch 내 다른 positive 문서 중 3개 샘플링 (현재 query의 positive 문서는 제외)
-                available_neg_docs = [doc for doc in batch_pos_docs if doc != pos_doc]
-                gt_neg_docs = random.sample(
-                    available_neg_docs, min(3, len(available_neg_docs))
-                )
-
-                pos_docs = gt_pos_docs  # + [docs[_id]["text"] for _id in positive_ids]
-                neg_docs = gt_neg_docs + [docs[_id]["text"] for _id in negative_ids]
+                if use_label:
+                    pos_docs = random.sample(query["answer_pids"], 1)[0]
+                else:
+                    pos_docs = [docs[_id]["text"] for _id in positive_ids]
+                neg_docs = [docs[_id]["text"] for _id in negative_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
@@ -143,15 +136,17 @@ def session_train(
 
 def train(
     sesison_count=1,
-    num_epochs=1,
-    include_evaluate=True,
+    num_epochs=2,
+    use_label=False,
+    eval_cluster=True,
 ):
     total_loss_values = []
+    loss_values_path = "../data/total_loss_values_proposal.text"
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
 
         # 새로운 세션 문서
-        doc_path = f"../data/sessions/train_session{session_number}_docs.jsonl"
+        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl(doc_path)[:100]
         _, current_session_data = renew_data(
             queries=None,
@@ -172,7 +167,9 @@ def train(
                 max_iters=1,
                 devices=devices,
             )
-            # cluster_statistics = get_cluster_statistics(centroids, cluster_instances, devices)
+            cluster_statistics = get_cluster_statistics(
+                centroids, cluster_instances, devices
+            )
             end_time = time.time()
             print(f"Spend {end_time-start_time} seconds for clustering warming up.")
         else:
@@ -212,7 +209,7 @@ def train(
         new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
         loss_values = session_train(
-            query_path=f"../data/sessions/train_session{session_number}_queries.jsonl",
+            query_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl",
             doc_path=doc_path,
             model=model,
             num_epochs=num_epochs,
@@ -220,50 +217,99 @@ def train(
             cluster_instances=cluster_instances,
             # current_session_data=current_session_data,
         )
-        total_loss_values.extend(loss_values)  # append
-        show_loss(total_loss_values)
+        # total_loss_values.extend(loss_values)
+        write_line(loss_values_path, f"{session_number}, {', '.join(loss_values)}")
         torch.save(model.state_dict(), new_model_path)
+        if eval_cluster:
+            evaluate_with_cluster(session_number, centroids, cluster_instances)
+        else:
+            evaluate_wo_cluster(session_number)
 
 
-# TODO 현재 모델로 재임베딩 X 클러스터 상태에서 평가
-def evaluate(sesison_count=1):
-    for session_number in range(sesison_count):
-        print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/sessions/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sessions/test_session{session_number}_docs.jsonl"
+def evaluate_with_cluster(
+    session_number, centroids, centroids_statics, cluster_instances
+):
+    print(f"Evaluate session {session_number} without cluster")
+    eval_query_path = (
+        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+    )
+    eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
 
-        eval_query_data = read_jsonl(eval_query_path)[:20]
-        eval_doc_data = read_jsonl(eval_doc_path)[:100]
+    eval_query_data = read_jsonl(eval_query_path)[:20]
+    eval_doc_data = read_jsonl(eval_doc_path)[:100]
 
-        eval_query_count = len(eval_query_data)
-        eval_doc_count = len(eval_doc_data)
-        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+    eval_query_count = len(eval_query_data)
+    eval_doc_count = len(eval_doc_data)
+    print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-        rankings_path = f"../data/rankings/proposal_{session_number}.txt"
-        model_path = f"../data/model/proposal_session_{session_number}.pth"
-        # result = process_queries_with_gpus(
-        #     query_data, centroids, cluster_instances, devices
-        # )
+    new_q_data, new_d_data = renew_data(
+        queries=eval_query_data,
+        documents=eval_doc_data,
+        nbits=0,
+        embedding_dim=768,
+        model_path=model_path,
+        renew_q=True,
+        renew_d=True,
+    )
+    # Assign test docs
+    (centroids, centroids_statics, cluster_instances) = assign_instance_or_centroid(
+        centroids=centroids,
+        centroids_statics=centroids_statics,
+        cluster_instances=cluster_instances,
+        current_session_data=new_d_data,
+        t=session_number,
+    )
+    # Retrieve test queries
+    start_time = time.time()
+    result = process_queries_with_gpus(
+        new_q_data, centroids, cluster_instances, devices
+    )
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-        start_time = time.time()
-        new_q_data, new_d_data = renew_data(
-            queries=eval_query_data,
-            documents=eval_doc_data,
-            nbits=0,
-            embedding_dim=768,
-            model_path=model_path,
-            renew_q=True,
-            renew_d=True,
-        )
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for encoding.")
+    rankings_path = f"../data/rankings/proposal_{session_number}_with_cluster.txt"
+    write_file(rankings_path, result)
+    eval_log_path = f"../data/evals/proposal_{session_number}_with_cluster.txt"
+    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    del new_q_data, new_d_data
+    # TODO Return updated cluster?
 
-        start_time = time.time()
-        result = get_top_k_documents(new_q_data, new_d_data, k=10)
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-        rankings_path = f"../data/rankings/proposal_{session_number}.txt"
-        write_file(rankings_path, result)
-        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
-        del new_q_data, new_d_data
+def evaluate_wo_cluster(session_number):
+    print(f"Evaluate session {session_number} without cluster")
+    eval_query_path = (
+        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+    )
+    eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+
+    eval_query_data = read_jsonl(eval_query_path)[:20]
+    eval_doc_data = read_jsonl(eval_doc_path)[:100]
+
+    eval_query_count = len(eval_query_data)
+    eval_doc_count = len(eval_doc_data)
+    print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+
+    model_path = f"../data/model/proposal_session_{session_number}.pth"
+    start_time = time.time()
+    new_q_data, new_d_data = renew_data(
+        queries=eval_query_data,
+        documents=eval_doc_data,
+        nbits=0,
+        embedding_dim=768,
+        model_path=model_path,
+        renew_q=True,
+        renew_d=True,
+    )
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for encoding.")
+
+    start_time = time.time()
+    result = get_top_k_documents(new_q_data, new_d_data, k=10)
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
+
+    rankings_path = f"../data/rankings/proposal_{session_number}_wo_cluster.txt"
+    write_file(rankings_path, result)
+    eval_log_path = f"../data/evals/proposal_{session_number}_wo_cluster.txt"
+    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    del new_q_data, new_d_data

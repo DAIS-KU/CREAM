@@ -4,7 +4,7 @@ from typing import List
 from data import *
 
 
-def evaluate_dataset(query_path, rankings_path, doc_count):
+def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
     eval_queries = read_jsonl(query_path)
 
     rankings = defaultdict(list)
@@ -34,8 +34,11 @@ def evaluate_dataset(query_path, rankings_path, doc_count):
         hit_recall = set(rankings[qid][:top_k_recall]).intersection(answer_pids)
         recall += len(hit_recall) / len(answer_pids)
 
-    print(
+    res_strs = [
         f"# query:  {num_q} |  answers:{total_answer_count} | proportion:{total_answer_count/doc_count * 100:.1f}\n",
         f"Avg Success@{top_k_success}: {success / num_q * 100:.1f}\n",
         f"Avg Recall@{top_k_recall}: {recall / num_q * 100:.1f}\n",
-    )
+    ]
+    print(res_strs)
+    if eval_log_path:
+        write_lines(eval_log_path, res_strs)

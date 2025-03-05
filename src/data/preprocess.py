@@ -26,7 +26,7 @@ def get_passage_embeddings(model, passages, device, max_length=256):
 
 
 def _renew_queries_with_text(
-    model, lsh, query_batch, device, batch_size=2048, max_length=256
+    model, lsh, query_batch, device, batch_size=2048 + 1024, max_length=256
 ):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
