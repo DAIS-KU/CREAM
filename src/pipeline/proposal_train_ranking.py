@@ -22,6 +22,7 @@ from cluster import (
     process_queries_with_gpus,
 )
 import time
+import random
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -51,7 +52,7 @@ def session_train(
     cluster_instances,
     centroids,
     # current_session_data,
-    # centroids_statics,
+    # cluster_statistics,
     positive_k=1,
     negative_k=3,
     learning_rate=2e-5,
@@ -62,7 +63,8 @@ def session_train(
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    queries = read_jsonl(query_path)[:96]
+    queries = read_jsonl(query_path)[:64]
+    random.shuffle(queries)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     query_cnt = len(queries)
     loss_values = []
@@ -136,12 +138,12 @@ def session_train(
 
 def train(
     sesison_count=1,
-    num_epochs=2,
+    num_epochs=1,
     use_label=False,
     eval_cluster=True,
 ):
     total_loss_values = []
-    loss_values_path = "../data/total_loss_values_proposal.text"
+    loss_values_path = "../data/loss/total_loss_values_proposal.text"
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
 
@@ -163,7 +165,7 @@ def train(
             start_time = time.time()
             centroids, cluster_instances = kmeans_pp(
                 X=list(current_session_data.values()),
-                k=10,
+                k=5,
                 max_iters=1,
                 devices=devices,
             )
@@ -171,22 +173,24 @@ def train(
                 centroids, cluster_instances, devices
             )
             end_time = time.time()
-            print(f"Spend {end_time-start_time} seconds for clustering warming up.")
+            print(
+                f"Spend {end_time-start_time} seconds for clustering({len(centroids)}) warming up."
+            )
         else:
             pass
         #     # 이전 세션 문서 일정량 제거된 클러스터 정보 반환
-        #     centroids, cluster_instances, centroids_statics = evict_cluster_instances(
+        #     centroids, cluster_instances, cluster_statistics = evict_cluster_instances(
         #         a=1.0,
         #         model=model,
         #         old_centroids=centroids,
         #         old_cluster_instances=cluster_instances,
-        #         old_centroids_statics=centroids_statics,
+        #         old_cluster_statistics=cluster_statistics,
         #     )
         #     # 새로운 세션 문서 클러스터 추가
-        #     (centroids, centroids_statics, cluster_instances) = (
+        #     (centroids, cluster_statistics, cluster_instances) = (
         #         assign_instance_or_centroid(
         #             centroids=centroids,
-        #             centroids_statics=centroids_statics,
+        #             cluster_statistics=cluster_statistics,
         #             cluster_instances=cluster_instances,
         #             current_session_data=doc_data,
         #             t=session_number,
@@ -218,18 +222,26 @@ def train(
             # current_session_data=current_session_data,
         )
         # total_loss_values.extend(loss_values)
-        write_line(loss_values_path, f"{session_number}, {', '.join(loss_values)}")
+        write_line(
+            loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
+        )
         torch.save(model.state_dict(), new_model_path)
         if eval_cluster:
-            evaluate_with_cluster(session_number, centroids, cluster_instances)
+            evaluate_with_cluster(
+                session_number,
+                centroids,
+                cluster_statistics,
+                cluster_instances,
+                new_model_path,
+            )
         else:
-            evaluate_wo_cluster(session_number)
+            evaluate_without_cluster(session_number, new_model_path)
 
 
 def evaluate_with_cluster(
-    session_number, centroids, centroids_statics, cluster_instances
+    session_number, centroids, cluster_statistics, cluster_instances, model_path
 ):
-    print(f"Evaluate session {session_number} without cluster")
+    print(f"Evaluate session {session_number} with cluster")
     eval_query_path = (
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
     )
@@ -252,12 +264,13 @@ def evaluate_with_cluster(
         renew_d=True,
     )
     # Assign test docs
-    (centroids, centroids_statics, cluster_instances) = assign_instance_or_centroid(
+    (centroids, cluster_statistics, cluster_instances) = assign_instance_or_centroid(
         centroids=centroids,
-        centroids_statics=centroids_statics,
+        cluster_statistics=cluster_statistics,
         cluster_instances=cluster_instances,
         current_session_data=new_d_data,
         t=session_number,
+        devices=devices,
     )
     # Retrieve test queries
     start_time = time.time()
@@ -275,7 +288,7 @@ def evaluate_with_cluster(
     # TODO Return updated cluster?
 
 
-def evaluate_wo_cluster(session_number):
+def evaluate_without_cluster(session_number, model_path):
     print(f"Evaluate session {session_number} without cluster")
     eval_query_path = (
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
@@ -289,7 +302,6 @@ def evaluate_wo_cluster(session_number):
     eval_doc_count = len(eval_doc_data)
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-    model_path = f"../data/model/proposal_session_{session_number}.pth"
     start_time = time.time()
     new_q_data, new_d_data = renew_data(
         queries=eval_query_data,

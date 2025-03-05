@@ -208,7 +208,7 @@ def kmeans_pp(X, k, max_iters, devices):
 
 
 def get_cluster_statistics(centroids, cluster_instances, devices):
-    centroids_statistics = {}
+    cluster_statistics = {}
 
     for k in cluster_instances:
         instances = cluster_instances[k]
@@ -217,23 +217,27 @@ def get_cluster_statistics(centroids, cluster_instances, devices):
         num_devices = len(devices)
         batches = [instances[i::num_devices] for i in range(num_devices)]
 
-        def process_batch(batch, device):
-            S1, S2, N = 0.0, 0.0, 0
-            centroid_tensor = torch.tensor(centroid, device=device)
-
-            for x in batch:
-                token_embs = torch.tensor(
-                    x["TOKEN_EMBS"], device=device
-                )  # 입력 텐서 변환
-                x_dist = MAX_SCORE - calculate_S_qd_regl_dict(
-                    token_embs, centroid_tensor, device
+        def process_batch(batch, device, batch_size=512):
+            S1, S2, N = (
+                torch.tensor(0.0, device=device),
+                torch.tensor(0.0, device=device),
+                0,
+            )
+            for i in range(0, len(batch), batch_size):
+                batch_slice = batch[i : i + batch_size]
+                batch_token_embs = torch.stack(
+                    [
+                        torch.tensor(x["TOKEN_EMBS"].clone().detach(), device=device)
+                        for x in batch_slice
+                    ]
                 )
-
-                S1 += x_dist
-                S2 += x_dist**2
-                N += 1
-
-            return {"S1": S1, "S2": S2, "N": N}
+                x_dist = MAX_SCORE - calculate_S_qd_regl_dict(
+                    batch_token_embs, centroid, device
+                )
+                S1 += torch.sum(x_dist)
+                S2 += torch.sum(x_dist**2)
+                N += len(batch_slice)
+            return {"S1": S1.item(), "S2": S2.item(), "N": N}
 
         results = []
         with ThreadPoolExecutor(max_workers=num_devices) as executor:
@@ -247,9 +251,9 @@ def get_cluster_statistics(centroids, cluster_instances, devices):
         S2_total = sum(r["S2"] for r in results)
         N_total = sum(r["N"] for r in results)
 
-        centroids_statistics[k] = {"S1": S1_total, "S2": S2_total, "N": N_total}
+        cluster_statistics[k] = {"S1": S1_total, "S2": S2_total, "N": N_total}
 
-    return centroids_statistics
+    return cluster_statistics
 
 
 def find_closest_cluster_id(query, centroids, device):
@@ -257,7 +261,9 @@ def find_closest_cluster_id(query, centroids, device):
     distances = []
     for centroid in centroids:
         distance = (
-            MAX_SCORE - calculate_S_qd_regl_dict(query_tokens, centroid, device)
+            # .unsqueeze(dim=0) : (batch_size, qlen, 768) 요구
+            MAX_SCORE
+            - calculate_S_qd_regl_dict(query_tokens.unsqueeze(dim=0), centroid, device)
         ) ** 2
         distances.append(distance)
     closest_cluster = torch.argmin(torch.tensor(distances)).item()
@@ -276,38 +282,68 @@ def calculate_rms(S1, S2, N):
     return rms
 
 
+# TODO centroids 기준 분할
 def evict_cluster_instances(
-    a, model, old_centroids, old_cluster_instances, old_centroids_statics
+    a,
+    model,
+    old_centroids,
+    old_cluster_instances,
+    old_cluster_statistics,
+    devices,
+    batch_size=32,
 ):
-    # 오래된 문서 버리고, 현재 인코더로 재임베딩...?
     print("evict_cluster_instances started.")
-    new_centroids, new_cluster_instances, new_centroids_statics = (
+    new_centroids, new_cluster_instances, new_cluster_statistics = (
         [],
         defaultdict(list),
         {},
     )
+
     for old_idx, centroid in enumerate(old_centroids):
         MEAN = calculate_mean(
-            S1=old_centroids_statics[old_idx]["S1"],
-            N=old_centroids_statics[old_idx]["N"],
+            S1=old_cluster_statistics[old_idx]["S1"],
+            N=old_cluster_statistics[old_idx]["N"],
         )
         BOUNDARY = MEAN
         print(f"cluster {old_idx} | BOUNDARY: {BOUNDARY} | MEAN: {MEAN}")
+
+        # 빈 클러스터 skip
+        if len(old_cluster_instances[old_idx]) == 0:
+            continue
+
         temp_cluster_instances = []
-        if len(old_cluster_instances[old_idx]) != 0:
-            tmp_centroids_statics = {"S1": 0, "S2": 0, "N": 0, "TOKEN_EMBS": None}
-            for x in old_cluster_instances[old_idx]:
-                x_dist = MAX_SCORE - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid)
-                if x_dist <= BOUNDARY:
-                    tmp_centroids_statics["S1"] = tmp_centroids_statics["S1"] + x_dist
-                    tmp_centroids_statics["S2"] = (
-                        tmp_centroids_statics["S2"] + x_dist**2
-                    )
-                    tmp_centroids_statics["N"] = tmp_centroids_statics["N"] + 1
-                    tmp_centroids_statics["TOKEN_EMBS"] = x[
-                        "TOKEN_EMBS"
-                    ]  # 1개만 남을까봐
+        tmp_cluster_statistics = {"S1": 0, "S2": 0, "N": 0, "TOKEN_EMBS": None}
+
+        # 인스턴스를 배치 단위로 처리
+        for batch_start in range(0, len(old_cluster_instances[old_idx]), batch_size):
+            batch_instances = old_cluster_instances[old_idx][
+                batch_start : batch_start + batch_size
+            ]
+
+            # 배치 내 토큰 임베딩들 쌓기
+            batch_token_embs = torch.stack([x["TOKEN_EMBS"] for x in batch_instances])
+
+            # 배치 내 거리 계산
+            x_dists = MAX_SCORE - torch.tensor(
+                [calculate_S_qd_regl_dict(emb, centroid) for emb in batch_token_embs]
+            )
+
+            # 경계 조건 마스크
+            mask = x_dists <= BOUNDARY
+
+            # 유효한 인스턴스 처리
+            for i, x in enumerate(batch_instances):
+                if mask[i]:
+                    tmp_cluster_statistics["S1"] += x_dists[i]
+                    tmp_cluster_statistics["S2"] += x_dists[i] ** 2
+                    tmp_cluster_statistics["N"] += 1
+
+                    # TOKEN_EMBS는 첫 번째 유효한 인스턴스의 것 사용
+                    if tmp_cluster_statistics["TOKEN_EMBS"] is None:
+                        tmp_cluster_statistics["TOKEN_EMBS"] = x["TOKEN_EMBS"]
+
                     temp_cluster_instances.append(x)
+
         # evict 결과 유효한 클러스터이면 통계값/프로토타입/해당 클러스터 인스턴스 갱신
         if len(temp_cluster_instances) != 0:
             new_centroid = create_centroid(
@@ -316,83 +352,88 @@ def evict_cluster_instances(
             new_centroids.append(new_centroid)
             new_idx = len(new_centroids) - 1
             new_cluster_instances[new_idx] = temp_cluster_instances
-            new_centroids_statics[new_idx] = tmp_centroids_statics
+            new_cluster_statistics[new_idx] = tmp_cluster_statistics
             print(f"cluster {old_idx} is alive.")
         # evict 결과 빈 클러스터이면 통계값/프로토타입/해당 클러스터 인스턴스 제거
         else:
-            del old_centroids_statics[old_idx]
+            del old_cluster_statistics[old_idx]
             del old_cluster_instances[old_idx]
             print(f"cluster {old_idx} is removed.")
 
     del old_centroids
     print("evict_cluster_instances ended.")
-    return new_centroids, new_cluster_instances, new_centroids_statics
+    return new_centroids, new_cluster_instances, new_cluster_statistics
 
 
-def get_initial_max_boundary(centroids_statics, closest_cluster, centroids):
-    centroid_token_embs = centroids_statics[closest_cluster]["TOKEN_EMBS"]
+def get_initial_max_boundary(cluster_statistics, closest_cluster, centroids, devices):
+    centroid_token_embs = cluster_statistics[closest_cluster]["TOKEN_EMBS"]
     distances = []
     for i, centroid in enumerate(centroids):
         if i == closest_cluster:
             continue
         else:
             distances.append(
-                MAX_SCORE - calculate_S_qd_regl_dict(centroid_token_embs, centroid)
+                MAX_SCORE
+                - calculate_S_qd_regl_dict(centroid_token_embs, centroid, devices[-1])
             )
     min_dist = torch.min(distances)
     return min_dist
 
 
 def assign_instance_or_centroid(
-    centroids, centroids_statics, cluster_instances, current_session_data, t
+    centroids, cluster_statistics, cluster_instances, current_session_data, t, devices
 ):
     # 새로운 데이터를 클러스터에 추가, 새로운 데이터에 어느 클러스터에 할당되어있는지 추가
     print("assign_instance_or_centroid started.")
     X = list(current_session_data.values())
 
     for i, x in enumerate(X):
+        # .unsqueeze(dim=0) : (batch_size, qlen, 768) 기대
         distances = [
-            MAX_SCORE - calculate_S_qd_regl_dict(x["TOKEN_EMBS"], centroid)
+            MAX_SCORE
+            - calculate_S_qd_regl_dict(
+                x["TOKEN_EMBS"].unsqueeze(dim=0), centroid, devices[-1]
+            )
             for centroid in centroids
         ]
-        closest_cluster = torch.argmin(distances).item()
+        closest_cluster = torch.argmin(torch.tensor(distances)).item()
 
         # 데이터 포인트 1개일 때 통계정보가 없으므로 가장 가까운 다른 클러스터까지의 거리로 max_boundary 휴리스틱으로 사용
         # 그렇지 않다면 RMS이내인지 학인, 아니면 새로운 centroid으로 할당
         s1, s2, n = (
-            centroids_statics[closest_cluster]["S1"],
-            centroids_statics[closest_cluster]["S2"],
-            centroids_statics[closest_cluster]["N"],
+            cluster_statistics[closest_cluster]["S1"],
+            cluster_statistics[closest_cluster]["S2"],
+            cluster_statistics[closest_cluster]["N"],
         )
         if (
             n == 1
             and distances[closest_cluster]
-            <= get_initial_max_boundary(centroids_statics, closest_cluster, centroids)
+            <= get_initial_max_boundary(cluster_statistics, closest_cluster, centroids)
         ) or distances[closest_cluster] <= calculate_mean(
             S1=s1, N=n
         ) + t * calculate_rms(
             S1=s1, S2=s2, N=n
         ):
             cluster_instances[closest_cluster].append(x)
-            centroids_statics[closest_cluster] = {
-                "S1": centroids_statics[closest_cluster]["S1"]
+            cluster_statistics[closest_cluster] = {
+                "S1": cluster_statistics[closest_cluster]["S1"]
                 + distances[closest_cluster],
-                "S2": centroids_statics[closest_cluster]["S2"]
+                "S2": cluster_statistics[closest_cluster]["S2"]
                 + distances[closest_cluster] ** 2,
-                "N": centroids_statics[closest_cluster]["N"] + 1,
+                "N": cluster_statistics[closest_cluster]["N"] + 1,
             }
         else:
             centroids.append(x["LSH_MAPS"])
             closest_cluster = len(centroids) - 1
             cluster_instances[closest_cluster].append(x)
-            centroids_statics[closest_cluster] = {
+            cluster_statistics[closest_cluster] = {
                 "S1": 0,
                 "S2": 0,
                 "N": 1,
                 "TOKEN_EMBS": x["TOKEN_EMBS"],
             }
     print("assign_instance_or_centroid ended.")
-    return centroids, centroids_statics, cluster_instances
+    return centroids, cluster_statistics, cluster_instances
 
 
 def update_cluster_and_current_session_data(cluster_instances, current_session_data):

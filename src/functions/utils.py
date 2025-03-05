@@ -59,11 +59,11 @@ def draw_elbow(k_values, sse):
 
 
 def write_lines(filename, result_list):
-    with open(filename, "a") as file:
+    with open(filename, "w") as file:
         for result in result_list:
-            file.write(result_list + "\n")
+            file.write(result + "\n")
 
 
 def write_line(filename, result):
-    with open(filename, "a") as file:
+    with open(filename, "w") as file:
         file.write(result)

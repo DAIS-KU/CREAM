@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import List
 
 from data import *
+from .utils import write_lines
 
 
 def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
@@ -35,10 +36,10 @@ def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
         recall += len(hit_recall) / len(answer_pids)
 
     res_strs = [
-        f"# query:  {num_q} |  answers:{total_answer_count} | proportion:{total_answer_count/doc_count * 100:.1f}\n",
-        f"Avg Success@{top_k_success}: {success / num_q * 100:.1f}\n",
-        f"Avg Recall@{top_k_recall}: {recall / num_q * 100:.1f}\n",
+        f"# query:  {num_q} |  answers:{total_answer_count} | proportion:{total_answer_count/doc_count * 100:.1f} ",
+        f"Avg Success@{top_k_success}: {success / num_q * 100:.1f} ",
+        f"Avg Recall@{top_k_recall}: {recall / num_q * 100:.1f} ",
     ]
-    print(res_strs)
+    print("".join(res_strs))
     if eval_log_path:
         write_lines(eval_log_path, res_strs)

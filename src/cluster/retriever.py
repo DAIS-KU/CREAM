@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from transformers import BertTokenizer
 from .management import find_closest_cluster_id
 from functions import calculate_S_qd_regl_batch
+from collections import defaultdict
 
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -31,7 +32,6 @@ def get_top_k_documents(
 ):
     query_token_embs = query["TOKEN_EMBS"].to(device)
     regl_scores = []
-
     cluster_docs = cluster_instances[closest_cluster_id]
 
     for i in range(0, len(cluster_docs), batch_size):
@@ -39,7 +39,10 @@ def get_top_k_documents(
         combined_embs = torch.stack(
             [doc["TOKEN_EMBS"].to(device) for doc in batch_docs], dim=0
         )
-        regl_score = calculate_S_qd_regl_batch(query_token_embs, combined_embs, device)
+        # .unsqueeze(dim=0) : (batch_size, qlen, 768)
+        regl_score = calculate_S_qd_regl_batch(
+            query_token_embs.unsqueeze(dim=0), combined_embs, device
+        )
         regl_scores.extend(
             [(doc["ID"], regl_score[idx].item()) for idx, doc in enumerate(batch_docs)]
         )
@@ -51,16 +54,19 @@ def get_top_k_documents(
 
 
 def process_queries_on_gpu(
-    gpu_id, query_data, query_batch_keys, centroids, cluster_instances, result, device
+    gpu_id, query_data, query_batch_keys, centroids, cluster_instances, device
 ):
     device = torch.device(f"cuda:{gpu_id}")
+    torch.cuda.set_device(device)
+    result = {}
     for qid in query_batch_keys:
         query = query_data[qid]
         closest_cluster_id = find_closest_cluster_id(query, centroids, device)
         top_k_doc_ids = get_top_k_documents(
-            query, closest_cluster_id, cluster_instances, 10, device, False
+            query, closest_cluster_id, cluster_instances, 10, device
         )
         result[qid] = top_k_doc_ids
+    return result
 
 
 def split_query_keys(query_data, num_gpus):
@@ -75,7 +81,12 @@ def process_queries_with_gpus(query_data, centroids, cluster_instances, devices)
     def process_on_gpu(args):
         gpu_id, query_keys = args
         return process_queries_on_gpu(
-            gpu_id, query_data, query_keys, centroids, cluster_instances, devices
+            gpu_id,
+            query_data,
+            query_keys,
+            centroids,
+            cluster_instances,
+            devices,
         )
 
     with ThreadPoolExecutor(max_workers=len(devices)) as executor:

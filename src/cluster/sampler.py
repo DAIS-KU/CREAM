@@ -108,19 +108,16 @@ def get_samples_in_clusters_v2(
     device = model.device
     query_token_embs = get_passage_embeddings(model, query["query"])
     distances = []
-
     for centroid in centroids:
         distances.append(calculate_S_qd_regl_dict(query_token_embs, centroid, device))
-
-    # 거리 기반으로 정렬 (가장 가까운 1개, 가장 먼 k개)
     sorted_distances, sorted_indices = torch.sort(
-        torch.stack(distances), descending=False
+        torch.stack(distances).squeeze(), descending=False
     )
 
-    positive_id = sorted_indices[0].item()  # 가장 가까운 클러스터 (positive)
+    positive_id = sorted_indices[0].item()  # 1번째 가까운 클러스터 (positive)
     negative_ids = sorted_indices[
-        -negative_k:
-    ].tolist()  # 가장 먼 k개 클러스터 (negative)
+        1 : 1 + negative_k
+    ].tolist()  # 2~k+1번재 가까운 클러스터 (negative)
 
     print(f"positive_id:{positive_id} | negative_ids:{negative_ids}")
 
@@ -137,7 +134,7 @@ def get_samples_in_clusters_v2(
             [pos_docs[pidx]["ID"] for pidx in pos_doc_top_k_indices.tolist()]
         )
 
-    # negative samples: 가장 먼 클러스터들에서 각각 top-1 문서 선택
+    # negative samples: 최근접 외 클러스터들에서 각각 top-1 문서 선택
     negative_samples = []
     for neg_id in negative_ids:
         neg_docs = cluster_instances[neg_id]
