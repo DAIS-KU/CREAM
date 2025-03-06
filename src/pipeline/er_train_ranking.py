@@ -25,8 +25,42 @@ num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
-def build_buffer(query_data_path, doc_data_path, output_dir="../data"):
-    pass
+def build_buffer():
+    query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+    doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+    buffer_data = "../data"
+    output_dir = "../data"
+
+    method = "er"
+    model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+    training_args = TevatronTrainingArguments(output_dir="../data/model")
+    model = DenseModel.build(
+        model_args,
+        training_args,
+        cache_dir=model_args.cache_dir,
+    )
+    model_path = f"../data/model/{method}_session_0.pth"
+    model.load_state_dict(torch.load(model_path))
+    buffer = Buffer(
+        model,
+        tokenizer,
+        DataArguments(
+            query_data=query_data,
+            doc_data=doc_data,
+            buffer_data=buffer_data,
+            mem_batch_size=3,
+        ),
+        TevatronTrainingArguments(output_dir=output_dir),
+    )
+    return buffer
+
+
+def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
+    scores = torch.nn.functional.cosine_similarity(
+        query_emb.unsqueeze(0), current_data_embs, dim=1
+    )
+    top_k_scores, top_k_indices = torch.topk(scores, k)
+    return top_k_indices.tolist()
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
@@ -72,8 +106,9 @@ def session_train(inputs, model, num_epochs):
     return loss_values
 
 
-def train(method, session_count=1, num_epochs=1):
-    buffer = Buffer(model, tokenizer, DataArguments(), TevatronTrainingArguments())
+def train(session_count=1, num_epochs=1):
+    buffer = build_buffer()
+    method = "er"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
         query_path = (
@@ -103,5 +138,5 @@ def train(method, session_count=1, num_epochs=1):
         buffer.save(output_dir)
 
 
-def evaluate(method, sesison_count=1):
-    evaluate_by_cosine(method, sesison_count)
+def evaluate(sesison_count=1):
+    evaluate_by_cosine("er", sesison_count)

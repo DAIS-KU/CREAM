@@ -6,6 +6,8 @@ from pipeline import (
     rand_evaluate,
     find_best_k_experiment,
     test_buffer,
+    er_train,
+    er_evaluate,
 )
 import argparse
 
@@ -14,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exp",
         type=str,
-        help="experiments(proposal/gt/rand/bm25/find_k/test_buffer/evaluate)",
+        help="experiments(proposal/gt/rand/bm25/find_k/test_buffer/er)",
     )
     parser.add_argument(
         "--method",  # buffer option
@@ -61,5 +63,8 @@ if __name__ == "__main__":
     elif args.exp == "test_buffer":
         method = args.method
         test_buffer(method)
+    elif args.exp == "er":
+        er_train()
+        er_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

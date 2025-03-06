@@ -5,6 +5,14 @@ from concurrent.futures import ThreadPoolExecutor
 from functions import calculate_S_qd_regl_batch
 
 
+def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
+    scores = torch.nn.functional.cosine_similarity(
+        query_emb.unsqueeze(0), current_data_embs, dim=1
+    )
+    top_k_scores, top_k_indices = torch.topk(scores, k)
+    return top_k_indices.tolist()
+
+
 def get_top_k_documents_gpu(new_q_data, docs, query_id, k, devices, batch_size=2048):
     query_data_item = new_q_data[query_id]
     query_token_embs = query_data_item["TOKEN_EMBS"]

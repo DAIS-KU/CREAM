@@ -2,14 +2,13 @@ import torch
 from transformers import BertModel, BertTokenizer
 import random
 
-from data import read_jsonl, renew_data, read_jsonl_as_dict, write_file
+from data import read_jsonl, renew_data, read_jsonl_as_dict, write_line, write_file
+
 from functions import (
     evaluate_dataset,
     InfoNCELoss,
     show_loss,
     get_top_k_documents,
-    write_file,
-    write_line,
 )
 from cluster import (
     kmeans_pp,
@@ -63,7 +62,7 @@ def session_train(
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    queries = read_jsonl(query_path)[:64]
+    queries = read_jsonl(query_path)
     random.shuffle(queries)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     query_cnt = len(queries)
@@ -149,7 +148,7 @@ def train(
 
         # 새로운 세션 문서
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)[:100]
+        doc_data = read_jsonl(doc_path)
         _, current_session_data = renew_data(
             queries=None,
             documents=doc_data,
@@ -165,8 +164,8 @@ def train(
             start_time = time.time()
             centroids, cluster_instances = kmeans_pp(
                 X=list(current_session_data.values()),
-                k=5,
-                max_iters=1,
+                k=300,
+                max_iters=5,
                 devices=devices,
             )
             cluster_statistics = get_cluster_statistics(
@@ -205,7 +204,7 @@ def train(
         # )
 
         # 샘플링 및 대조학습 수행
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[0])
+        model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
         if session_number != 0:
             model_path = f"../data/model/proposal_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path))
@@ -247,8 +246,8 @@ def evaluate_with_cluster(
     )
     eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
 
-    eval_query_data = read_jsonl(eval_query_path)[:20]
-    eval_doc_data = read_jsonl(eval_doc_path)[:100]
+    eval_query_data = read_jsonl(eval_query_path)
+    eval_doc_data = read_jsonl(eval_doc_path)
 
     eval_query_count = len(eval_query_data)
     eval_doc_count = len(eval_doc_data)
@@ -295,8 +294,8 @@ def evaluate_without_cluster(session_number, model_path):
     )
     eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
 
-    eval_query_data = read_jsonl(eval_query_path)[:20]
-    eval_doc_data = read_jsonl(eval_doc_path)[:100]
+    eval_query_data = read_jsonl(eval_query_path)
+    eval_doc_data = read_jsonl(eval_doc_path)
 
     eval_query_count = len(eval_query_data)
     eval_doc_count = len(eval_doc_data)

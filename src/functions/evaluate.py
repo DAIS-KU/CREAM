@@ -1,8 +1,9 @@
 from collections import defaultdict
 from typing import List
 
+import time
 from data import *
-from .utils import write_lines
+from .retriever import get_top_k_documents_by_cosine
 
 
 def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
@@ -43,3 +44,41 @@ def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
     print("".join(res_strs))
     if eval_log_path:
         write_lines(eval_log_path, res_strs)
+
+
+def evaluate_by_cosine(method, sesison_count=1):
+    for session_number in range(sesison_count):
+        print(f"Evaluate Session {session_number}")
+        eval_query_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+        )
+        eval_doc_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+        )
+
+        eval_query_data = read_jsonl(eval_query_path)[:10]
+        eval_doc_data = read_jsonl(eval_doc_path)[:100]
+
+        eval_query_count = len(eval_query_data)
+        eval_doc_count = len(eval_doc_data)
+        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+
+        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+        model_path = f"../data/model/{method}_session_{session_number}.pth"
+
+        start_time = time.time()
+        new_q_data, new_d_data = renew_data_mean_pooling(
+            queries=eval_query_data, documents=eval_doc_data, model_path=model_path
+        )
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for encoding.")
+
+        start_time = time.time()
+        result = get_top_k_documents(new_q_data, new_d_data, k=10)
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for retrieval.")
+
+        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+        write_file(rankings_path, result)
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
+        del new_q_data, new_d_data

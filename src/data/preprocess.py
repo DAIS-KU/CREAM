@@ -223,3 +223,95 @@ def renew_data(
         new_d_data.update(result[1])
 
     return new_q_data, new_d_data
+
+
+def mean_pooling(model_output, attention_mask):
+    # [batch_size, seq_len, hidden_size]
+    token_embeddings = model_output[0]
+    input_mask_expanded = (
+        attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    )
+    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+    sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+    return sum_embeddings / sum_mask
+
+
+def process_batch(
+    batch_data, model, tokenizer, device_id, id_field="qid", text_field="query"
+):
+    device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    results = {}
+
+    for item in tqdm(batch_data, desc=f"GPU {device_id} 쿼리 처리 중"):
+        item_id = item[id_field]
+        text = item[text_field]
+
+        encoded_input = tokenizer(
+            text, padding=True, truncation=True, max_length=512, return_tensors="pt"
+        )
+        encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
+        with torch.no_grad():
+            model_output = model(**encoded_input)
+        embeddings = mean_pooling(model_output, encoded_input["attention_mask"])
+        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+
+        results[item_id] = {"ID": item_id, "EMB": embeddings.cpu().numpy()[0].tolist()}
+    return results
+
+
+def renew_data_mean_pooling(queries_data, documents_data, model_path):
+    num_gpus = max(1, device_count())
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    models = [AutoModel.from_pretrained(model_path) for _ in range(num_gpus)]
+    query_batches = []
+    doc_batches = []
+
+    for i in range(num_gpus):
+        query_start = i * len(queries_data) // num_gpus
+        query_end = (i + 1) * len(queries_data) // num_gpus
+        query_batches.append(queries_data[query_start:query_end])
+
+        doc_start = i * len(documents_data) // num_gpus
+        doc_end = (i + 1) * len(documents_data) // num_gpus
+        doc_batches.append(documents_data[doc_start:doc_end])
+
+    with ThreadPoolExecutor(max_workers=num_gpus) as executor:
+        print(f"Query mean-pooling embedding starts.")
+        futures = []
+        for i in range(num_gpus):
+            if query_batches[i]:
+                futures.append(
+                    executor.submit(
+                        process_query_batch,
+                        query_batches[i],
+                        models[i],
+                        tokenizer,
+                        i,
+                        "qid",
+                        "query",
+                    )
+                )
+        query_results = {}
+        for future in futures:
+            query_results.update(future.result())
+
+        print(f"Document mean-pooling embedding starts..")
+        futures = []
+        for i in range(num_gpus):
+            if doc_batches[i]:
+                futures.append(
+                    executor.submit(
+                        process_doc_batch,
+                        doc_batches[i],
+                        models[i],
+                        tokenizer,
+                        i,
+                        "doc_id",
+                        "text",
+                    )
+                )
+        doc_results = {}
+        for future in futures:
+            doc_results.update(future.result())
+    return query_results, doc_results
