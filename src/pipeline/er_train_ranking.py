@@ -28,7 +28,7 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 def build_buffer():
     query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
-    buffer_data = "../data"
+    # buffer_data = "../data"
     output_dir = "../data"
 
     method = "er"
@@ -39,15 +39,15 @@ def build_buffer():
         training_args,
         cache_dir=model_args.cache_dir,
     )
-    model_path = f"../data/model/{method}_session_0.pth"
-    model.load_state_dict(torch.load(model_path))
+    # model_path = f"../data/model/{method}_session_0.pth"
+    # model.load_state_dict(torch.load(model_path))
     buffer = Buffer(
         model,
         tokenizer,
         DataArguments(
             query_data=query_data,
             doc_data=doc_data,
-            buffer_data=buffer_data,
+            # buffer_data=buffer_data,
             mem_batch_size=3,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
@@ -65,16 +65,17 @@ def get_top_k_documents_by_cosine(query_emb, current_data_embs, k=10):
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 def session_train(inputs, model, num_epochs):
-    input_cnt = len(
-        inputs
-    )  # (q_lst, d_lst, identity, old_emb) List[Dict[str, Union[torch.Tensor, Any]]]
+    input_cnt = len(inputs)
+    print(f"input_cnt: {input_cnt}")
+    # 이미 배치처리가 되어있어서 쌓아서 할 필요없나(네)
+    # (q_lst, d_lst, identity, old_emb) List[Dict[str, Union[torch.Tensor, Any]]]
+    # q_lst = ([qid], [p1n7 doc_id], {'input_ids': ...}, {'attention_mask': ...})
+    # q_lst[2] torch.Size([1, 32]), q_lst[3] torch.Size([8, 128])
     loss_values = []
-
     loss_fn = SimpleContrastiveLoss()
     learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-    batch_size = 32
+    batch_size = 8  # 32
 
     for epoch in range(num_epochs):
         total_loss = 0
@@ -83,14 +84,20 @@ def session_train(inputs, model, num_epochs):
             end_idx = min(start_idx + batch_size, input_cnt)
             print(f"batch {start_idx}-{end_idx}")
 
-            input_batch = []
+            x_batch, y_batch = [], []
             for _id in range(start_idx, end_idx):
-                input_embeddings = model(inputs[_id])
-                input_batch.append(input_embeddings)
-            print(f"input_batch: {input_embeddings.shape}")
+                x_embeddings = model(inputs[_id][2])
+                y_embeddings = model(inputs[_id][3])
+                x_batch.append(x_embeddings)
+                y_batch.append(y_embeddings)
             # EncoderOutput(loss=loss, scores=scores, q_reps=q_reps, p_reps=p_reps)의 loss를 사용해도 되는건가???
             # SimpleContrastiveLoss(x: Tensor, y: Tensor, ...)이면 loss_fn(x=q_reps, y=p_reps)로 사용해야 하는건가???
-            loss = loss_fn(input_batch)
+            x_batch_tensor = torch.stack(x_embeddings)
+            y_batch_tensor = torch.stack(y_embeddings)
+            print(
+                f"x_batch_tensor: {x_batch_tensor.shape}, y_batch_tensor: {y_batch_tensor.shape}"
+            )
+            loss = loss_fn(x_batch_tensor, y_batch_tensor)
 
             optimizer.zero_grad()
             loss.backward()
@@ -131,7 +138,7 @@ def train(session_count=1, num_epochs=1):
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
-        loss_values = session_train(inputs, num_epochs, method, buffer, session_number)
+        loss_values = session_train(inputs, model, num_epochs)
         torch.save(model.state_dict(), new_model_path)
         if method == "our":
             buffer.replace()

@@ -38,7 +38,6 @@ class InfoNCELoss(nn.Module):
 
 
 class SimpleContrastiveLoss:
-
     def __call__(
         self, x: Tensor, y: Tensor, target: Tensor = None, reduction: str = "mean"
     ):

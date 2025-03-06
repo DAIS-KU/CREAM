@@ -21,6 +21,9 @@ def _prepare_inputs(
     mem_batch_size,
     compatible,
 ) -> List[Dict[str, Union[torch.Tensor, Any]]]:
+    # tuple로 들어와야하는데 리스트고, 리스트안에 튜플 들어있음 어케 쎃아서 줘야햄,,,,
+    # Trainer에서는 하나씩 퍼다나르나
+    # print(f"inputs: {inputs}")
     prepared = []
     for x in inputs[2:]:
         for key, val in x.items():
@@ -200,10 +203,12 @@ def create_one_example(text_encoding: List[int], is_query=False):
 
 
 def collate(features):
-    qq_id = [f[0] for f in features]
-    dd_id = [f[1] for f in features]
-    qq = [f[2] for f in features]
-    dd = [f[3] for f in features]
+    # features 단일아이템 처리??
+    qq_id, dd_id, qq, dd = [features[0]], [features[1]], [features[2]], [features[3]]
+    # qq_id = [f[0] for f in features]
+    # dd_id = [f[1] for f in features]
+    # qq = [f[2] for f in features]
+    # dd = [f[3] for f in features]
 
     if isinstance(qq_id[0], list):
         qq_id = sum(qq_id, [])
@@ -262,13 +267,13 @@ def getitem(
 
 
 def load_inputs(query_path, doc_path):
-    queries = read_jsonl(query_path)[:64]
-    docs = read_jsonl_as_dict(doc_path, key="doc_id")
+    queries = read_jsonl(query_path)[:32]
+    docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     inputs = []
     for query in queries:
         features = getitem(query, docs)
-        input = collate(features)
-        inputs.append(input)
+        _input = collate(features)
+        inputs.append(_input)
     return inputs
 
 
@@ -283,7 +288,13 @@ def prepare_inputs(
     compatible=False,
 ):
     inputs = load_inputs(query_path, doc_path)
-    prepared_inputs = _prepare_inputs(
-        inputs, buffer, cl_method, new_batch_size, mem_batch_size, compatible
-    )
+    prepared_inputs = []
+    for _input in inputs:
+        result = _prepare_inputs(
+            _input, buffer, cl_method, new_batch_size, mem_batch_size, compatible
+        )
+        prepared_inputs.append(inputs)
     return prepared_inputs
+
+
+# 시간 볼 때마다 10분씩만 지나있어.......
