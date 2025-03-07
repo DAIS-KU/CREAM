@@ -20,6 +20,7 @@ from transformers.file_utils import ModelOutput
 from .arguments import ModelArguments, TevatronTrainingArguments as TrainingArguments
 
 import logging
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +270,28 @@ class EncoderModel(nn.Module):
 
 
 class DenseModel(EncoderModel):
+    def mean_pooling(self, hidden_states, attention_mask):
+        """패딩 제외하고 mean pooling 적용"""
+        mask_expanded = attention_mask.unsqueeze(-1).expand(
+            hidden_states.shape
+        )  # (batch_size, seq_len, hidden_dim)
+        sum_hidden = (hidden_states * mask_expanded).sum(
+            dim=1
+        )  # 마스크된 부분 제외하고 합산
+        sum_mask = mask_expanded.sum(
+            dim=1
+        )  # 마스크된 개수 계산 (길이별로 다를 수 있음)
+        pooled_output = sum_hidden / sum_mask  # 평균값 반환
+        return F.normalize(pooled_output, p=2, dim=1)  # L2 정규화 적용
+
+    def encode_mean_pooling(self, input):
+        if input is None:
+            return None
+        psg_out = self.lm_p(**input, return_dict=True)
+        p_hidden = psg_out.last_hidden_state
+        p_reps = self.mean_pooling(p_hidden, input["attention_mask"])
+        return p_reps
+
     def encode_passage(self, psg):
         if psg is None:
             return None
@@ -288,7 +311,7 @@ class DenseModel(EncoderModel):
         if self.pooler is not None:
             q_reps = self.pooler(q=q_hidden)
         else:
-            q_reps = q_hidden[:, 0]
+            q_reps = q_hidden[:, 0]  # CLS
         return q_reps
 
     def compute_similarity(self, q_reps, p_reps):

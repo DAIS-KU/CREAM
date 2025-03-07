@@ -4,6 +4,13 @@ from cluster import RandomProjectionLSH
 from transformers import BertModel, BertTokenizer
 
 import time
+from buffer import (
+    Buffer,
+    DataArguments,
+    TevatronTrainingArguments,
+    DenseModel,
+    ModelArguments,
+)
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
@@ -178,7 +185,7 @@ def renew_data(
     for device in devices:
         model = BertModel.from_pretrained("bert-base-uncased").to(device)
         if model_path is not None:
-            model.load_state_dict(torch.load(model_path))
+            model.load_state_dict(torch.load(model_path, weights_only=True))
             model.eval()
         models.append(model)
         hashes.append(
@@ -225,17 +232,6 @@ def renew_data(
     return new_q_data, new_d_data
 
 
-def mean_pooling(model_output, attention_mask):
-    # [batch_size, seq_len, hidden_size]
-    token_embeddings = model_output[0]
-    input_mask_expanded = (
-        attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    )
-    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-    sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-    return sum_embeddings / sum_mask
-
-
 def process_batch(
     batch_data, model, tokenizer, device_id, id_field="qid", text_field="query"
 ):
@@ -243,7 +239,7 @@ def process_batch(
     model = model.to(device)
     results = {}
 
-    for item in tqdm(batch_data, desc=f"GPU {device_id} 쿼리 처리 중"):
+    for item in batch_data:
         item_id = item[id_field]
         text = item[text_field]
 
@@ -252,18 +248,29 @@ def process_batch(
         )
         encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
         with torch.no_grad():
-            model_output = model(**encoded_input)
-        embeddings = mean_pooling(model_output, encoded_input["attention_mask"])
-        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-
-        results[item_id] = {"ID": item_id, "EMB": embeddings.cpu().numpy()[0].tolist()}
+            model_output = model.encode_mean_pooling(encoded_input)
+        results[item_id] = {
+            "ID": item_id,
+            "EMB": model_output.cpu(),
+        }
     return results
 
 
 def renew_data_mean_pooling(queries_data, documents_data, model_path):
-    num_gpus = max(1, device_count())
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    models = [AutoModel.from_pretrained(model_path) for _ in range(num_gpus)]
+    def build_model(model_path=None):
+        model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+        training_args = TevatronTrainingArguments(output_dir="../data/model")
+        model = DenseModel.build(
+            model_args,
+            training_args,
+            cache_dir=model_args.cache_dir,
+        )
+        if model_path:
+            model.load_state_dict(torch.load(model_path, weights_only=True))
+        return model
+
+    num_gpus = torch.cuda.device_count()
+    models = [build_model(model_path) for _ in range(num_gpus)]
     query_batches = []
     doc_batches = []
 
@@ -283,7 +290,7 @@ def renew_data_mean_pooling(queries_data, documents_data, model_path):
             if query_batches[i]:
                 futures.append(
                     executor.submit(
-                        process_query_batch,
+                        process_batch,
                         query_batches[i],
                         models[i],
                         tokenizer,
@@ -302,7 +309,7 @@ def renew_data_mean_pooling(queries_data, documents_data, model_path):
             if doc_batches[i]:
                 futures.append(
                     executor.submit(
-                        process_doc_batch,
+                        process_batch,
                         doc_batches[i],
                         models[i],
                         tokenizer,
