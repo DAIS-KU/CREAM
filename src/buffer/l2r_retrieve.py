@@ -17,13 +17,18 @@ class L2R_retrieve(object):
         super().__init__()
         self.params = params
         self.train_params = train_params
-
         self.alpha = params.alpha
         self.beta = params.beta
         self.new_bz = params.new_batch_size
-
-        self.mem_upsample = params.mem_upsample
+        '''
+            https://www.notion.so/02-21-Baseline-Dataset-1a0231d8f10a808aa069c8e13e0cc2e5
+            - mem_upsample: 메모리에서 샘플링할 최대 문서 수로, 코드 보시면 버퍼에서 mem_upsample 만큼 random_retrieve 합니다!
+            - mem_bz:  training시 이용할 메모리 데이터 수.
+            - ocs에서도 training시 메모리에서 random sampling한 B_c 이용해 training. 만약 메모리에서 샘플링하는 수랑, 실제 training에서 이용할 메모리 데이터 수가 일치하면 통일.    
+        '''
+        self.mem_upsample = params.mem_batch_size
         self.mem_bz = params.mem_batch_size
+
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
         model_temp = copy.deepcopy(buffer.model)
