@@ -11,9 +11,11 @@
 ├── README.md
 ├── docs
 ├── data
+│    ├── evals
+│    ├── loss
 │    ├── model
 │    ├── rankings
-│    └── sesions
+│    └── buffer
 └── src
     ├── main.py
     ├── buffer
