@@ -48,12 +48,13 @@
     │   └── utils.py
     └── pipeline
         ├── __init__.py
-        ├── bm25_ranking.py
+        ├── er_train_ranking.py
+        ├── mir_train_ranking.py
+        ├── l2r_train_ranking.py
         ├── ground_truth_train_ranking.py
         ├── proposal_train_ranking.py
         ├── random_train_ranking.py
         ├── find_optimized_cluster.py
-        ├── memory_based_train_ranking.py
         └── test_buffer.py
 ```
 # Documents

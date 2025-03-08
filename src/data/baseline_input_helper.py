@@ -205,7 +205,7 @@ def _prepare_inputs(
                 doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
-    elif cl_method == "our":
+    elif cl_method == "our" or cl_method == "l2r":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
