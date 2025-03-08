@@ -71,7 +71,8 @@ def build_er_buffer():
 def session_train(inputs, model, num_epochs):
     # inputs : (q_lst, d_lst) = ([qid], [doc_ids], {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 리스트
     # 이미 배치 처리가 되어있어서, inputs의 각 원소만 쌓아서 연산하면됨
-    input_cnt = len(inputs)
+    input_cnt = 1  # len(inputs)
+    print(f"input_cnt: {input_cnt}")
     # (q_lst, d_lst, identity, old_emb) List[Dict[str, Union[torch.Tensor, Any]]]
     # q_lst = ([qid], [p1n7 doc_id], {'input_ids': ...}, {'attention_mask': ...})
     # q_lst[2] torch.Size([1, 32]), q_lst[3] torch.Size([8, 128])
@@ -105,7 +106,7 @@ def session_train(inputs, model, num_epochs):
     return loss_values
 
 
-def train(session_count=4, num_epochs=1):
+def train(session_count=1, num_epochs=1):
     buffer = build_er_buffer()
     method = "er"
     output_dir = "../data"
@@ -136,7 +137,7 @@ def evaluate(sesison_count=1):
     evaluate_by_cosine("er", sesison_count)
 
 
-def evaluate_by_cosine(method, sesison_count=4):
+def evaluate_by_cosine(method, sesison_count=1):
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = (
@@ -146,8 +147,8 @@ def evaluate_by_cosine(method, sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+        eval_query_data = read_jsonl(eval_query_path)[:10]
+        eval_doc_data = read_jsonl(eval_doc_path)[:100]
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)

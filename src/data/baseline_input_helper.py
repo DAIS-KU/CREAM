@@ -267,7 +267,7 @@ def getitem(
 
 
 def load_inputs(query_path, doc_path):
-    queries = read_jsonl(query_path)[:32]
+    queries = read_jsonl(query_path)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     inputs = []
     for query in queries:
