@@ -31,7 +31,10 @@ def get_top_k_documents_gpu_cosine(
                 [doc["EMB"] for doc in docs[start_idx:end_idx]], dim=0
             ).to(device)
             score = F.cosine_similarity(
-                query_emb.unsqueeze(1), combined_embs.unsqueeze(0), dim=-1
+                # query_emb.unsqueeze(1), combined_embs.unsqueeze(0), dim=-1
+                query_emb.unsqueeze(0),
+                combined_embs,
+                dim=-1,
             ).squeeze()
             # print(f"score: {score.shape}")
             scores.extend(

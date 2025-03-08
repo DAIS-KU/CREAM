@@ -39,7 +39,7 @@ def build_model(model_path=None):
         cache_dir=model_args.cache_dir,
     )
     if model_path:
-        model.load_state_dict(torch.load(model_path))
+        model.load_state_dict(torch.load(model_path, weights_only=True))
     return model
 
 
@@ -52,7 +52,7 @@ def build_er_buffer():
     method = "er"
     model = build_model()
     # model_path = f"../data/model/{method}_session_0.pth"
-    # model.load_state_dict(torch.load(model_path))
+    # model.load_state_dict(torch.load(model_path, weights_only=True))
     buffer = Buffer(
         model,
         tokenizer,
@@ -68,40 +68,55 @@ def build_er_buffer():
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, num_epochs):
-    # inputs : (q_lst, d_lst) = ([qid], [doc_ids], {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 리스트
-    # 이미 배치 처리가 되어있어서, inputs의 각 원소만 쌓아서 연산하면됨
+def session_train(inputs, model, num_epochs, batch_size=8):
+    # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
-    # (q_lst, d_lst, identity, old_emb) List[Dict[str, Union[torch.Tensor, Any]]]
-    # q_lst = ([qid], [p1n7 doc_id], {'input_ids': ...}, {'attention_mask': ...})
-    # q_lst[2] torch.Size([1, 32]), q_lst[3] torch.Size([8, 128])
+    print(f"Total inputs #{input_cnt}")
+    random.shuffle(inputs)
 
     loss_values = []
     loss_fn = SimpleContrastiveLoss()
     learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_cnt = 0
+    batch_cnt = 0
 
     for epoch in range(num_epochs):
-        total_loss = 0
+        total_loss, total_sec, batch_cnt = 0, 0, 0
 
-        for _id in range(0, input_cnt):
-            for _iid in range(0, len(inputs[_id])):
-                # to(model.next(model.parameters()).device)
-                output = model(inputs[_id][_iid][2], inputs[_id][_iid][3])
+        start_time = time.time()
+        for start_idx in range(0, input_cnt, batch_size):
+            end_idx = min(start_idx + batch_size, input_cnt)
+            print(f"batch {start_idx}-{end_idx}")
+            qreps_batch, dreps_batch = [], []
+            for qid in range(start_idx, end_idx):
+                q_tensors, docs_tensors = inputs[qid]
+                output = model(q_tensors, docs_tensors)
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
-                loss = loss_fn(output.q_reps, output.p_reps)
+                qreps_batch.append(output.q_reps)
+                dreps_batch.append(output.p_reps)
+                # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
+            q_embs, d_embs = torch.cat(qreps_batch, dim=0), torch.cat(
+                dreps_batch, dim=0
+            )
+            # print(f"q_embs:{q_embs.shape}, d_embs:{d_embs.shape}")
+            loss = loss_fn(q_embs, d_embs)
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-                total_loss += loss.item()
-                loss_values.append(loss.item())
-                loss_cnt += 1
-                print(
-                    f"Processed ({_id}), {_iid}/{len(inputs[_id])} batches | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss/loss_cnt:.4f}"
-                )
+            total_loss += loss.item()
+            loss_values.append(loss.item())
+            batch_cnt += 1
+            print(
+                f"Processed {qid}/{input_cnt} batches | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss/batch_cnt:.4f}"
+            )
+        end_time = time.time()
+        execution_time = end_time - start_time
+        total_sec += execution_time
+        print(
+            f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
+        )
     return loss_values
 
 
@@ -121,22 +136,17 @@ def train(session_count=4, num_epochs=1):
         model.to(devices[0])
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
-            model.load_state_dict(torch.load(model_path))
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
         loss_values = session_train(inputs, model, num_epochs)
         torch.save(model.state_dict(), new_model_path)
-        if method == "our":
-            buffer.replace()
         buffer.save(output_dir)
 
 
-def evaluate(sesison_count=1):
-    evaluate_by_cosine("er", sesison_count)
-
-
-def evaluate_by_cosine(method, sesison_count=4):
+def evaluate(sesison_count=4):
+    method = "er"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = (
@@ -146,8 +156,8 @@ def evaluate_by_cosine(method, sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+        eval_query_data = read_jsonl(eval_query_path)[:32]
+        eval_doc_data = read_jsonl(eval_doc_path)[:32]
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)

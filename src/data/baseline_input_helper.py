@@ -24,6 +24,7 @@ def _prepare_inputs(
     # tuple로 들어와야하는데 리스트고, 리스트안에 튜플 들어있음 어케 쎃아서 줘야햄,,,,
     # Trainer에서는 하나씩 퍼다나르나
     # print(f"inputs: {inputs}")
+    print(f"Visit cl_method {cl_method}, compatible {compatible}")
     prepared = []
     for x in inputs[2:]:
         for key, val in x.items():
@@ -31,6 +32,93 @@ def _prepare_inputs(
         prepared.append(x)
 
     if cl_method == "er":
+        if not compatible:
+            qid_lst, docids_lst = inputs[0], inputs[1]
+
+            mem_passage = buffer.retrieve(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+                # lr=self._get_learning_rate(),
+            )  # ER: [num_q * mem_bz, d_len], cpu; MIR: [num_q, mem_bz, d_len], gpu
+            buffer.update(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )
+
+            if mem_passage is not None:
+                for key, val in mem_passage.items():
+                    passage_len = val.size(-1)
+                    prepared[1][key] = prepared[1][key].reshape(
+                        len(qid_lst), -1, passage_len
+                    )  # [num_q, bz, d_len]
+                    val = val.reshape(len(qid_lst), -1, passage_len).to(
+                        prepared[1][key].device
+                    )  # [num_q, mem_bz, d_len]
+                    prepared[1][key] = torch.cat(
+                        (prepared[1][key], val), dim=1
+                    ).reshape(
+                        -1, passage_len
+                    )  # [num_q*(bz+mem_bz), d_len]
+        else:
+            qid_lst, docids_lst = inputs[0], inputs[1]
+
+            mem_docids_lst, mem_passage = buffer.retrieve(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+                # lr=self._get_learning_rate(),
+            )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
+            buffer.update(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )
+
+            if mem_passage is not None:
+                for key, val in mem_passage.items():
+                    passage_len = val.size(-1)
+                    prepared[1][key] = prepared[1][key].reshape(
+                        len(qid_lst), -1, passage_len
+                    )  # [num_q, bz, d_len]
+                    val = val.reshape(len(qid_lst), -1, passage_len).to(
+                        prepared[1][key].device
+                    )  # [num_q, mem_bz, d_len]
+                    prepared[1][key] = torch.cat(
+                        (prepared[1][key], val), dim=1
+                    ).reshape(
+                        -1, passage_len
+                    )  # [num_q*(bz+mem_bz), d_len]
+
+                docids_lst = torch.tensor(docids_lst).reshape(
+                    len(qid_lst), -1
+                )  # [num_q, n]
+                mem_docids_lst = mem_docids_lst.reshape(
+                    len(qid_lst), -1
+                )  # [num_q, mem_bz]
+                all_docids_lst = torch.cat(
+                    (docids_lst, mem_docids_lst), dim=-1
+                ).reshape(
+                    -1
+                )  # [num_q * n+mem_bz]
+
+                identity = []
+                doc_oldemb = []
+                for i, docids in enumerate(all_docids_lst):
+                    docids = int(docids)
+                    if docids in buffer.buffer_did2emb:
+                        identity.append(i)
+                        doc_oldemb.append(buffer.buffer_did2emb[docids])
+                identity = torch.tensor(identity)
+                doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
+                prepared.append(identity)
+                prepared.append(doc_oldemb)
+    elif cl_method == "mir":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -267,13 +355,15 @@ def getitem(
 
 
 def load_inputs(query_path, doc_path):
-    queries = read_jsonl(query_path)
+    queries = read_jsonl(query_path)[:32]
+    random.shuffle(queries)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     inputs = []
     for query in queries:
         features = getitem(query, docs)
         _input = collate(features)
         inputs.append(_input)
+    # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")
     return inputs
 
 
@@ -293,8 +383,6 @@ def prepare_inputs(
         result = _prepare_inputs(
             _input, buffer, cl_method, new_batch_size, mem_batch_size, compatible
         )
-        prepared_inputs.append(inputs)
+        prepared_inputs.append(result)
+    # print(f"prepared_inputs {type(prepared_inputs)}, {type(prepared_inputs[0])}, {len(prepared_inputs)}, {len(prepared_inputs[0])}")
     return prepared_inputs
-
-
-# 시간 볼 때마다 10분씩만 지나있어.......

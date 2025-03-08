@@ -233,26 +233,40 @@ def renew_data(
 
 
 def process_batch(
-    batch_data, model, tokenizer, device_id, id_field="qid", text_field="query"
+    batch_data,
+    model,
+    tokenizer,
+    device_id,
+    id_field="qid",
+    text_field="query",
+    batch_size=512,
 ):
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     results = {}
 
-    for item in batch_data:
-        item_id = item[id_field]
-        text = item[text_field]
+    for i in range(0, len(batch_data), batch_size):
+        print(f" process_batch({device}) {i}/{len(batch_data)}")
+        batch_chunk = batch_data[i : i + batch_size]  # batch_size만큼 자르기
+
+        item_ids = [item[id_field] for item in batch_chunk]
+        texts = [item[text_field] for item in batch_chunk]
 
         encoded_input = tokenizer(
-            text, padding=True, truncation=True, max_length=512, return_tensors="pt"
+            texts, padding=True, truncation=True, max_length=512, return_tensors="pt"
         )
         encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
+
         with torch.no_grad():
-            model_output = model.encode_mean_pooling(encoded_input)
-        results[item_id] = {
-            "ID": item_id,
-            "EMB": model_output.cpu(),
-        }
+            model_output = model.encode_mean_pooling(
+                encoded_input
+            )  # [batch_size, emb_dim]
+
+        for item_id, emb in zip(item_ids, model_output.cpu()):
+            results[item_id] = {
+                "ID": item_id,
+                "EMB": emb.cpu(),
+            }
     return results
 
 

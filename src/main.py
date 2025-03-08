@@ -8,6 +8,10 @@ from pipeline import (
     test_buffer,
     er_train,
     er_evaluate,
+    mir_train,
+    mir_evaluate,
+    l2r_train,
+    l2r_evaluate,
 )
 import argparse
 
@@ -66,5 +70,11 @@ if __name__ == "__main__":
     elif args.exp == "er":
         er_train()
         er_evaluate()
+    elif args.exp == "mir":
+        mir_train()
+        mir_evaluate()
+    elif args.exp == "l2r":
+        l2r_train()
+        l2r_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")
