@@ -46,30 +46,31 @@ class Buffer(torch.nn.Module):
             int
         )  # 目前已经过了多少个样本了, 只有er需要
         self.buffer_qid2dids = collections.defaultdict(list)
+        self.buffer_did2emb = collections.defaultdict(None)
 
         if self.params.update_method == "gss":
             buffer_score = None
 
-        if params.buffer_data:
-            print("load buffer data from %s" % params.buffer_data)
-            pkl_file = open(os.path.join(params.buffer_data, "buffer.pkl"), "rb")
-            if self.params.update_method == "gss":
-                self.n_seen_so_far, self.buffer_qid2dids, buffer_score = pickle.load(
-                    pkl_file
-                )
-            else:
-                self.n_seen_so_far, self.buffer_qid2dids = pickle.load(pkl_file)
-            pkl_file.close()
-            # print(
-            #     f"Load n_seen_so_far: {self.n_seen_so_far}, buffer_qid2dids:{self.buffer_qid2dids}"
-            # )
+        # if params.buffer_data:
+        #     print("load buffer data from %s" % params.buffer_data)
+        #     pkl_file = open(os.path.join(params.buffer_data, "buffer.pkl"), "rb")
+        #     if self.params.update_method == "gss":
+        #         self.n_seen_so_far, self.buffer_qid2dids, buffer_score = pickle.load(
+        #             pkl_file
+        #         )
+        #     else:
+        #         self.n_seen_so_far, self.buffer_qid2dids = pickle.load(pkl_file)
+        #     pkl_file.close()
+        #     # print(
+        #     #     f"Load n_seen_so_far: {self.n_seen_so_far}, buffer_qid2dids:{self.buffer_qid2dids}"
+        #     # )
 
-            if params.compatible:
-                pkl_file = open(
-                    os.path.join(params.buffer_data, "buffer_emb.pkl"), "rb"
-                )
-                self.buffer_did2emb = pickle.load(pkl_file)
-                pkl_file.close()
+        #     if params.compatible:
+        #         pkl_file = open(
+        #             os.path.join(params.buffer_data, "buffer_emb.pkl"), "rb"
+        #         )
+        #         self.buffer_did2emb = pickle.load(pkl_file)
+        #         pkl_file.close()
 
         self.qid2query = self.read_data(
             is_query=True, data_path=params.query_data
@@ -136,3 +137,7 @@ class Buffer(torch.nn.Module):
         else:
             pickle.dump((self.n_seen_so_far, self.buffer_qid2dids), output)
         output.close()
+
+    def update_old_embs(self, doc_ids, doc_embs):
+        for doc_id, doc_emb in zip(doc_ids, doc_embs):
+            self.buffer_did2emb[doc_id] = doc_emb

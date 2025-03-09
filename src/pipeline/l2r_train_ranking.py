@@ -158,14 +158,15 @@ def train(
         model = build_model()
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
+            print(f"Load model {model_path}")
             model.load_state_dict(torch.load(model_path, weights_only=True))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
         loss_values = session_train(inputs, model, num_epochs)
         torch.save(model.state_dict(), new_model_path)
+        buffer.replace()  # buffer_did2emb, buffer_qid2dids 업데이트
         buffer.save(output_dir)
-        #     buffer.replace()
 
 
 def evaluate(sesison_count=4):
@@ -179,8 +180,8 @@ def evaluate(sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)[:32]
-        eval_doc_data = read_jsonl(eval_doc_path)[:32]
+        eval_query_data = read_jsonl(eval_query_path)
+        eval_doc_data = read_jsonl(eval_doc_path)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -205,5 +206,6 @@ def evaluate(sesison_count=4):
 
         rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
         write_file(rankings_path, result)
-        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
+        eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
         del new_q_data, new_d_data

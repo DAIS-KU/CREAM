@@ -62,6 +62,7 @@ def _prepare_inputs(
                     ).reshape(
                         -1, passage_len
                     )  # [num_q*(bz+mem_bz), d_len]
+            prepared.append(docids_lst)  # for updating old emb
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -117,6 +118,7 @@ def _prepare_inputs(
                 doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
+            prepared.append(docids_lst)  # for updating old emb
     elif cl_method == "mir":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -149,6 +151,7 @@ def _prepare_inputs(
                     ).reshape(
                         -1, passage_len
                     )  # [num_q*(bz+mem_bz), d_len]
+            prepared.append(docids_lst)  # for updating old emb
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -204,6 +207,7 @@ def _prepare_inputs(
                 doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
+            prepared.append(docids_lst)  # for updating old emb
     elif cl_method == "our" or cl_method == "l2r":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -225,6 +229,7 @@ def _prepare_inputs(
             if mem_passage is not None:
                 for key, val in mem_passage.items():
                     prepared[1][key] = val
+            prepared.append(docids_lst)  # for updating old emb
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -254,8 +259,8 @@ def _prepare_inputs(
                     identity.append(pos_identity + i + 1 + new_batch_size)
                 identity = torch.stack(identity, dim=0).transpose(0, 1).reshape(-1)
                 prepared.append(identity)
-
                 prepared.append(mem_emb)
+            prepared.append(docids_lst)  # for updating old emb
     elif cl_method == "incre":
         if compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -271,6 +276,7 @@ def _prepare_inputs(
                 doc_oldemb.append(buffer.buffer_did2emb[int(docid)])
             doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(device)
             prepared.append(doc_oldemb)
+            prepared.append(docids_lst)  # for updating old emb
     else:
         print("not implement...")
 
@@ -354,10 +360,18 @@ def getitem(
     return qry_id, psg_ids, encoded_query, encoded_passages
 
 
-def load_inputs(query_path, doc_path):
-    queries = read_jsonl(query_path)[:32]
+def load_inputs(
+    query_path,
+    doc_path,
+    answer_doc_path=f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl",
+):
+    queries = read_jsonl(query_path)
     random.shuffle(queries)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+    if doc_path != answer_doc_path:
+        answer_pids = {pid for q in queries for pid in q["answer_pids"]}
+        answer_docs = read_jsonl_as_dict(answer_doc_path, id_field="doc_id")
+        docs = {pid: answer_docs[pid] for pid in answer_pids if pid in answer_docs}
     inputs = []
     for query in queries:
         features = getitem(query, docs)

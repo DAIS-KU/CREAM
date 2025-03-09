@@ -26,8 +26,7 @@ class L2R_retrieve(object):
             - mem_bz:  training시 이용할 메모리 데이터 수.
             - ocs에서도 training시 메모리에서 random sampling한 B_c 이용해 training. 만약 메모리에서 샘플링하는 수랑, 실제 training에서 이용할 메모리 데이터 수가 일치하면 통일.    
         """
-        # Align `mem_upsample` and `mem_batch_size` values.
-        self.mem_upsample = params.mem_batch_size
+        self.mem_upsample = params.mem_upsample
         self.mem_bz = params.mem_batch_size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):

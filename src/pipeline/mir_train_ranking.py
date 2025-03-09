@@ -51,8 +51,6 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
 
     method = "mir"
     model = build_model()
-    # model_path = f"../data/model/{method}_session_0.pth"
-    # model.load_state_dict(torch.load(model_path, weights_only=True))
     buffer = Buffer(
         model,
         tokenizer,
@@ -71,7 +69,7 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, num_epochs, batch_size=8):
+def session_train(inputs, model, buffer, num_epochs, batch_size=8, compatible=False):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
     print(f"Total inputs #{input_cnt}")
@@ -92,12 +90,14 @@ def session_train(inputs, model, num_epochs, batch_size=8):
             print(f"batch {start_idx}-{end_idx}")
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
-                q_tensors, docs_tensors = inputs[qid]
+                q_tensors, docs_tensors, docid_lst = inputs[qid]
                 output = model(q_tensors, docs_tensors)
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
                 # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
+                if compatible:
+                    buffer.update_old_embs(docid_lst, output.p_reps)
             q_embs, d_embs = torch.cat(qreps_batch, dim=0), torch.cat(
                 dreps_batch, dim=0
             )
@@ -136,9 +136,8 @@ def train(
     output_dir = "../data"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        query_path = (
-            f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl"
-        )
+        # session0에 대한 쿼리로만 학습(문서만 바뀜)
+        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
             query_path,
@@ -154,11 +153,12 @@ def train(
         model.to(devices[0])
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
+            print(f"Load model {model_path}")
             model.load_state_dict(torch.load(model_path, weights_only=True))
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
-        loss_values = session_train(inputs, model, num_epochs)
+        loss_values = session_train(inputs, model, buffer, num_epochs, batch_size)
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
 
@@ -174,8 +174,8 @@ def evaluate(sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)[:32]
-        eval_doc_data = read_jsonl(eval_doc_path)[:32]
+        eval_query_data = read_jsonl(eval_query_path)
+        eval_doc_data = read_jsonl(eval_doc_path)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -200,5 +200,6 @@ def evaluate(sesison_count=4):
 
         rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
         write_file(rankings_path, result)
-        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count)
+        eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
         del new_q_data, new_d_data
