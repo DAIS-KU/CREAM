@@ -60,9 +60,9 @@ class Buffer(torch.nn.Module):
             else:
                 self.n_seen_so_far, self.buffer_qid2dids = pickle.load(pkl_file)
             pkl_file.close()
-            print(
-                f"Load n_seen_so_far: {self.n_seen_so_far}, buffer_qid2dids:{self.buffer_qid2dids}"
-            )
+            # print(
+            #     f"Load n_seen_so_far: {self.n_seen_so_far}, buffer_qid2dids:{self.buffer_qid2dids}"
+            # )
 
             if params.compatible:
                 pkl_file = open(

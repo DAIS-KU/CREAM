@@ -23,24 +23,46 @@ if __name__ == "__main__":
         help="experiments(proposal/gt/rand/bm25/find_k/test_buffer/er)",
     )
     parser.add_argument(
-        "--method",  # buffer option
-        type=str,
-        help="buffer method(random_retrieve_reservoir_update/mir_retrieve_reservoir_update/gss_greedy_retrieve_reservoir_update/l2r_retrieve_l2r_update)",
+        "--batch_size",
+        type=int,
+        default=32,
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
         default=1,
     )
+    # buffer option
     parser.add_argument(
-        "--use_label",  # proposal option
+        "--new_bz",
+        default=3,
+        help="sampling batch size of new documents.",
+    )
+    parser.add_argument(
+        "--mem_bz",
+        default=3,
+        help="sampling batch size of old documents from memory.",
+    )
+    parser.add_argument(
+        "--comp",
+        action="store_true",
+        help="when it is, compatible",
+    )
+    # proposal option
+    parser.add_argument(
+        "--use_label",
         action="store_true",
         help="when it is, use labeled positives. or use sampled positives.",
     )
     parser.add_argument(
-        "--eval_cluster",  # proposal option
+        "--eval_cluster",
         action="store_true",
         help="when it is, evaluate model with clusters every each session.",
+    )
+    parser.add_argument(
+        "--negative_k",
+        default=3,
+        help="number of negative samples.",
     )
     args = parser.parse_args()
 
@@ -51,7 +73,9 @@ if __name__ == "__main__":
         print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
             use_label=args.use_label,
+            negative_k=args.negative_k,
             eval_cluster=args.eval_cluster,
         )
     elif args.exp == "gt":
@@ -64,17 +88,32 @@ if __name__ == "__main__":
         bm25_evaluate()
     elif args.exp == "find_k":
         find_best_k_experiment(start=200, end=600, gap=100, max_iters=5)
-    elif args.exp == "test_buffer":
-        method = args.method
-        test_buffer(method)
     elif args.exp == "er":
-        er_train()
+        er_train(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            compatible=args.comp,
+            new_batch_size=args.new_bz,
+            mem_batch_size=args.mem_bz,
+        )
         er_evaluate()
     elif args.exp == "mir":
-        mir_train()
+        mir_train(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            compatible=args.comp,
+            new_batch_size=args.new_bz,
+            mem_batch_size=args.mem_bz,
+        )
         mir_evaluate()
     elif args.exp == "l2r":
-        l2r_train()
+        l2r_train(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            compatible=args.comp,
+            new_batch_size=args.new_bz,
+            mem_batch_size=args.mem_bz,
+        )
         l2r_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

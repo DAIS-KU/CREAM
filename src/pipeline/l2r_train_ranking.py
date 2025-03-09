@@ -40,13 +40,15 @@ def build_model(model_path=None):
     )
     if model_path:
         model.load_state_dict(torch.load(model_path, weights_only=True))
+    # model cuda:3, prepared[0] cuda:0, prepared[1] cuda:0
+    model.to(devices[0])
     return model
 
 
-def build_mir_buffer():
+def build_l2r_buffer(new_batch_size, mem_batch_size, compatible):
     query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
-    # buffer_data = "../data"
+    buffer_data = "../data"  # comp시에는 필요
     output_dir = "../data"
 
     method = "l2r"
@@ -61,11 +63,12 @@ def build_mir_buffer():
             update_method="our",
             query_data=query_data,
             doc_data=doc_data,
-            # buffer_data=buffer_data,
             alpha=1.0,
             beta=1.0,
-            mem_batch_size=3,
-            new_batch_size=3,
+            mem_batch_size=new_batch_size,
+            new_batch_size=mem_batch_size,
+            compatible=compatible,
+            buffer_data=buffer_data,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -125,8 +128,15 @@ def session_train(inputs, model, num_epochs, batch_size=8):
     return loss_values
 
 
-def train(session_count=4, num_epochs=1):
-    buffer = build_mir_buffer()
+def train(
+    session_count=4,
+    num_epochs=1,
+    batch_size=32,
+    compatible=False,
+    new_batch_size=3,
+    mem_batch_size=3,
+):
+    buffer = build_l2r_buffer(new_batch_size, mem_batch_size, compatible)
     method = "l2r"
     output_dir = "../data"
     for session_number in range(session_count):
@@ -135,10 +145,17 @@ def train(session_count=4, num_epochs=1):
             f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl"
         )
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
-        inputs = prepare_inputs(query_path, doc_path, buffer, method)
+        inputs = prepare_inputs(
+            query_path,
+            doc_path,
+            buffer,
+            method,
+            new_batch_size,
+            mem_batch_size,
+            compatible,
+        )
 
         model = build_model()
-        model.to(devices[0])
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path, weights_only=True))
@@ -147,9 +164,8 @@ def train(session_count=4, num_epochs=1):
 
         loss_values = session_train(inputs, model, num_epochs)
         torch.save(model.state_dict(), new_model_path)
-        if method == "l2r":
-            buffer.replace()
         buffer.save(output_dir)
+        #     buffer.replace()
 
 
 def evaluate(sesison_count=4):
@@ -163,8 +179,8 @@ def evaluate(sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+        eval_query_data = read_jsonl(eval_query_path)[:32]
+        eval_doc_data = read_jsonl(eval_doc_path)[:32]
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)

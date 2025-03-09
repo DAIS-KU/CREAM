@@ -43,7 +43,7 @@ def build_model(model_path=None):
     return model
 
 
-def build_er_buffer():
+def build_er_buffer(new_batch_size, mem_batch_size, compatible):
     query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     # buffer_data = "../data"
@@ -60,7 +60,9 @@ def build_er_buffer():
             query_data=query_data,
             doc_data=doc_data,
             # buffer_data=buffer_data,
-            mem_batch_size=3,
+            new_batch_size=new_batch_size,
+            mem_batch_size=mem_batch_size,
+            compatible=compatible,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -120,8 +122,15 @@ def session_train(inputs, model, num_epochs, batch_size=8):
     return loss_values
 
 
-def train(session_count=4, num_epochs=1):
-    buffer = build_er_buffer()
+def train(
+    session_count=4,
+    num_epochs=1,
+    batch_size=32,
+    compatible=False,
+    new_batch_size=3,
+    mem_batch_size=3,
+):
+    buffer = build_er_buffer(new_batch_size, mem_batch_size, compatible)
     method = "er"
     output_dir = "../data"
     for session_number in range(session_count):
@@ -130,7 +139,15 @@ def train(session_count=4, num_epochs=1):
             f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl"
         )
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
-        inputs = prepare_inputs(query_path, doc_path, buffer, method)
+        inputs = prepare_inputs(
+            query_path,
+            doc_path,
+            buffer,
+            method,
+            new_batch_size,
+            mem_batch_size,
+            compatible,
+        )
 
         model = build_model()
         model.to(devices[0])

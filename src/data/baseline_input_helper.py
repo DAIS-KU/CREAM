@@ -24,7 +24,6 @@ def _prepare_inputs(
     # tuple로 들어와야하는데 리스트고, 리스트안에 튜플 들어있음 어케 쎃아서 줘야햄,,,,
     # Trainer에서는 하나씩 퍼다나르나
     # print(f"inputs: {inputs}")
-    print(f"Visit cl_method {cl_method}, compatible {compatible}")
     prepared = []
     for x in inputs[2:]:
         for key, val in x.items():
@@ -208,6 +207,7 @@ def _prepare_inputs(
     elif cl_method == "our" or cl_method == "l2r":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
+            # print(f"model {next(buffer.model.parameters()).device}, prepared[0] {prepared[0]['input_ids'].device}, prepared[1] {prepared[1]['input_ids'].device}")
 
             mem_passage, pos_docids, candidate_neg_docids = buffer.retrieve(
                 qid_lst=qid_lst,
@@ -377,6 +377,7 @@ def prepare_inputs(
     mem_batch_size=2,
     compatible=False,
 ):
+    print(f"Visit cl_method {cl_method}, compatible {compatible}")
     inputs = load_inputs(query_path, doc_path)
     prepared_inputs = []
     for _input in inputs:

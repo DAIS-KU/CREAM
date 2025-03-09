@@ -138,8 +138,10 @@ def session_train(
 def train(
     sesison_count=1,
     num_epochs=1,
+    batch_size=32,
     use_label=False,
     eval_cluster=True,
+    negative_k=3,
 ):
     total_loss_values = []
     loss_values_path = "../data/loss/total_loss_values_proposal.text"
@@ -216,9 +218,11 @@ def train(
             doc_path=doc_path,
             model=model,
             num_epochs=num_epochs,
+            batch_size=batch_size,
             centroids=centroids,
             cluster_instances=cluster_instances,
             # current_session_data=current_session_data,
+            negative_k=negative_k,
         )
         # total_loss_values.extend(loss_values)
         write_line(

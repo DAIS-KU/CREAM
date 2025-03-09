@@ -20,16 +20,15 @@ class L2R_retrieve(object):
         self.alpha = params.alpha
         self.beta = params.beta
         self.new_bz = params.new_batch_size
-        '''
+        """
             https://www.notion.so/02-21-Baseline-Dataset-1a0231d8f10a808aa069c8e13e0cc2e5
             - mem_upsample: 메모리에서 샘플링할 최대 문서 수로, 코드 보시면 버퍼에서 mem_upsample 만큼 random_retrieve 합니다!
             - mem_bz:  training시 이용할 메모리 데이터 수.
             - ocs에서도 training시 메모리에서 random sampling한 B_c 이용해 training. 만약 메모리에서 샘플링하는 수랑, 실제 training에서 이용할 메모리 데이터 수가 일치하면 통일.    
-        '''
+        """
         # Align `mem_upsample` and `mem_batch_size` values.
         self.mem_upsample = params.mem_batch_size
         self.mem_bz = params.mem_batch_size
-
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):
         model_temp = copy.deepcopy(buffer.model)
@@ -197,9 +196,9 @@ class L2R_retrieve(object):
 
     def get_new_data(self, new_model_out, new_bz, alpha, beta):
         q_reps = new_model_out.q_reps  # [8, 768]
-        print("q_reps: ", q_reps.shape)
+        # print("q_reps: ", q_reps.shape)
         p_reps = new_model_out.p_reps  # [8*n, 768]
-        print("p_reps: ", p_reps.shape)
+        # print("p_reps: ", p_reps.shape)
         p_reps = p_reps.reshape(q_reps.size(0), -1, p_reps.size(1))  # [8, n, 768]
 
         q_reps_norm = q_reps.norm(p=2, dim=1, keepdim=True)  # [8, 1]
@@ -216,7 +215,7 @@ class L2R_retrieve(object):
         ).reshape(
             neg.size(0), -1
         )  # [8, n-1], 尽可能大
-        print(f"p_q:{p_q.shape}, pos:{pos.shape}, neg:{neg.shape}")
+        # print(f"p_q:{p_q.shape}, pos:{pos.shape}, neg:{neg.shape}")
         # pos:tensor([], size=(1, 0, 768), grad_fn=<RepeatBackward0>), neg:tensor([], size=(1, 0, 768), grad_fn=<SliceBackward0>)
 
         neg_p_reps = p_reps[:, 1:, :]  # [8, n-1, 768]
@@ -225,9 +224,9 @@ class L2R_retrieve(object):
         inter_sim = (inter_sim_sum - torch.ones_like(inter_sim_sum)) / (
             inter_sim.size(-1) - 1
         )  # [8, n-1], 尽可能小
-        print(
-            f"neg_p_reps:{neg_p_reps.shape}, inter_sim:{inter_sim.shape}, inter_sim_sum:{inter_sim_sum.shape}"
-        )
+        # print(
+        #     f"neg_p_reps:{neg_p_reps.shape}, inter_sim:{inter_sim.shape}, inter_sim_sum:{inter_sim_sum.shape}"
+        # )
 
         # norm dis
         mean_dis = torch.mean(dis, dim=-1, keepdim=True)  # [8, 1]
