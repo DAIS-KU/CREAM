@@ -63,6 +63,7 @@ def build_er_buffer(new_batch_size, mem_batch_size, compatible):
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
+            mem_size=30,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -96,7 +97,9 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=32, compatible=F
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
-                # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
+                # print(
+                #     f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}"
+                # )
             if compatible:
                 buffer.update_old_embs(docid_lst, output.p_reps)
             q_embs, d_embs = torch.cat(qreps_batch, dim=0), torch.cat(
@@ -141,6 +144,7 @@ def train(
         query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
+            session_number,
             query_path,
             doc_path,
             buffer,
@@ -159,7 +163,9 @@ def train(
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
-        loss_values = session_train(inputs, model, buffer, num_epochs, compatible)
+        loss_values = session_train(
+            inputs, model, buffer, num_epochs, batch_size, compatible
+        )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
 
@@ -175,7 +181,7 @@ def evaluate(sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)
+        eval_query_data = read_jsonl(eval_query_path)[:5]
         eval_doc_data = read_jsonl(eval_doc_path)
 
         eval_query_count = len(eval_query_data)

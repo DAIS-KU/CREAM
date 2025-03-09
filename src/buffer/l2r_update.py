@@ -193,7 +193,12 @@ class L2RUpdate(object):
                 )
 
     def get_model_out(self, buffer, model_temp, qid, docids_lst):
+        # if len(docids_lst)==0:
+        #     print(f"qid:{qid}, docids_lst:{docids_lst}")
         doc_lst = [buffer.did2doc[did] for did in docids_lst]
+        # if len(doc_lst)==0:
+        #     print(f"qid:{qid}, doc_lst:{doc_lst}")
+        #     return None
         doc_lst = buffer.tokenizer.batch_encode_plus(
             doc_lst,
             add_special_tokens=True,

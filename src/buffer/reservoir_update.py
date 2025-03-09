@@ -13,11 +13,12 @@ class Reservoir_update(object):
         docids_lst = (
             np.array(docids_lst).reshape(batch_size, n_doc)[:, 1:].tolist()
         )  # 去掉pos passage
-
+        # print(f"update: {batch_size}, {n_doc}, {docids_lst}, {buffer.buffer_qid2dids}")
         filled_idx_lst = []
         for i, qid in enumerate(qid_lst):
             docids = docids_lst[i]
             place_left = max(0, buffer.buffer_size - len(buffer.buffer_qid2dids[qid]))
+
             if place_left:
                 offset = min(place_left, n_doc - 1)
                 buffer.buffer_qid2dids[qid].extend(docids[:offset])

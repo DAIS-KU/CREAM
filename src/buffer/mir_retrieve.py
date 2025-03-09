@@ -20,8 +20,9 @@ class MIR_retrieve(object):
         subsample = self.subsample
         for qid in qid_lst:
             subsample = min(subsample, len(buffer.buffer_qid2dids[qid]))
+        # print(f"subsample: {subsample}")
         if subsample == 0:
-            return None
+            return [], None
 
         # # 得到更新后的模型
         # grad_dims = []
@@ -32,9 +33,11 @@ class MIR_retrieve(object):
 
         # 得到更新后的模型
         q_lst, d_lst = kwargs["q_lst"], kwargs["d_lst"]
-        model_temp = copy.deepcopy(buffer.model)
+        device = d_lst["input_ids"].device
+        model_temp = copy.deepcopy(buffer.model).to(device)
         model_temp.train()
         model_temp.zero_grad()
+        # print(f"model_temp:{next(model_temp.parameters()).device}, q_lst:{q_lst['input_ids'].device}, d_lst:{d_lst['input_ids'].device}")
         loss = model_temp(q_lst, d_lst).loss
         loss.backward()
         with torch.no_grad():
@@ -79,6 +82,7 @@ class MIR_retrieve(object):
             )  # [num_q * (1+ subsample), 768]
 
         buffer.model.eval()
+        buffer.model.to(device)
         model_temp.eval()
         with torch.no_grad():
             if self.params.compatible:
@@ -120,7 +124,11 @@ class MIR_retrieve(object):
                 docids_lst_from_mem,
                 doc_lst_from_mem,
             )  # [num_q, mem_batch_size], cpu; [num_q, mem_batch_size, doc_len], gpu
-        return doc_lst_from_mem  # [num_q, mem_batch_size, doc_len], gpu
+        # print(f"num_retrieve: {num_retrieve}, docids_lst_from_mem: {len(docids_lst_from_mem)}")
+        return (
+            docids_lst_from_mem,
+            doc_lst_from_mem,
+        )  # [num_q, mem_batch_size, doc_len], gpu
 
     def get_future_step_parameters(self, model, grad_vector, grad_dims, lr):
         new_model = copy.deepcopy(model)

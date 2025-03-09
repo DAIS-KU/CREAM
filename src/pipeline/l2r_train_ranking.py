@@ -45,7 +45,7 @@ def build_model(model_path=None):
     return model
 
 
-def build_l2r_buffer(new_batch_size, mem_batch_size, compatible):
+def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
     query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     buffer_data = "../data"  # comp시에는 필요
@@ -65,10 +65,14 @@ def build_l2r_buffer(new_batch_size, mem_batch_size, compatible):
             doc_data=doc_data,
             alpha=1.0,
             beta=1.0,
-            mem_batch_size=new_batch_size,
-            new_batch_size=mem_batch_size,
+            new_batch_size=new_batch_size,
+            mem_batch_size=mem_batch_size,
             compatible=compatible,
-            buffer_data=buffer_data,
+            mem_upsample=mem_upsample,
+            mem_size=30,
+            mem_eval_size=10,
+            mem_replace_size=10,
+            upsample_scale=2.0,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -76,7 +80,7 @@ def build_l2r_buffer(new_batch_size, mem_batch_size, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, num_epochs, batch_size=8):
+def session_train(inputs, model, buffer, num_epochs, batch_size=16, compatible=False):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
     print(f"Total inputs #{input_cnt}")
@@ -97,12 +101,14 @@ def session_train(inputs, model, num_epochs, batch_size=8):
             print(f"batch {start_idx}-{end_idx}")
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
-                q_tensors, docs_tensors = inputs[qid]
+                q_tensors, docs_tensors, docid_lst = inputs[qid]
                 output = model(q_tensors, docs_tensors)
-                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
+                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
+                if compatible:
+                    buffer.update_old_embs(docid_lst, output.p_reps)
             q_embs, d_embs = torch.cat(qreps_batch, dim=0), torch.cat(
                 dreps_batch, dim=0
             )
@@ -135,17 +141,17 @@ def train(
     compatible=False,
     new_batch_size=3,
     mem_batch_size=3,
+    mem_upsample=6,
 ):
-    buffer = build_l2r_buffer(new_batch_size, mem_batch_size, compatible)
+    buffer = build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible)
     method = "l2r"
     output_dir = "../data"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        query_path = (
-            f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl"
-        )
+        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
+            session_number,
             query_path,
             doc_path,
             buffer,
@@ -163,10 +169,12 @@ def train(
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
-        loss_values = session_train(inputs, model, num_epochs)
+        loss_values = session_train(
+            inputs, model, buffer, num_epochs, batch_size, compatible
+        )
         torch.save(model.state_dict(), new_model_path)
-        buffer.replace()  # buffer_did2emb, buffer_qid2dids 업데이트
         buffer.save(output_dir)
+        buffer.replace()
 
 
 def evaluate(sesison_count=4):

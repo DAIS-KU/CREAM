@@ -39,6 +39,11 @@ if __name__ == "__main__":
         help="sampling batch size of new documents.",
     )
     parser.add_argument(
+        "--mem_upsample",
+        default=6,
+        help="candidates sampling from memory.",
+    )
+    parser.add_argument(
         "--mem_bz",
         default=3,
         help="sampling batch size of old documents from memory.",
@@ -107,13 +112,14 @@ if __name__ == "__main__":
         )
         mir_evaluate()
     elif args.exp == "l2r":
-        # l2r_train(
-        #     num_epochs=args.num_epochs,
-        #     batch_size=args.batch_size,
-        #     compatible=args.comp,
-        #     new_batch_size=args.new_bz,
-        #     mem_batch_size=args.mem_bz,
-        # )
+        l2r_train(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            compatible=args.comp,
+            new_batch_size=args.new_bz,
+            mem_batch_size=args.mem_bz,
+            mem_upsample=args.mem_upsample,
+        )
         l2r_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

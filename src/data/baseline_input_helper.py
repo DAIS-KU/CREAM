@@ -14,6 +14,7 @@ tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
 def _prepare_inputs(
+    session_number,
     inputs: Tuple[Dict[str, Union[torch.Tensor, Any]], ...],
     buffer,
     cl_method,
@@ -31,10 +32,11 @@ def _prepare_inputs(
         prepared.append(x)
 
     if cl_method == "er":
-        if not compatible:
+        if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
+            # print(f"Before sampling: {docids_lst}")
 
-            mem_passage = buffer.retrieve(
+            mem_docids_lst, mem_passage = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
@@ -62,7 +64,9 @@ def _prepare_inputs(
                     ).reshape(
                         -1, passage_len
                     )  # [num_q*(bz+mem_bz), d_len]
-            prepared.append(docids_lst)  # for updating old emb
+            all_docids_lst = docids_lst + mem_docids_lst
+            # print(f"After sampling: {all_docids_lst}")
+            prepared.append(all_docids_lst)  # for updating old emb
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -118,17 +122,17 @@ def _prepare_inputs(
                 doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
-            prepared.append(docids_lst)  # for updating old emb
+            prepared.append(all_docids_lst)  # for updating old emb
     elif cl_method == "mir":
-        if not compatible:
+        if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_passage = buffer.retrieve(
+            docids_lst_from_mem, mem_passage = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
-                # lr=self._get_learning_rate(),
+                lr=1e-1,  # 5e-1, 1e-1, 1e-2, https://arxiv.org/pdf/1908.04742
             )  # ER: [num_q * mem_bz, d_len], cpu; MIR: [num_q, mem_bz, d_len], gpu
             buffer.update(
                 qid_lst=qid_lst,
@@ -151,7 +155,8 @@ def _prepare_inputs(
                     ).reshape(
                         -1, passage_len
                     )  # [num_q*(bz+mem_bz), d_len]
-            prepared.append(docids_lst)  # for updating old emb
+            all_docids_lst = docids_lst + docids_lst_from_mem
+            prepared.append(all_docids_lst)  # for updating old emb
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -207,9 +212,9 @@ def _prepare_inputs(
                 doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
-            prepared.append(docids_lst)  # for updating old emb
+            prepared.append(all_docids_lst)  # for updating old emb
     elif cl_method == "our" or cl_method == "l2r":
-        if not compatible:
+        if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # print(f"model {next(buffer.model.parameters()).device}, prepared[0] {prepared[0]['input_ids'].device}, prepared[1] {prepared[1]['input_ids'].device}")
 
@@ -383,6 +388,7 @@ def load_inputs(
 
 # https://github.com/caiyinqiong/L-2R/blob/main/run_example.sh
 def prepare_inputs(
+    session_number,
     query_path,
     doc_path,
     buffer,
@@ -396,7 +402,13 @@ def prepare_inputs(
     prepared_inputs = []
     for _input in inputs:
         result = _prepare_inputs(
-            _input, buffer, cl_method, new_batch_size, mem_batch_size, compatible
+            session_number,
+            _input,
+            buffer,
+            cl_method,
+            new_batch_size,
+            mem_batch_size,
+            compatible,
         )
         prepared_inputs.append(result)
     # print(f"prepared_inputs {type(prepared_inputs)}, {type(prepared_inputs[0])}, {len(prepared_inputs)}, {len(prepared_inputs[0])}")

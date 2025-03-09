@@ -80,6 +80,7 @@ class L2R_retrieve(object):
         buffer_len = min([len(buffer.buffer_qid2dids[qid]) for qid in qid_lst])
         mem_upsample = min(self.mem_upsample, buffer_len)
         mem_bz = min(mem_upsample, self.mem_bz)
+        # print(f"buffer_len:{buffer_len}, mem_upsample:{mem_upsample}/{self.mem_upsample}, mem_bz: {mem_bz}/{self.mem_bz}")
         if mem_upsample > 0 and mem_bz > 0:
             mem_upsample_docids_lst = []
             for i, qid in enumerate(qid_lst):

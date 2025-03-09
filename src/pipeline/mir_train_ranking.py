@@ -62,6 +62,8 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
+            mem_size=30,
+            subsample=30,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -140,6 +142,7 @@ def train(
         query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
+            session_number,
             query_path,
             doc_path,
             buffer,
