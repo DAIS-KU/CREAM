@@ -153,7 +153,7 @@ def train(
         )
 
         model = build_model()
-        model.to(devices[0])
+        model.to(devices[2])
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
             print(f"Load model {model_path}")

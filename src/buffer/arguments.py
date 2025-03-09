@@ -66,7 +66,7 @@ class DataArguments:
     doc_data: str = field(
         default=None
     )  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
-    mem_size: int = field(default=0) 
+    mem_size: int = field(default=0)
     mem_batch_size: int = field(default=0)
     cl_method: str = field(default=None)
     retrieve_method: str = field(default="random")
