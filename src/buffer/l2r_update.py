@@ -19,7 +19,7 @@ class L2RUpdate(object):
         self.mem_replace_size = params.mem_replace_size
         self.upsample_scale = params.upsample_scale
 
-        self.ç = collections.defaultdict(set)
+        self.candidate_neg_docids = collections.defaultdict(set)
 
     def update(self, buffer, qid_lst, docids_lst, **kwargs):
         candidate_neg_docids = kwargs["candidate_neg_docids"]

@@ -76,16 +76,20 @@ class MIR_retrieve(object):
                 if docid in buffer.buffer_did2emb:
                     identity.append(i)
                     doc_emb_from_mem.append(buffer.buffer_did2emb[docid])
-            identity = torch.tensor(identity)
-            doc_emb_from_mem = torch.tensor(
-                np.array(doc_emb_from_mem), device=self.train_params.device
-            )  # [num_q * (1+ subsample), 768]
+            # identity = torch.tensor(identity)
+            doc_emb_from_mem = torch.stack(doc_emb_from_mem).to(
+                self.train_params.device
+            )
+            # doc_emb_from_mem = torch.tensor(
+            #     np.array(doc_emb_from_mem), device=self.train_params.device
+            # )  # [num_q * (1+ subsample), 768]
 
         buffer.model.eval()
         buffer.model.to(device)
         model_temp.eval()
         with torch.no_grad():
             if self.params.compatible:
+                # print(f"identity: {type(identity)}, doc_emb_from_mem:{doc_emb_from_mem.shape}")
                 res_pre = buffer.model.forward(
                     q_lst, doc_lst, identity, doc_emb_from_mem
                 )  # 更新前的模型, 返回的emb中已经替换成old emb

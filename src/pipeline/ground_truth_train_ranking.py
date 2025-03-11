@@ -6,7 +6,6 @@ from functions import (
     InfoNCELoss,
     show_loss,
     get_top_k_documents,
-    write_file,
     evaluate_dataset,
 )
 from data import read_jsonl, read_jsonl_as_dict, renew_data, write_file

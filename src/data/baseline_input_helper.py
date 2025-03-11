@@ -5,6 +5,8 @@ import random
 import numpy as np
 
 from .loader import read_jsonl, read_jsonl_as_dict
+from rank_bm25 import BM25Okapi
+from nltk.tokenize import word_tokenize
 
 max_q_len: int = 32
 max_p_len: int = 128
@@ -76,7 +78,7 @@ def _prepare_inputs(
                 q_lst=prepared[0],
                 d_lst=prepared[1],
                 # lr=self._get_learning_rate(),
-            )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
+            )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
             buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
@@ -85,6 +87,7 @@ def _prepare_inputs(
             )
 
             if mem_passage is not None:
+                # print(f"mem_docids_lst: {mem_docids_lst}, mem_passage:{mem_passage}")
                 for key, val in mem_passage.items():
                     passage_len = val.size(-1)
                     prepared[1][key] = prepared[1][key].reshape(
@@ -98,8 +101,10 @@ def _prepare_inputs(
                     ).reshape(
                         -1, passage_len
                     )  # [num_q*(bz+mem_bz), d_len]
-
-                docids_lst = torch.tensor(docids_lst).reshape(
+                # docids_lst = torch.tensor(docids_lst).reshape(
+                docids_lst = torch.stack(
+                    [torch.tensor(docid) for docid in docids_lst]
+                ).reshape(
                     len(qid_lst), -1
                 )  # [num_q, n]
                 mem_docids_lst = mem_docids_lst.reshape(
@@ -118,8 +123,12 @@ def _prepare_inputs(
                     if docids in buffer.buffer_did2emb:
                         identity.append(i)
                         doc_oldemb.append(buffer.buffer_did2emb[docids])
-                identity = torch.tensor(identity)
-                doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
+                print(
+                    f"all_docids_lst: {all_docids_lst}, identity:{len(identity)}, buffer.buffer_did2emb:{len(buffer.buffer_did2emb.keys())}"
+                )
+                # identity =torch.tensor(identity)
+                doc_oldemb = torch.stack(doc_oldemb).to(device)
+                # doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
@@ -157,6 +166,7 @@ def _prepare_inputs(
                     )  # [num_q*(bz+mem_bz), d_len]
             all_docids_lst = docids_lst + docids_lst_from_mem
             prepared.append(all_docids_lst)  # for updating old emb
+            # print(f"prepared: {len(prepared)}, {len(prepared[0])}")
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
@@ -165,8 +175,8 @@ def _prepare_inputs(
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
-                # lr=self._get_learning_rate(),
-            )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
+                lr=1e-1,  # 5e-1, 1e-1, 1e-2, https://arxiv.org/pdf/1908.04742
+            )  # ER:[num_q * mem_bz],cpu, [num_q * mem_bz, d_len], cpu; MIR: [num_q, mem_bz],cpu, [num_q, mem_bz, d_len], gpu
             buffer.update(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
@@ -208,11 +218,13 @@ def _prepare_inputs(
                     if docids in buffer.buffer_did2emb:
                         identity.append(i)
                         doc_oldemb.append(buffer.buffer_did2emb[docids])
-                identity = torch.tensor(identity)
-                doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
+                # identity = torch.tensor(identity)
+                doc_oldemb = torch.stack(doc_oldemb).to(device)
+                # doc_oldemb = torch.tensor(np.array(doc_oldemb), device=device)
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
+            # print(f"prepared: {len(prepared)}, {len(prepared[0])}")
     elif cl_method == "our" or cl_method == "l2r":
         if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -339,8 +351,23 @@ def collate(features):
     return qq_id, dd_id, q_collated, d_collated
 
 
+def build_bm25(docs):
+    tokenized_corpus = [word_tokenize(doc["text"].lower()) for doc in docs]
+    bm25 = BM25Okapi(tokenized_corpus)
+    return bm25
+
+
+def get_candidates(session_number, bm25, query, doc_ids):
+    k = 60 if session_number == 0 else 25
+    tokenized_query = word_tokenize(query.lower())
+    scores = bm25.get_scores(tokenized_query)
+    top_k_indices = np.argsort(scores)[-k:]
+    top_k_doc_ids = [doc_ids[i] for i in top_k_indices]
+    return top_k_doc_ids
+
+
 def getitem(
-    query, docs, train_n_passages=8
+    session_number, query, docs, filtered=False, bm25=None, train_n_passages=8
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
     qry_id = query["qid"]
     qry = query["query"]
@@ -355,9 +382,12 @@ def getitem(
     encoded_passages.append(create_one_example(pos_psg))
 
     negative_size = train_n_passages - 1
-    doc_keys = list(docs.keys())
-    valid_neg_keys = list(set(doc_keys) - set(query["answer_pids"]))
-    neg_ids = random.sample(valid_neg_keys, negative_size)
+    doc_ids = list(docs.keys())
+    if filtered:
+        neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
+    else:
+        valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
+        neg_ids = random.sample(valid_neg_ids, negative_size)
 
     for neg_id in neg_ids:
         psg_ids.append(neg_id)
@@ -366,20 +396,24 @@ def getitem(
 
 
 def load_inputs(
+    session_number,
     query_path,
     doc_path,
-    answer_doc_path=f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl",
+    compatible,
+    filtered=False,
 ):
-    queries = read_jsonl(query_path)
+    queries = read_jsonl(query_path, True, compatible)
     random.shuffle(queries)
-    docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+    docs = read_jsonl_as_dict(doc_path, "doc_id", compatible)
+    answer_doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     if doc_path != answer_doc_path:
         answer_pids = {pid for q in queries for pid in q["answer_pids"]}
-        answer_docs = read_jsonl_as_dict(answer_doc_path, id_field="doc_id")
+        answer_docs = read_jsonl_as_dict(answer_doc_path, "doc_id", compatible)
         docs = {pid: answer_docs[pid] for pid in answer_pids if pid in answer_docs}
+    bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:
-        features = getitem(query, docs)
+        features = getitem(session_number, query, docs, filtered, bm25)
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")
@@ -398,7 +432,8 @@ def prepare_inputs(
     compatible=False,
 ):
     print(f"Visit cl_method {cl_method}, compatible {compatible}")
-    inputs = load_inputs(query_path, doc_path)
+    filtered = cl_method == "l2r"
+    inputs = load_inputs(session_number, query_path, doc_path, compatible, filtered)
     prepared_inputs = []
     for _input in inputs:
         result = _prepare_inputs(

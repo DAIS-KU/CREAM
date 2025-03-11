@@ -34,11 +34,11 @@ class Random_retrieve(object):
             return_tensors="pt",
         )
 
-        # if self.params.compatible:
-        #     return (
-        #         torch.tensor(docids_lst_from_mem),
-        #         doc_lst_from_mem,
-        #     )  # [num_q * mem_batch_size], cpu; [num_q * mem_batch_size, doc_len], cpu
+        if self.params.compatible:
+            return (
+                torch.tensor(docids_lst_from_mem),
+                doc_lst_from_mem,
+            )  # [num_q * mem_batch_size], cpu; [num_q * mem_batch_size, doc_len], cpu
 
         return (
             docids_lst_from_mem,

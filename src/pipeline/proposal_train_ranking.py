@@ -62,7 +62,7 @@ def session_train(
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    queries = read_jsonl(query_path)
+    queries = read_jsonl(query_path, True)
     random.shuffle(queries)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     query_cnt = len(queries)
@@ -150,7 +150,7 @@ def train(
 
         # 새로운 세션 문서
         doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
-        doc_data = read_jsonl(doc_path)
+        doc_data = read_jsonl(doc_path, False)
         _, current_session_data = renew_data(
             queries=None,
             documents=doc_data,
@@ -250,8 +250,8 @@ def evaluate_with_cluster(
     )
     eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
 
-    eval_query_data = read_jsonl(eval_query_path)
-    eval_doc_data = read_jsonl(eval_doc_path)
+    eval_query_data = read_jsonl(eval_query_path, True)
+    eval_doc_data = read_jsonl(eval_doc_path, False)
 
     eval_query_count = len(eval_query_data)
     eval_doc_count = len(eval_doc_data)
@@ -298,8 +298,8 @@ def evaluate_without_cluster(session_number, model_path):
     )
     eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
 
-    eval_query_data = read_jsonl(eval_query_path)
-    eval_doc_data = read_jsonl(eval_doc_path)
+    eval_query_data = read_jsonl(eval_query_path, True)
+    eval_doc_data = read_jsonl(eval_doc_path, False)
 
     eval_query_count = len(eval_query_data)
     eval_doc_count = len(eval_doc_data)

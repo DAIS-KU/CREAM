@@ -9,6 +9,7 @@ from .l2r_update import L2RUpdate
 
 
 from .arguments import DataArguments, TevatronTrainingArguments
+from functions import convert_str_id_to_number_id
 
 import torch
 import pickle
@@ -49,6 +50,7 @@ class Buffer(torch.nn.Module):
         )  # 目前已经过了多少个样本了, 只有er需要
         self.buffer_qid2dids = collections.defaultdict(list)
         self.buffer_did2emb = collections.defaultdict(None)
+        self.compatible = params.compatible
 
         if self.params.update_method == "gss":
             buffer_score = None
@@ -101,8 +103,12 @@ class Buffer(torch.nn.Module):
             for line in f:
                 data = json.loads(line)
                 if is_query:
+                    if self.compatible:
+                        data["qid"] = convert_str_id_to_number_id(data["qid"])
                     id2text[data["qid"]] = data["query"]
                 else:
+                    if self.compatible:
+                        data["doc_id"] = convert_str_id_to_number_id(data["doc_id"])
                     id2text[data["doc_id"]] = (
                         data["title"]
                         + self.params.passage_field_separator
@@ -141,5 +147,7 @@ class Buffer(torch.nn.Module):
         output.close()
 
     def update_old_embs(self, doc_ids, doc_embs):
+        print(f"doc_ids:{len(doc_ids)}, doc_embs:{len(doc_embs)}, {doc_embs[0].shape}")
         for doc_id, doc_emb in zip(doc_ids, doc_embs):
+            print(f"Save {doc_id} {doc_emb.shape}")
             self.buffer_did2emb[doc_id] = doc_emb

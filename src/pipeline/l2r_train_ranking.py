@@ -188,8 +188,8 @@ def evaluate(sesison_count=4):
             f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
         )
 
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+        eval_query_data = read_jsonl(eval_query_path, True)
+        eval_doc_data = read_jsonl(eval_doc_path, False)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)

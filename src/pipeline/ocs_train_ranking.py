@@ -64,7 +64,7 @@ def build_ocs_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
             doc_data=doc_data,
             alpha=1.0,
             beta=1.0,
-            gamma=2.0, #ocs 논문은 1000..
+            gamma=2.0,  # ocs 논문은 1000..
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
