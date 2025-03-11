@@ -3,18 +3,17 @@ from data import read_jsonl, renew_data
 from cluster import kmeans_pp, compute_sse
 
 import torch
-
+import numpy as np
 import time
+import random
 
 
-import time
-
-
-def find_best_k(doc_data, start, end, gap, max_iters, devices):
+def find_best_k(doc_data, max_iters, devices):
     X = list(doc_data.values())
     print(len(X))
     sse, execution_times = [], []
-    k_values = range(start, end + 1, gap)
+    max_k = np.sqrt(len(X) / 2)
+    k_values = [round(k) for k in np.linspace(max_k // 2, max_k, 10)]
     filename = "./find_k.txt"
     with open(filename, "a") as file:
         for _k in k_values:
@@ -32,14 +31,16 @@ def find_best_k(doc_data, start, end, gap, max_iters, devices):
             file.write(result)
 
 
-def find_best_k_experiment(start, end, gap, max_iters):
+def find_best_k_experiment(max_iters):
     doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
-    doc_data = read_jsonl(doc_path)
+    doc_data = read_jsonl(doc_path, False)
+    random.shuffle(doc_data)
+    doc_data = doc_data[:150000]
 
     doc_count = len(doc_data)
-    print(f"Document count:{doc_count}")
+    print(f"Document count:{doc_count}, devices:{devices}")
     _, doc_data = renew_data(
         queries=None,
         documents=doc_data,
@@ -51,4 +52,4 @@ def find_best_k_experiment(start, end, gap, max_iters):
     )
     print(f"doc_data: {len(doc_data)}")
 
-    find_best_k(doc_data, start, end, gap, max_iters, devices)
+    find_best_k(doc_data, max_iters, devices)

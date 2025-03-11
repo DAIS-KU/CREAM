@@ -94,7 +94,7 @@ if __name__ == "__main__":
     elif args.exp == "bm25":
         bm25_evaluate()
     elif args.exp == "find_k":
-        find_best_k_experiment(start=200, end=600, gap=100, max_iters=5)
+        find_best_k_experiment(max_iters=5)
     elif args.exp == "er":
         er_train(
             num_epochs=args.num_epochs,
