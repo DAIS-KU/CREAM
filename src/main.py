@@ -12,6 +12,8 @@ from pipeline import (
     mir_evaluate,
     l2r_train,
     l2r_evaluate,
+    gss_train,
+    gss_evaluate,
 )
 import argparse
 
@@ -89,8 +91,8 @@ if __name__ == "__main__":
     elif args.exp == "rand":
         rand_train()
         rand_evaluate()
-    elif args.exp == "bm25":
-        bm25_evaluate()
+    # elif args.exp == "bm25":
+    #     bm25_evaluate()
     elif args.exp == "find_k":
         find_best_k_experiment(start=200, end=600, gap=100, max_iters=5)
     elif args.exp == "er":
@@ -121,5 +123,15 @@ if __name__ == "__main__":
             mem_upsample=args.mem_upsample,
         )
         l2r_evaluate()
+    elif args.exp == "gss":
+        gss_train(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            compatible=args.comp, # 필요
+            new_batch_size=args.new_bz,
+            mem_batch_size=args.mem_bz,
+            mem_upsample=args.mem_upsample,
+        )
+        gss_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")
