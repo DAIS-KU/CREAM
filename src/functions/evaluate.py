@@ -1,8 +1,9 @@
+import time
 from collections import defaultdict
 from typing import List
 
-import time
 from data import *
+
 from .retriever import get_top_k_documents_by_cosine
 
 

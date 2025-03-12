@@ -1,12 +1,13 @@
-from typing import Dict, List, Tuple, Any, Union
-from transformers import BertTokenizer, BatchEncoding
-import torch
 import random
+from typing import Any, Dict, List, Tuple, Union
+
 import numpy as np
+import torch
+from nltk.tokenize import word_tokenize
+from rank_bm25 import BM25Okapi
+from transformers import BatchEncoding, BertTokenizer
 
 from .loader import read_jsonl, read_jsonl_as_dict
-from rank_bm25 import BM25Okapi
-from nltk.tokenize import word_tokenize
 
 max_q_len: int = 32
 max_p_len: int = 128

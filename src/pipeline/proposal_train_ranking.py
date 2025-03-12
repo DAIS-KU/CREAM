@@ -1,27 +1,21 @@
+import random
+import time
+from typing import List
+
 import torch
 from transformers import BertModel, BertTokenizer
-import random
-from data import (
-    read_jsonl,
-    renew_data,
-    read_jsonl_as_dict,
-    write_line,
-    write_file,
-    stream,
-)
 
-from functions import evaluate_dataset, InfoNCELoss
 from clusters import (
-    RandomProjectionLSH,
     Cluster,
-    initialize,
+    RandomProjectionLSH,
     assign_instance_or_add_cluster,
-    get_samples,
     evict_clusters,
+    get_samples,
+    initialize,
     retrieve_top_k_docs_from_cluster,
 )
-import time
-import random
+from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
+from functions import InfoNCELoss, evaluate_dataset
 
 ts = 0
 
@@ -186,7 +180,7 @@ def train(
         evict_clusters(model, lsh, docs, clusters)
 
 
-def evaluate_with_cluster(session_number, clusters, model_path) -> List[clsuter]:
+def evaluate_with_cluster(session_number, clusters, model_path) -> List[Cluster]:
     queries = read_jsonl(
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl", True
     )

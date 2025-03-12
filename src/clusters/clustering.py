@@ -1,14 +1,15 @@
+import concurrent.futures
+import math
+import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+import torch
+
 from functions.similarities import calculate_S_qd_regl_dict
 
-import torch
-import numpy as np
-from collections import defaultdict
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
-import time
-import math
-
-MAX_SCORE = 999
+MAX_SCORE = 999.0
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -22,7 +23,7 @@ def compute_sse_for_partition(
         print(
             f"{device} | compute_sse_for_partition {k}, #instance {len(cluster_instances[k])}"
         )
-        centroid = centroids[k].to(device, dtype=torch.float16)
+        centroid = centroids[k]
         num_batches = (len(cluster_instances[k]) + batch_size - 1) // batch_size
 
         for batch_idx in range(num_batches):
@@ -88,7 +89,6 @@ def compute_distances_for_partition(args):
             distances_batch = distances_batch**2
             batch_distances.append(distances_batch)
 
-        # 각 데이터 포인트에 대해 최소 거리 계산
         for i in range(batch_embeddings_tensor.shape[0]):
             min_distance = min(
                 [distances_batch[i] for distances_batch in batch_distances]

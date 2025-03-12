@@ -1,6 +1,7 @@
-from .buffer_utils import random_retrieve
-import torch
 import numpy as np
+import torch
+
+from .buffer_utils import random_retrieve
 
 
 class Random_retrieve(object):

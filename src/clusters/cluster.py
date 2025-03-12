@@ -1,8 +1,12 @@
-from prototype import RandomProjectionLSH
-from dataclasses import dataclass
-from functions import calculate_S_qd_regl_batch
 from collections import defaultdict
-from retrieval import get_passage_embeddings
+from dataclasses import dataclass
+from typing import List
+
+import torch
+
+from functions import calculate_S_qd_regl_batch, get_passage_embeddings
+
+from .prototype import RandomProjectionLSH
 
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]

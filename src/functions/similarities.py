@@ -6,8 +6,8 @@ def calculate_S_qd_regl(E_q, E_d, device):
         E_q = torch.stack(E_q, dim=0)
     if isinstance(E_d, list):
         E_d = torch.stack(E_d, dim=0)
-    E_q = E_q.to(device)
-    E_d = E_d.to(device)
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
     E_q_normalized = torch.nn.functional.normalize(E_q, p=2, dim=1)
     E_d_normalized = torch.nn.functional.normalize(E_d, p=2, dim=1)
     cosine_sim_matrix = torch.matmul(E_q_normalized, E_d_normalized.T)
@@ -17,8 +17,8 @@ def calculate_S_qd_regl(E_q, E_d, device):
 
 
 def calculate_S_qd_regl_batch(E_q, E_d, device):
-    E_q = E_q.to(device)
-    E_d = E_d.to(device)
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
     # print(f'calculate_S_qd_regl_batch E_q:{E_q.shape}, E_d:{E_d.shape}')
     E_q_normalized = torch.nn.functional.normalize(E_q, p=2, dim=2)
     E_d_normalized = torch.nn.functional.normalize(E_d, p=2, dim=2)
@@ -38,8 +38,8 @@ def calculate_S_qd_regl_dict(E_q, E_d, device):
         E_q = torch.stack(list(E_q.values()), dim=0)
     if isinstance(E_d, dict):
         E_d = torch.stack(list(E_d.values()), dim=0)
-    E_q = E_q.to(device)
-    E_d = E_d.to(device)
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
     # print(f"E_q: {E_q.shape}, E_d: {E_d.shape}")
     E_q_normalized = torch.nn.functional.normalize(
         E_q, p=2, dim=2

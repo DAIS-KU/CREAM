@@ -1,5 +1,5 @@
-from .prototype import *
 from .cluster import *
 from .clustering import *
+from .encode import *
 from .management import *
-from .retriever import *
+from .prototype import *

@@ -1,10 +1,11 @@
-import torch
-import torch.nn.functional as F
 import collections
 import copy
-import numpy as np
 
-from .buffer_utils import get_grad_vector, cosine_similarity
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from .buffer_utils import cosine_similarity, get_grad_vector
 
 
 # gss retrieval random

@@ -1,8 +1,9 @@
-import torch
-import torch.nn.functional as F
 from concurrent.futures import ThreadPoolExecutor
 
-from functions import calculate_S_qd_regl_batch
+import torch
+import torch.nn.functional as F
+
+from .similarities import calculate_S_qd_regl_batch
 
 device_count = torch.cuda.device_count()
 

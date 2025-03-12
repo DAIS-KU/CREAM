@@ -1,26 +1,22 @@
 import random
+import time
+
 import torch
 from transformers import BertTokenizer
+
+from buffer import (
+    Buffer,
+    DataArguments,
+    DenseModel,
+    ModelArguments,
+    TevatronTrainingArguments,
+)
+from data import prepare_inputs, read_jsonl, write_file
 from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,
     get_top_k_documents_by_cosine,
-)
-
-from data import (
-    read_jsonl,
-    write_file,
-    renew_data,
-    prepare_inputs,
     renew_data_mean_pooling,
-)
-import time
-from buffer import (
-    Buffer,
-    DataArguments,
-    TevatronTrainingArguments,
-    DenseModel,
-    ModelArguments,
 )
 
 torch.autograd.set_detect_anomaly(True)

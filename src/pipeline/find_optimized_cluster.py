@@ -1,11 +1,12 @@
-from functions.utils import draw_elbow
-from data import read_jsonl, renew_data
-from cluster import kmeans_pp, compute_sse
-
-import torch
-import numpy as np
-import time
 import random
+import time
+
+import numpy as np
+import torch
+
+from clusters import compute_sse, kmeans_pp, renew_data
+from data import read_jsonl
+from functions.utils import draw_elbow
 
 
 def find_best_k(doc_data, max_iters, devices):
@@ -18,8 +19,8 @@ def find_best_k(doc_data, max_iters, devices):
     with open(filename, "a") as file:
         for _k in k_values:
             start_time = time.time()
-            centroids, cluster_instances = kmeans_pp(X, _k, max_iters, devices)
-            _sse = compute_sse(centroids, cluster_instances, devices)
+            centroids, cluster_instances = kmeans_pp(X, _k, max_iters)
+            _sse = compute_sse(centroids, cluster_instances)
             sse.append(_sse)
             end_time = time.time()
             execution_time = end_time - start_time
@@ -31,13 +32,15 @@ def find_best_k(doc_data, max_iters, devices):
             file.write(result)
 
 
-def find_best_k_experiment(max_iters):
-    doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+def find_best_k_experiment(max_iters=5, warmingup_rate=0.25):
     num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+
+    doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     doc_data = read_jsonl(doc_path, False)
+    wr_cnt = int(len(doc_data) * warmingup_rate)
     random.shuffle(doc_data)
-    doc_data = doc_data[:150000]
+    doc_data = doc_data[:wr_cnt]
 
     doc_count = len(doc_data)
     print(f"Document count:{doc_count}, devices:{devices}")

@@ -1,8 +1,10 @@
+import copy
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-from .buffer_utils import random_retrieve, get_grad_vector
-import copy
-import numpy as np
+
+from .buffer_utils import get_grad_vector, random_retrieve
 
 
 class MIR_retrieve(object):

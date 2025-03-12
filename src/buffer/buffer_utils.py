@@ -1,8 +1,8 @@
-import torch
-import numpy as np
-from collections import defaultdict
-from collections import Counter
 import random
+from collections import Counter, defaultdict
+
+import numpy as np
+import torch
 
 
 def random_retrieve(buffer_dids, num_retrieve, excl_indices=None, return_indices=False):

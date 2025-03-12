@@ -1,22 +1,20 @@
-from .random_retrieve import Random_retrieve
-from .reservoir_update import Reservoir_update
-from .mir_retrieve import MIR_retrieve
-from .gss_greedy_update import GSSGreedyUpdate
-from .ocs_retrieve import OCS_retrieve
-
-from .l2r_retrieve import L2R_retrieve
-from .l2r_update import L2RUpdate
-
-
-from .arguments import DataArguments, TevatronTrainingArguments
-from functions import convert_str_id_to_number_id
-
-import torch
-import pickle
-import os
 import collections
 import json
+import os
+import pickle
 
+import torch
+
+from functions import convert_str_id_to_number_id
+
+from .arguments import DataArguments, TevatronTrainingArguments
+from .gss_greedy_update import GSSGreedyUpdate
+from .l2r_retrieve import L2R_retrieve
+from .l2r_update import L2RUpdate
+from .mir_retrieve import MIR_retrieve
+from .ocs_retrieve import OCS_retrieve
+from .random_retrieve import Random_retrieve
+from .reservoir_update import Reservoir_update
 
 retrieve_methods = {
     "random": Random_retrieve,

@@ -1,21 +1,18 @@
-from pipeline import (
-    proposal_train,
-    gt_train,
-    gt_evaluate,
-    rand_train,
-    rand_evaluate,
-    find_best_k_experiment,
-    test_buffer,
-    er_train,
-    er_evaluate,
-    mir_train,
-    mir_evaluate,
-    ocs_train,
-    ocs_evaluate,
-    l2r_train,
-    l2r_evaluate,
-)
 import argparse
+
+from pipeline import (
+    er_evaluate,
+    er_train,
+    find_best_k_experiment,
+    l2r_evaluate,
+    l2r_train,
+    mir_evaluate,
+    mir_train,
+    ocs_evaluate,
+    ocs_train,
+    proposal_train,
+    test_buffer,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Example script with arguments")
@@ -71,6 +68,16 @@ if __name__ == "__main__":
         default=3,
         help="number of negative samples.",
     )
+    parser.add_argument(
+        "--mi",
+        default=5,
+        help="max iterss",
+    )
+    parser.add_argument(
+        "--wr",
+        default=0.25,
+        help="warming up rate",
+    )
     args = parser.parse_args()
 
     print(f"Running experiments: {args.exp}")
@@ -85,16 +92,10 @@ if __name__ == "__main__":
             negative_k=args.negative_k,
             eval_cluster=args.eval_cluster,
         )
-    elif args.exp == "gt":
-        gt_train()
-        gt_evaluate()
-    elif args.exp == "rand":
-        rand_train()
-        rand_evaluate()
     elif args.exp == "bm25":
         bm25_evaluate()
     elif args.exp == "find_k":
-        find_best_k_experiment(max_iters=5)
+        find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":
         er_train(
             num_epochs=args.num_epochs,

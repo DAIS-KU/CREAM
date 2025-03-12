@@ -1,8 +1,9 @@
-import torch
 import faiss
 import numpy as np
-from loader import read_jsonl
-from transformers import AutoTokenizer, AutoModel
+import torch
+from transformers import AutoModel, AutoTokenizer
+
+from .loader import read_jsonl, save_jsonl
 
 MODEL_NAME = "bert-base-uncased"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -86,8 +87,10 @@ def multi_stage_faiss_search(
         candidate_vectors = encode_texts(candidate_texts)
         q_batch_idx = q_idx // query_batch_size
         q_inbatch_idx = q_idx % query_batch_size
+        query_tensor = torch.tensor([query_batches[q_batch_idx][q_inbatch_idx]])
+        # print(f"query_batches[q_batch_idx] {query_batches[q_batch_idx].shape}, query_batches[q_batch_idx][q_inbatch_idx]: {query_batches[q_batch_idx][q_inbatch_idx].shape}, query_tensor:{query_tensor.shape}")
         top_k_result = faiss_search(
-            [query_batches[q_batch_idx][q_inbatch_idx]],
+            query_tensor,
             candidate_vectors,
             unique_ids,
             top_k,
@@ -108,7 +111,7 @@ def add_cosine_topk_answer():
     print(f"Query count:{query_count}, Document count:{doc_count}")
 
     final_top_k_ids = multi_stage_faiss_search(queries, documents)
-    for i in len(queries):
+    for i in range(len(queries)):
         queries[i]["cos_ans_pids"] = final_top_k_ids[i]
     save_jsonl(queries, "/mnt/DAIS_NAS/huijeong/train_session0_queries_cos.jsonl")
 

@@ -1,7 +1,10 @@
-from clusters import Cluster
-from management import kmeans_pp
+from typing import List
+
 from data import Stream
-from prototype import RandomProjectionLSH
+
+from .cluster import Cluster
+from .clustering import kmeans_pp
+from .prototype import RandomProjectionLSH
 
 
 def initialize(stream: Stream, k, nbits, max_iters=5) -> List[Cluster]:
@@ -89,3 +92,13 @@ def evict_clusters(model, lsh, docs, clusters: List[Cluster]) -> List[Cluster]:
     clusters = [clusters[i] for i in range(len(clusters)) if masks[i]]
     print(f"evict_cluster_instances finished. (left #{len(clusters)})")
     return clusters
+
+
+def retrieve_top_k_docs_from_cluster(model, queries, clusters, docs, k=10):
+    result = {}
+    for query in queries:
+        closest_cluster_id = find_k_closest_cluster(model, query["query"], clusters, 1)
+        closest_cluster = clusters[closest_cluster_id]
+        top_k_doc_ids = closest_cluster.get_topk_docids(model, query, docs, k)
+        {query["qid"]: top_k_doc_ids}
+    return result

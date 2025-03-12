@@ -1,14 +1,16 @@
+import collections
+import copy
+
+import numpy as np
 import torch
 import torch.nn.functional as F
+
 from .buffer_utils import (
-    random_retrieve,
-    get_grad_vector,
     cosine_similarity,
     cosine_similarity_3d,
+    get_grad_vector,
+    random_retrieve,
 )
-import copy
-import numpy as np
-import collections
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/buffer/our_retrieve_emb_cosine.py#L9

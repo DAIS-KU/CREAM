@@ -1,9 +1,11 @@
+import collections
+import copy
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-from .buffer_utils import random_retrieve, get_grad_vector, cosine_similarity
-import copy
-import numpy as np
-import collections
+
+from .buffer_utils import cosine_similarity, get_grad_vector, random_retrieve
 
 
 class OCS_retrieve(object):

@@ -1,5 +1,6 @@
 import random
-from loader import read_jsonl
+
+from .loader import read_jsonl
 
 
 class Stream:

@@ -1,14 +1,16 @@
+from collections import defaultdict
+from typing import List
+
 import torch
+from transformers import BertModel, BertTokenizer, Trainer
+
 from buffer import (
     Buffer,
     DataArguments,
-    TevatronTrainingArguments,
     DenseModel,
     ModelArguments,
+    TevatronTrainingArguments,
 )
-from transformers import BertTokenizer, BertModel, Trainer
-from collections import defaultdict
-from typing import List
 
 query_data = "../data/test_buffer_query.jsonl"
 doc_data = "../data/test_buffer_doc.jsonl"
