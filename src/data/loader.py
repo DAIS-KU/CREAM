@@ -75,8 +75,8 @@ def sample_data(data, percentage):
     return random.sample(data, sample_size)
 
 
-def save_jsonl(data, file_name):
-    with open(file_name, "w", encoding="utf-8") as file:
+def save_jsonl(data, file_name, mode="w"):
+    with open(file_name, mode, encoding="utf-8") as file:
         for item in data:
             file.write(json.dumps(item, ensure_ascii=False) + "\n")
 

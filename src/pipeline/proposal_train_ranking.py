@@ -17,8 +17,6 @@ from clusters import (
 from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import InfoNCELoss, evaluate_dataset
 
-ts = 0
-
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
@@ -40,9 +38,9 @@ def encode_texts(model, texts, max_length=256):
 
 
 def streaming_train(
+    ts,
     stream: Stream,
     clusters: List[Cluster],
-    docs,
     model,
     lsh: RandomProjectionLSH,
     num_epochs,
@@ -80,8 +78,8 @@ def streaming_train(
                 if use_label:
                     pos_docs = random.sample(query["answer_pids"], 1)[0]
                 else:
-                    pos_docs = [docs[_id]["text"] for _id in positive_ids]
-                neg_docs = [docs[_id]["text"] for _id in negative_ids]
+                    pos_docs = [stream.docs[_id]["text"] for _id in positive_ids]
+                neg_docs = [stream.docs[_id]["text"] for _id in negative_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
@@ -122,7 +120,7 @@ def streaming_train(
             f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
         )
         ts += 1
-    return loss_values
+    return loss_values, ts
 
 
 def train(
@@ -130,18 +128,17 @@ def train(
     num_epochs=2,
     batch_size=32,
     use_label=False,
-    warmingup_rate=0.2,
+    warmingup_rate=0.001,
     negative_k=3,
-    k=100,
+    k=30,
     nbits=16,
 ):
+    ts = 0
     total_loss_values = []
     loss_values_path = "../data/loss/total_loss_values_proposal.text"
 
     random_vectors = torch.randn(nbits, 768)
-    lsh = RandomProjectionLSH(
-        random_vectors=random_vectors, embedding_dim=embedding_dim
-    )
+    lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
         stream = Stream(
@@ -152,15 +149,6 @@ def train(
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
-        # Initial
-        if session_number == 0:
-            start_time = time.time()
-            clusters = initialize(stream, k, nbits)
-            end_time = time.time()
-            print(
-                f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
-            )
-
         model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
         if session_number != 0:
             model_path = f"../data/model/proposal_session_{session_number-1}.pth"
@@ -168,16 +156,24 @@ def train(
         model.train()
         new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
+        # Initial
+        if session_number == 0:
+            start_time = time.time()
+            clusters = initialize(model, stream, k, nbits)
+            end_time = time.time()
+            print(
+                f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
+            )
         # Increment
-        loss_values = streaming_train(stream, clusters, docs, model, lsh, num_epochs)
+        loss_values, ts = streaming_train(ts, stream, clusters, model, lsh, num_epochs)
         write_line(
             loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
         )
         torch.save(model.state_dict(), new_model_path)
-
+        # Evaluate
         clusters = evaluate_with_cluster(session_number, clusters, new_model_path)
         # Evict
-        evict_clusters(model, lsh, docs, clusters)
+        evict_clusters(model, lsh, stream.docs, clusters)
 
 
 def evaluate_with_cluster(session_number, clusters, model_path) -> List[Cluster]:
@@ -195,9 +191,7 @@ def evaluate_with_cluster(session_number, clusters, model_path) -> List[Cluster]
     model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
     model.load_state_dict(torch.load(model_path))
     model.eval()
-    lsh = RandomProjectionLSH(
-        random_vectors=random_vectors, embedding_dim=embedding_dim
-    )
+    lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
     assign_instance_or_add_cluster(model, lsh, clusters, stream_docs, ts)
 
     # Retrieve

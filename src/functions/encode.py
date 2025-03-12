@@ -7,6 +7,7 @@ tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
 def get_passage_embeddings(model, passages, device, max_length=256):
+    model.to(device)
     batch_inputs = tokenizer(
         passages,
         return_tensors="pt",

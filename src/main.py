@@ -59,11 +59,6 @@ if __name__ == "__main__":
         help="when it is, use labeled positives. or use sampled positives.",
     )
     parser.add_argument(
-        "--eval_cluster",
-        action="store_true",
-        help="when it is, evaluate model with clusters every each session.",
-    )
-    parser.add_argument(
         "--negative_k",
         default=3,
         help="number of negative samples.",
@@ -75,7 +70,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--wr",
-        default=0.25,
+        default=0.2,
         help="warming up rate",
     )
     args = parser.parse_args()
@@ -83,14 +78,12 @@ if __name__ == "__main__":
     print(f"Running experiments: {args.exp}")
     if args.exp == "proposal":
         print(f"Use Label: {args.use_label}")
-        print(f"Evaluate Cluster: {args.eval_cluster}")
         print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
             use_label=args.use_label,
             negative_k=args.negative_k,
-            eval_cluster=args.eval_cluster,
         )
     elif args.exp == "bm25":
         bm25_evaluate()

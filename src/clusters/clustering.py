@@ -9,7 +9,7 @@ import torch
 
 from functions.similarities import calculate_S_qd_regl_dict
 
-MAX_SCORE = 999.0
+MAX_SCORE = 256.0
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -39,6 +39,9 @@ def compute_sse_for_partition(
             )
             distances = MAX_SCORE - calculate_S_qd_regl_dict(
                 batch_embeddings_tensor, centroid, device
+            )
+            print(
+                f"compute_sse_for_partition | batch_embeddings_tensor: {batch_embeddings_tensor.shape}, distances:{distances.shape}"
             )
             distances = distances**2
             sse += torch.sum(distances).item()
@@ -86,6 +89,9 @@ def compute_distances_for_partition(args):
             distances_batch = MAX_SCORE - calculate_S_qd_regl_dict(
                 batch_embeddings_tensor, centroid, device
             )  # (batch_size,)
+            print(
+                f"compute_distances_for_partition | batch_embeddings_tensor:{batch_embeddings_tensor.shape}, distances_batch:{distances_batch.shape}"
+            )
             distances_batch = distances_batch**2
             batch_distances.append(distances_batch)
 
@@ -130,6 +136,7 @@ def get_closest_clusters(args):
                 distances = (
                     MAX_SCORE - calculate_S_qd_regl_dict(batch_tensor, centroid, device)
                 ) ** 2
+                # print(f"get_closest_clusters | batch_tensor: {batch_tensor.shape}, distances:{distances.shape}")
                 batch_clusters.append(distances)  # (batch_size,)
             distances_tensor = torch.stack(batch_clusters, dim=1)  # (batch, k)
             closest_batch_clusters = torch.argmin(distances_tensor, dim=1)  # (batch,)

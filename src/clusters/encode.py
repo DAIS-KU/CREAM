@@ -40,7 +40,7 @@ def _renew_queries_with_text(
         query_decoded_texts.extend(query_batch_decoded_texts)
 
     new_q_data = {
-        qid: {"ID": qid, "TEXT": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        qid: {"qid": qid, "query": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
         for qid, text, maps, emb in zip(
             query_ids, query_decoded_texts, query_hashes, query_embeddings
         )
@@ -65,7 +65,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=
             query_hashes.append(lsh.encode(query_batch_embedding))
 
     new_q_data = {
-        qid: {"ID": qid, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        qid: {"qid": qid, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
         for qid, maps, emb in zip(query_ids, query_hashes, query_embeddings)
     }
     del query_ids, query_embeddings, query_hashes
@@ -91,7 +91,7 @@ def _renew_docs_with_text(
         document_decoded_texts.extend(doc_batch_decoded_texts)
 
     new_d_data = {
-        doc_id: {"ID": doc_id, "TEXT": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        doc_id: {"doc_id": doc_id, "text": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
         for doc_id, text, maps, emb in zip(
             document_ids, document_decoded_texts, document_hashes, document_embeddings
         )
@@ -116,7 +116,7 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=1024, max_length=
             document_hashes.append(lsh.encode(doc_batch_embedding))
 
     new_d_data = {
-        doc_id: {"ID": doc_id, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
+        doc_id: {"doc_id": doc_id, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
         for doc_id, maps, emb in zip(document_ids, document_hashes, document_embeddings)
     }
     del document_ids, document_embeddings, document_hashes
