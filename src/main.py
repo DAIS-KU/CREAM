@@ -59,8 +59,13 @@ if __name__ == "__main__":
         help="when it is, use labeled positives. or use sampled positives.",
     )
     parser.add_argument(
+        "--use_weight",
+        action="store_true",
+        help="apply time-decayed weight.",
+    )
+    parser.add_argument(
         "--negative_k",
-        default=3,
+        default=6,
         help="number of negative samples.",
     )
     parser.add_argument(
@@ -78,12 +83,14 @@ if __name__ == "__main__":
     print(f"Running experiments: {args.exp}")
     if args.exp == "proposal":
         print(f"Use Label: {args.use_label}")
-        print(f"Number of Epochs: {args.num_epochs}")
+        print(f"Use Weight: {args.use_weight}")
+        # print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
-            use_label=args.use_label,
             negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
         )
     elif args.exp == "bm25":
         bm25_evaluate()

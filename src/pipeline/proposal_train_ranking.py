@@ -10,7 +10,7 @@ from clusters import (
     RandomProjectionLSH,
     assign_instance_or_add_cluster,
     evict_clusters,
-    get_samples,
+    get_samples_and_weights,
     initialize,
     retrieve_top_k_docs_from_cluster,
 )
@@ -45,10 +45,11 @@ def streaming_train(
     lsh: RandomProjectionLSH,
     num_epochs,
     positive_k=1,
-    negative_k=3,
+    negative_k=6,
     learning_rate=2e-5,
     batch_size=32,
     use_label=False,
+    use_weight=False,
 ):
     stream_size = stream.get_stream_size()
 
@@ -69,26 +70,40 @@ def streaming_train(
 
             for idx in range(start_idx, end_idx):
                 query, stream_docs = stream.get_stream(idx)
+                print(f"{idx}th stream(#{len(stream_docs)})")
                 # Assign
-                assign_instance_or_add_cluster(model, lsh, clusters, stream_docs, ts)
+                assign_instance_or_add_cluster(
+                    model, lsh, clusters, stream_docs, stream.docs, ts
+                )
                 # Sampling
-                positive_ids, negative_ids = get_samples(
-                    model, query, clusters, positive_k, negative_k
+                pos_ids, pos_weights, neg_ids, neg_weights = get_samples_and_weights(
+                    model, query, stream.docs, clusters, positive_k, negative_k, ts
                 )
                 if use_label:
                     pos_docs = random.sample(query["answer_pids"], 1)[0]
                 else:
-                    pos_docs = [stream.docs[_id]["text"] for _id in positive_ids]
-                neg_docs = [stream.docs[_id]["text"] for _id in negative_ids]
+                    pos_docs = [stream.docs[_id]["text"] for _id in pos_ids]
+                neg_docs = [stream.docs[_id]["text"] for _id in neg_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
                     model=model, texts=pos_docs
                 )  # (positive_k, embedding_dim)
+                if use_weight:
+                    pos_weights = torch.tensor(pos_weights).unsqueeze(
+                        1
+                    )  # (positive_k, 1)
+                    pos_embeddings = pos_embeddings * pos_weights
                 pos_docs_batch.append(pos_embeddings)
+
                 neg_embeddings = encode_texts(
                     model=model, texts=neg_docs
                 )  # (negative_k, embedding_dim)
+                if use_weight:
+                    neg_weights = torch.tensor(neg_weights).unsqueeze(
+                        1
+                    )  # (negative_k, 1)
+                    neg_embeddings = neg_embeddings * neg_weights
                 neg_docs_batch.append(neg_embeddings)
 
             query_embeddings = encode_texts(
@@ -109,29 +124,29 @@ def streaming_train(
 
             total_loss += loss.item()
             loss_values.append(loss.item())  # loss.item()
-            print(
-                f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / ((end_idx + 1) // batch_size):.4f}"
-            )
             batch_cnt += 1
+            print(
+                f"Processed {end_idx}/{stream_size} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / batch_cnt:.4f}"
+            )
         end_time = time.time()
         execution_time = end_time - start_time
         total_sec += execution_time
         print(
             f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
         )
-        ts += 1
     return loss_values, ts
 
 
 def train(
-    sesison_count=1,
-    num_epochs=2,
+    sesison_count=4,
+    num_epochs=1,
     batch_size=32,
+    warmingup_rate=0.2,
+    negative_k=6,
+    k=103,
+    nbits=6,
     use_label=False,
-    warmingup_rate=0.001,
-    negative_k=3,
-    k=30,
-    nbits=16,
+    use_weight=False,
 ):
     ts = 0
     total_loss_values = []
@@ -139,6 +154,7 @@ def train(
 
     random_vectors = torch.randn(nbits, 768)
     lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
+    prev_docs = None
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
         stream = Stream(
@@ -146,13 +162,14 @@ def train(
             f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl",
             f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl",
             warmingup_rate,
+            prev_docs,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
         model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
         if session_number != 0:
             model_path = f"../data/model/proposal_session_{session_number-1}.pth"
-            model.load_state_dict(torch.load(model_path))
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
@@ -171,32 +188,51 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         # Evaluate
-        clusters = evaluate_with_cluster(session_number, clusters, new_model_path)
+        clusters = evaluate_with_cluster(
+            session_number, stream.docs, clusters, new_model_path, ts
+        )
         # Evict
-        evict_clusters(model, lsh, stream.docs, clusters)
+        evict_clusters(model, lsh, stream.docs, clusters, ts)
+        # Pass
+        prev_docs = stream.docs
+        ts += 1
 
 
-def evaluate_with_cluster(session_number, clusters, model_path) -> List[Cluster]:
-    queries = read_jsonl(
-        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl", True
+def evaluate_with_cluster(
+    session_number, docs: dict, clusters: List[Cluster], model_path, ts, nbits=16
+) -> List[Cluster]:
+    eval_query_path = (
+        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
     )
-    docs = read_jsonl(
-        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl", False
+    eval_queries = read_jsonl(eval_query_path, True)
+    eval_docs = read_jsonl_as_dict(
+        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl", "doc_id"
     )
+    eval_query_count, eval_doc_count = len(eval_queries), len(eval_docs)
     print(
-        f"Evaluate session {session_number} | #Query:{len(queries)}, #Document:{len(docs)}"
+        f"Evaluate session {session_number} | #Query:{eval_query_count}, #Document:{eval_doc_count}"
     )
+    docs.update(eval_docs)
+    start_time = time.time()
 
     # Assign
     model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
+    random_vectors = torch.randn(nbits, 768)
     lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
-    assign_instance_or_add_cluster(model, lsh, clusters, stream_docs, ts)
+    stream_docs = list(eval_docs.values())[:3]
+    assign_instance_or_add_cluster(
+        model=model,
+        lsh=lsh,
+        clusters=clusters,
+        stream_docs=stream_docs,
+        docs=docs,
+        ts=ts,
+    )
 
     # Retrieve
-    start_time = time.time()
-    result = retrieve_top_k_docs_from_cluster(model, queries, clusters, docs, 10)
+    result = retrieve_top_k_docs_from_cluster(model, eval_queries, clusters, docs, 10)
     end_time = time.time()
     print(f"Spend {end_time-start_time} seconds for retrieval.")
 

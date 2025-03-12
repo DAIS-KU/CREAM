@@ -39,16 +39,22 @@ def find_k_closest_cluster(model, text, clusters: List[Cluster], k) -> List[int]
             calculate_S_qd_regl_dict(token_embs, cluster.prototype, devices[-1])
         )
     sorted_distances, sorted_indices = torch.sort(
-        torch.stack(distances).squeeze(), descending=False
+        torch.stack(distances).squeeze(), descending=True
     )
     return sorted_indices[:k].tolist()
 
 
 def assign_instance_or_add_cluster(
-    model, lsh: RandomProjectionLSH, clusters: List[Cluster], docs, ts
+    model,
+    lsh: RandomProjectionLSH,
+    clusters: List[Cluster],
+    stream_docs,
+    docs: dict,
+    ts,
 ):
     print("assign_instance_or_add_cluster started.")
-    for i, doc in enumerate(docs):
+    for i, doc in enumerate(stream_docs):
+        print(f"- {i}th stream doc.")
         closest_cluster_id = find_k_closest_cluster(model, doc["text"], clusters, 1)[0]
         closest_clsuter = clusters[closest_cluster_id]
         doc_embs = get_passage_embeddings(model, doc["text"], devices[-1]).squeeze()
@@ -57,58 +63,67 @@ def assign_instance_or_add_cluster(
         # 2개 이상부터 RMS이내인지 학인, 아니면 새로운 centroid으로 할당
         s1, s2, n = closest_clsuter.get_statistics()
         doc_hash = lsh.encode(doc_embs)
-        if (
-            n == 1
-            or closest_clsuter.get_distance(doc_embs) <= closest_clsuter.get_boundary()
-        ):
+        closest_distance = closest_clsuter.get_distance(doc_embs)
+        closest_boundary = closest_clsuter.get_boundary()
+
+        if n == 1 or closest_distance <= closest_boundary:
             closest_clsuter.assign(doc["doc_id"], doc_embs, doc_hash, ts)
         else:
-            clusters.append(Cluster(doc_hash, [doc], ts))
+            clusters.append(Cluster(model, doc_hash, [doc], docs, ts))
     print("assign_instance_or_add_cluster finished.")
     return clusters
 
 
-def get_samples(model, query, clusters, positive_k, negative_k):
+def get_samples_and_weights(
+    model, query, docs: dict, clusters, positive_k, negative_k, ts
+):
     cluster_ids = find_k_closest_cluster(
         model, query["query"], clusters, positive_k + negative_k
     )
-    positive_id = sorted_indices[0]
-    negative_ids = sorted_indices[1:]
+    positive_id = cluster_ids[0]
+    negative_ids = cluster_ids[1:]
     print(f"positive_id:{positive_id} | negative_ids:{negative_ids}")
 
-    positive_samples = []
-    pos_docs = clusters[positive_id].get_topk_docids(query, docs, 1)
+    positive_cluster = clusters[positive_id]
+    positive_samples = positive_cluster.get_topk_docids(model, query, docs, 1)
+    positive_weights = [positive_cluster.get_weight(ts)]
 
-    negative_samples = []
+    negative_samples, negative_weights = [], []
     for neg_id in negative_ids:
-        neg_docs = clusters[neg_id].get_topk_docids(query, docs, 1)
+        negative_cluster = clusters[neg_id]
+        neg_docs = negative_cluster.get_topk_docids(model, query, docs, 1)
         negative_samples.extend(neg_docs)
+        negative_weights.append(negative_cluster.get_weight(ts))
 
     print(
         f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
     )
-    return positive_samples, negative_samples
+    return positive_samples, positive_weights, negative_samples, negative_weights
 
 
-# TODO ts
-def evict_clusters(model, lsh, docs, clusters: List[Cluster], ts) -> List[Cluster]:
+def evict_clusters(
+    model, lsh, docs: dict, clusters: List[Cluster], ts
+) -> List[Cluster]:
     print("evict_cluster_instances started.")
     masks = []
-    for cluster in enumerate(clusters):
-        is_alive = cluster.evict(model, lsh, docs)
+    for i, cluster in enumerate(clusters):
+        is_alive = True if cluster.timestamp >= ts else cluster.evict(model, lsh, docs)
         masks.append(is_alive)
     clusters = [clusters[i] for i in range(len(clusters)) if masks[i]]
     print(f"evict_cluster_instances finished. (left #{len(clusters)})")
     return clusters
 
 
-def retrieve_top_k_docs_from_cluster(model, queries, clusters, docs, k=10):
+def retrieve_top_k_docs_from_cluster(model, queries, clusters, docs: dict, k=10):
+    print("retrieve_top_k_docs_from_cluster started.")
     result = {}
-    for query in queries:
+    for qid, query in enumerate(queries):
+        print(f"- retrieve {qid}th query")
         closest_cluster_id = find_k_closest_cluster(model, query["query"], clusters, 1)[
             0
         ]
         closest_cluster = clusters[closest_cluster_id]
         top_k_doc_ids = closest_cluster.get_topk_docids(model, query, docs, k)
         {query["qid"]: top_k_doc_ids}
+    print("retrieve_top_k_docs_from_cluster finished.")
     return result

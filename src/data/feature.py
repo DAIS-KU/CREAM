@@ -1,9 +1,10 @@
+import json
+
 import faiss
 import numpy as np
 import torch
-from transformers import AutoModel, AutoTokenizer
-
 from .loader import read_jsonl, save_jsonl
+from transformers import AutoModel, AutoTokenizer
 
 MODEL_NAME = "bert-base-uncased"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -120,6 +121,15 @@ def multi_stage_faiss_search(
     return final_top_k_ids
 
 
+def cat(file_path="/mnt/DAIS_NAS/huijeong/train_session0_queries_cos.jsonl"):
+    with open(file_path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i >= 3:  # 3줄만 읽고 종료
+                break
+            data = json.loads(line)  # JSON 문자열을 딕셔너리로 변환
+            print(data)  # 출력
+
+
 def add_cosine_topk_answer():
     query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
@@ -136,4 +146,5 @@ def add_cosine_topk_answer():
 
 
 if __name__ == "__main__":
-    add_cosine_topk_answer()
+    # add_cosine_topk_answer()
+    cat()

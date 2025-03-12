@@ -17,6 +17,7 @@ def calculate_S_qd_regl(E_q, E_d, device):
 
 
 def calculate_S_qd_regl_batch(E_q, E_d, device):
+    # E_q(batch_size, qlen, 768), E_d(batch_size, dlen, 768),
     E_q = E_q.to(device).float()
     E_d = E_d.to(device).float()
     # print(f'calculate_S_qd_regl_batch E_q:{E_q.shape}, E_d:{E_d.shape}')
