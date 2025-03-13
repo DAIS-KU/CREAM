@@ -2,6 +2,7 @@ from typing import List
 
 import torch
 
+import copy
 from data import Stream
 from functions import calculate_S_qd_regl_dict, get_passage_embeddings
 
@@ -9,6 +10,8 @@ from .cluster import Cluster
 from .clustering import kmeans_pp
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
+
+from concurrent.futures import ThreadPoolExecutor
 
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
@@ -31,17 +34,19 @@ def initialize(model, stream: Stream, k, nbits, max_iters=5) -> List[Cluster]:
     return clusters
 
 
-def find_k_closest_cluster(model, text, clusters: List[Cluster], k) -> List[int]:
-    token_embs = get_passage_embeddings(model, text, devices[-1])
-    distances = []
+def find_k_closest_clusters(
+    model, texts: List[str], clusters: List[Cluster], k, device
+) -> List[int]:
+    token_embs = get_passage_embeddings(model, texts, device)
+    scores = []
     for cluster in clusters:
-        distances.append(
-            calculate_S_qd_regl_dict(token_embs, cluster.prototype, devices[-1])
-        )
-    sorted_distances, sorted_indices = torch.sort(
-        torch.stack(distances).squeeze(), descending=True
-    )
-    return sorted_indices[:k].tolist()
+        score = calculate_S_qd_regl_dict(token_embs, cluster.prototype, device)
+        scores.append(score.unsqueeze(1))
+    scores_tensor = torch.cat(scores, dim=1)
+    topk_values, topk_indices = torch.topk(
+        scores_tensor, k, dim=1
+    )  # 각 샘플별 k개 선택
+    return topk_indices.tolist()
 
 
 def assign_instance_or_add_cluster(
@@ -51,25 +56,48 @@ def assign_instance_or_add_cluster(
     stream_docs,
     docs: dict,
     ts,
+    batch_size=64,
 ):
     print("assign_instance_or_add_cluster started.")
-    for i, doc in enumerate(stream_docs):
-        print(f"- {i}th stream doc.")
-        closest_cluster_id = find_k_closest_cluster(model, doc["text"], clusters, 1)[0]
-        closest_clsuter = clusters[closest_cluster_id]
-        doc_embs = get_passage_embeddings(model, doc["text"], devices[-1]).squeeze()
+    num_devices = len(devices)
+    batches = [
+        stream_docs[i : i + batch_size] for i in range(0, len(stream_docs), batch_size)
+    ]
 
-        # 데이터 포인트 1개일 때 통계정보 없으므로 무조건 할당
-        # 2개 이상부터 RMS이내인지 학인, 아니면 새로운 centroid으로 할당
-        s1, s2, n = closest_clsuter.get_statistics()
-        doc_hash = lsh.encode(doc_embs)
-        closest_distance = closest_clsuter.get_distance(doc_embs)
-        closest_boundary = closest_clsuter.get_boundary()
+    def process_batch(batch, device):
+        print(f"ㄴ Batch {len(batch)} starts on {device}.")
+        temp_model = copy.deepcopy(model).to(device)
 
-        if n == 1 or closest_distance <= closest_boundary:
-            closest_clsuter.assign(doc["doc_id"], doc_embs, doc_hash, ts)
-        else:
-            clusters.append(Cluster(model, doc_hash, [doc], docs, ts))
+        texts = [doc["text"] for doc in batch]
+        doc_ids = [doc["doc_id"] for doc in batch]
+        batch_embs = get_passage_embeddings(temp_model, texts, device).squeeze()
+        batch_closest_ids = find_k_closest_clusters(
+            temp_model, texts, clusters, 1, device
+        )
+
+        for i, doc in enumerate(batch):
+            closest_cluster_id = batch_closest_ids[i][0]
+            closest_cluster = clusters[closest_cluster_id]
+            doc_embs = batch_embs[i]
+
+            s1, s2, n = closest_cluster.get_statistics()
+            doc_hash = lsh.encode(doc_embs)
+            closest_distance = closest_cluster.get_distance(doc_embs)
+            closest_boundary = closest_cluster.get_boundary()
+
+            if n == 1 or closest_distance <= closest_boundary:
+                closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
+            else:
+                clusters.append(Cluster(temp_model, doc_hash, [doc], docs, ts))
+
+    with ThreadPoolExecutor(max_workers=num_devices) as executor:
+        futures = []
+        for i, batch in enumerate(batches):
+            device = devices[i % num_devices]
+            futures.append(executor.submit(process_batch, batch, device))
+        for future in futures:
+            future.result()
+
     print("assign_instance_or_add_cluster finished.")
     return clusters
 
@@ -105,25 +133,71 @@ def evict_clusters(
     model, lsh, docs: dict, clusters: List[Cluster], ts
 ) -> List[Cluster]:
     print("evict_cluster_instances started.")
-    masks = []
-    for i, cluster in enumerate(clusters):
-        is_alive = True if cluster.timestamp >= ts else cluster.evict(model, lsh, docs)
-        masks.append(is_alive)
-    clusters = [clusters[i] for i in range(len(clusters)) if masks[i]]
-    print(f"evict_cluster_instances finished. (left #{len(clusters)})")
-    return clusters
+    chunk_size = (len(clusters) + num_devices - 1) // num_devices
+    cluster_chunks = [
+        clusters[i : i + chunk_size] for i in range(0, len(clusters), chunk_size)
+    ]
+
+    def process_cluster_chunk(cluster_chunk, device):
+        local_model = copy.deepcopy(model).to(device)
+        local_result = []
+        for cluster in cluster_chunk:
+            is_alive = (
+                True
+                if cluster.timestamp >= ts
+                else cluster.evict(local_model, lsh, docs)
+            )
+            if is_alive:
+                local_result.append(cluster)
+        return local_result
+
+    remaining_clusters = []
+    with ThreadPoolExecutor(max_workers=num_devices) as executor:
+        futures = {
+            executor.submit(
+                process_cluster_chunk, cluster_chunk, devices[i % num_devices]
+            ): cluster_chunk
+            for i, cluster_chunk in enumerate(cluster_chunks)
+        }
+        for future in futures:
+            remaining_clusters.extend(future.result())
+
+    print(f"evict_cluster_instances finished. (left #{len(remaining_clusters)})")
+    return remaining_clusters
 
 
-def retrieve_top_k_docs_from_cluster(model, queries, clusters, docs: dict, k=10):
+def retrieve_top_k_docs_from_cluster(
+    model, queries, clusters, docs: dict, k=10, batch_size=64
+):
     print("retrieve_top_k_docs_from_cluster started.")
     result = {}
-    for qid, query in enumerate(queries):
-        print(f"- retrieve {qid}th query")
-        closest_cluster_id = find_k_closest_cluster(model, query["query"], clusters, 1)[
-            0
-        ]
-        closest_cluster = clusters[closest_cluster_id]
-        top_k_doc_ids = closest_cluster.get_topk_docids(model, query, docs, k)
-        {query["qid"]: top_k_doc_ids}
+    batches = [queries[i : i + batch_size] for i in range(0, len(queries), batch_size)]
+
+    def process_batch(batch, device):
+        print(f"ㄴ Batch {len(batch)} starts on {device}.")
+        batch_result = {}
+        temp_model = copy.deepcopy(model).to(device)
+
+        qids = [query["qid"] for query in batch]
+        texts = [query["query"] for query in batch]
+        batch_closest_ids = find_k_closest_clusters(
+            temp_model, texts, clusters, 1, device
+        )
+
+        for i, query in enumerate(batch):
+            closest_cluster_id = batch_closest_ids[i][0]
+            closest_cluster = clusters[closest_cluster_id]
+            top_k_doc_ids = closest_cluster.get_topk_docids(temp_model, query, docs, k)
+            batch_result[qids[i]] = top_k_doc_ids
+        return batch_result
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = {
+            executor.submit(process_batch, batch, devices[i % num_threads]): batch
+            for i, batch in enumerate(batches)
+        }
+        for future in futures:
+            result.update(future.result())
+
     print("retrieve_top_k_docs_from_cluster finished.")
     return result

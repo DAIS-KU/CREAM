@@ -38,8 +38,9 @@ def encode_texts(model, texts, max_length=256):
 
 
 def streaming_train(
+    queries,
+    docs,
     ts,
-    stream: Stream,
     clusters: List[Cluster],
     model,
     lsh: RandomProjectionLSH,
@@ -51,8 +52,7 @@ def streaming_train(
     use_label=False,
     use_weight=False,
 ):
-    stream_size = stream.get_stream_size()
-
+    query_cnt = len(queries)
     loss_fn = InfoNCELoss()
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -62,36 +62,29 @@ def streaming_train(
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
         start_time = time.time()
-        for start_idx in range(0, stream_size, batch_size):
-            end_idx = min(start_idx + batch_size, stream_size)
-            print(f"stream {start_idx}-{end_idx}")
+        for start_idx in range(0, query_cnt, batch_size):
+            end_idx = min(start_idx + batch_size, query_cnt)
+            print(f"query {start_idx}-{end_idx}")
 
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
-
             for idx in range(start_idx, end_idx):
-                query, stream_docs = stream.get_stream(idx)
-                print(f"{idx}th stream(#{len(stream_docs)})")
-                # Assign
-                assign_instance_or_add_cluster(
-                    model, lsh, clusters, stream_docs, stream.docs, ts
-                )
-                # Sampling
+                query = queries[idx]
                 pos_ids, pos_weights, neg_ids, neg_weights = get_samples_and_weights(
-                    model, query, stream.docs, clusters, positive_k, negative_k, ts
+                    model, query, docs, clusters, positive_k, negative_k, ts
                 )
                 if use_label:
                     pos_docs = random.sample(query["answer_pids"], 1)[0]
                 else:
-                    pos_docs = [stream.docs[_id]["text"] for _id in pos_ids]
-                neg_docs = [stream.docs[_id]["text"] for _id in neg_ids]
+                    pos_docs = [docs[_id]["text"] for _id in pos_ids]
+                neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
                 query_batch.append(query["query"])
                 pos_embeddings = encode_texts(
                     model=model, texts=pos_docs
                 )  # (positive_k, embedding_dim)
                 if use_weight:
-                    pos_weights = torch.tensor(pos_weights).unsqueeze(
-                        1
+                    pos_weights = (
+                        torch.tensor(pos_weights).unsqueeze(1).to(pos_embeddings.device)
                     )  # (positive_k, 1)
                     pos_embeddings = pos_embeddings * pos_weights
                 pos_docs_batch.append(pos_embeddings)
@@ -100,8 +93,8 @@ def streaming_train(
                     model=model, texts=neg_docs
                 )  # (negative_k, embedding_dim)
                 if use_weight:
-                    neg_weights = torch.tensor(neg_weights).unsqueeze(
-                        1
+                    neg_weights = (
+                        torch.tensor(neg_weights).unsqueeze(1).to(neg_embeddings.device)
                     )  # (negative_k, 1)
                     neg_embeddings = neg_embeddings * neg_weights
                 neg_docs_batch.append(neg_embeddings)
@@ -126,7 +119,7 @@ def streaming_train(
             loss_values.append(loss.item())  # loss.item()
             batch_cnt += 1
             print(
-                f"Processed {end_idx}/{stream_size} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / batch_cnt:.4f}"
+                f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / batch_cnt:.4f}"
             )
         end_time = time.time()
         execution_time = end_time - start_time
@@ -144,13 +137,13 @@ def train(
     warmingup_rate=0.2,
     negative_k=6,
     k=103,
-    nbits=6,
+    nbits=16,
     use_label=False,
     use_weight=False,
 ):
     ts = 0
     total_loss_values = []
-    loss_values_path = "../data/loss/total_loss_values_proposal.text"
+    loss_values_path = "../data/loss/total_loss_values_proposal.txt"
 
     random_vectors = torch.randn(nbits, 768)
     lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
@@ -181,8 +174,27 @@ def train(
             print(
                 f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
             )
-        # Increment
-        loss_values, ts = streaming_train(ts, stream, clusters, model, lsh, num_epochs)
+        # Assign
+        stream_size = stream.get_stream_size()
+        for i in range(0, stream_size):
+            print(f"Assign {i}th stream")
+            assign_instance_or_add_cluster(
+                model, lsh, clusters, stream.stream_docs[i], stream.docs, ts
+            )
+        # Train
+        loss_values, ts = streaming_train(
+            queries=stream.queries,
+            docs=stream.docs,
+            ts=ts,
+            clusters=clusters,
+            model=model,
+            lsh=lsh,
+            num_epochs=num_epochs,
+            negative_k=negative_k,
+            batch_size=batch_size,
+            use_label=use_label,
+            use_weight=use_weight,
+        )
         write_line(
             loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
         )
@@ -204,7 +216,7 @@ def evaluate_with_cluster(
     eval_query_path = (
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
     )
-    eval_queries = read_jsonl(eval_query_path, True)
+    eval_queries = read_jsonl(eval_query_path, True)[:3]
     eval_docs = read_jsonl_as_dict(
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl", "doc_id"
     )
