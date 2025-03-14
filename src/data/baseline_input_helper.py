@@ -7,7 +7,7 @@ from nltk.tokenize import word_tokenize
 from rank_bm25 import BM25Okapi
 from transformers import BatchEncoding, BertTokenizer
 
-from .loader import read_jsonl, read_jsonl_as_dict
+from .loader import read_jsonl, read_jsonl_as_dict, load_train_docs
 
 max_q_len: int = 32
 max_p_len: int = 128
@@ -359,7 +359,7 @@ def build_bm25(docs):
 
 
 def get_candidates(session_number, bm25, query, doc_ids):
-    k = 60 if session_number == 0 else 25
+    k = 500 if session_number == 0 else 200
     tokenized_query = word_tokenize(query.lower())
     scores = bm25.get_scores(tokenized_query)
     top_k_indices = np.argsort(scores)[-k:]
@@ -368,7 +368,7 @@ def get_candidates(session_number, bm25, query, doc_ids):
 
 
 def getitem(
-    session_number, query, docs, filtered=False, bm25=None, train_n_passages=8
+    session_number, query, docs, filtered=False, bm25=None, train_n_passages=12
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
     qry_id = query["qid"]
     qry = query["query"]
@@ -377,7 +377,7 @@ def getitem(
     psg_ids = []
     encoded_passages = []
 
-    pos_id = query["answer_pids"][0]
+    pos_id = query["cos_ans_pids"][0]
     pos_psg = docs[pos_id]["text"]
     psg_ids.append(pos_id)
     encoded_passages.append(create_one_example(pos_psg))
@@ -387,7 +387,7 @@ def getitem(
     if filtered:
         neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
     else:
-        valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
+        valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
         neg_ids = random.sample(valid_neg_ids, negative_size)
 
     for neg_id in neg_ids:
@@ -405,12 +405,7 @@ def load_inputs(
 ):
     queries = read_jsonl(query_path, True, compatible)
     random.shuffle(queries)
-    docs = read_jsonl_as_dict(doc_path, "doc_id", compatible)
-    answer_doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
-    if doc_path != answer_doc_path:
-        answer_pids = {pid for q in queries for pid in q["answer_pids"]}
-        answer_docs = read_jsonl_as_dict(answer_doc_path, "doc_id", compatible)
-        docs = {pid: answer_docs[pid] for pid in answer_pids if pid in answer_docs}
+    docs = load_train_docs(session_number)
     bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:

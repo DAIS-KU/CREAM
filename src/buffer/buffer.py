@@ -148,4 +148,4 @@ class Buffer(torch.nn.Module):
         print(f"doc_ids:{len(doc_ids)}, doc_embs:{len(doc_embs)}, {doc_embs[0].shape}")
         for doc_id, doc_emb in zip(doc_ids, doc_embs):
             print(f"Save {doc_id} {doc_emb.shape}")
-            self.buffer_did2emb[doc_id] = doc_emb
+            self.buffer_did2emb[str(doc_id)] = doc_emb

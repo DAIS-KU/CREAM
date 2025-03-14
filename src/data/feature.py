@@ -62,7 +62,7 @@ def split_into_batches(data, batch_size):
 
 
 def multi_stage_faiss_search(
-    queries, documents, query_batch_size=300, top_k=3, partition=100
+    queries, documents, query_batch_size=300, top_k=10, partition=100
 ):
     num_docs = len(documents)
     document_texts, doc_ids = [d["text"] for d in documents], [
@@ -145,6 +145,16 @@ def add_cosine_topk_answer():
     save_jsonl(queries, "/mnt/DAIS_NAS/huijeong/train_session0_queries_cos.jsonl")
 
 
-if __name__ == "__main__":
-    # add_cosine_topk_answer()
-    cat()
+def get_top_k_documents_by_cosine(queries, documents, top_k):
+    result = {}
+    final_top_k_ids = multi_stage_faiss_search(
+        queries=queries, documents=documents, top_k=top_k
+    )
+    for i in range(len(queries)):
+        result[queries[i]["qid"]] = final_top_k_ids[i]
+    return result
+
+
+# if __name__ == "__main__":
+#     # add_cosine_topk_answer()
+#     cat()

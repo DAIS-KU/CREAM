@@ -23,7 +23,7 @@ class Random_retrieve(object):
             docids = random_retrieve(buffer.buffer_qid2dids[qid], num_retrieve)
             docids_lst_from_mem.extend(docids)
 
-        doc_lst_from_mem = [buffer.did2doc[did] for did in docids_lst_from_mem]
+        doc_lst_from_mem = [buffer.did2doc[str(did)] for did in docids_lst_from_mem]
         doc_lst_from_mem = buffer.tokenizer.batch_encode_plus(
             doc_lst_from_mem,
             add_special_tokens=True,

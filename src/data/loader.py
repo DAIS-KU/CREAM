@@ -70,6 +70,29 @@ def read_jsonl_as_dict(file_path, id_field, as_number_id=False):
     return data_dict
 
 
+def load_train_docs(session_number):
+    train_docs = []
+    for i in range(session + 1):
+        print(f"Read {i}th docs")
+        doc_path = f"./data/train_session{session}_docs.jsonl"
+        doc_data = read_jsonl(doc_path, False)
+        train_docs.extend(doc_data)
+    return train_docs
+
+
+def load_eval_docs(session_number):
+    eval_docs = []
+    for i in range(session + 1):
+        print(f"Read {i}th docs")
+        doc_path = f"./data/train_session{session}_docs.jsonl"
+        doc_data = read_jsonl(doc_path, False)
+        eval_docs.extend(doc_data)
+        doc_path = f"./data/test_session{session}_docs.jsonl"
+        doc_data = read_jsonl(doc_path, False)
+        eval_docs.extend(doc_data)
+    return eval_docs
+
+
 def sample_data(data, percentage):
     sample_size = int(len(data) * percentage)
     return random.sample(data, sample_size)
