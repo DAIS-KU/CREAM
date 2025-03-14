@@ -75,7 +75,7 @@ def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, buffer, num_epochs, batch_size=16, compatible=False):
+def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=False):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
     print(f"Total inputs #{input_cnt}")
@@ -83,7 +83,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=16, compatible=F
 
     loss_values = []
     loss_fn = SimpleContrastiveLoss()
-    learning_rate = 2e-5
+    learning_rate = 5e-6
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     batch_cnt = 0
 
