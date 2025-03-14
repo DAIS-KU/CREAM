@@ -358,7 +358,7 @@ def collate(features):
 
 def build_bm25(docs):
     tokenized_corpus = [word_tokenize(doc["text"].lower()) for doc in docs]
-    bm25 = BM25Okapi(tokenized_corpus)
+    bm25 = BM25Okapi(corpus= tokenized_corpus,k1=0.8, b=0.75)
     return bm25
 
 
