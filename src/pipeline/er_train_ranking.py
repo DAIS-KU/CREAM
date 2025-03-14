@@ -11,7 +11,7 @@ from buffer import (
     ModelArguments,
     TevatronTrainingArguments,
 )
-from data import prepare_inputs, read_jsonl, write_file, load_eval_docs
+from data import load_eval_docs, prepare_inputs, read_jsonl, write_file
 from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,

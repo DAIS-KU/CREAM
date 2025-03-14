@@ -34,8 +34,11 @@ def _prepare_inputs(
             x[key] = val.to(device)
         prepared.append(x)
 
+    if session_number == 0:
+        buffer.init(inputs[1])
+
     if cl_method == "er":
-        if not compatible or session_number == 0:
+        if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # print(f"Before sampling: {docids_lst}")
 
@@ -134,7 +137,7 @@ def _prepare_inputs(
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
     elif cl_method == "mir":
-        if not compatible or session_number == 0:
+        if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
             docids_lst_from_mem, mem_passage = buffer.retrieve(
@@ -227,7 +230,7 @@ def _prepare_inputs(
             prepared.append(all_docids_lst)  # for updating old emb
             # print(f"prepared: {len(prepared)}, {len(prepared[0])}")
     elif cl_method == "our" or cl_method == "l2r":
-        if not compatible or session_number == 0:
+        if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # print(f"model {next(buffer.model.parameters()).device}, prepared[0] {prepared[0]['input_ids'].device}, prepared[1] {prepared[1]['input_ids'].device}")
 

@@ -1,8 +1,9 @@
+import copy
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 import torch
 
-import copy
 from data import Stream
 from functions import calculate_S_qd_regl_dict, get_passage_embeddings
 
@@ -10,8 +11,6 @@ from .cluster import Cluster
 from .clustering import kmeans_pp
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
-
-from concurrent.futures import ThreadPoolExecutor
 
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
