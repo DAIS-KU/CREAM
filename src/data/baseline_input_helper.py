@@ -34,7 +34,7 @@ def _prepare_inputs(
             x[key] = val.to(device)
         prepared.append(x)
 
-    if session_number == 0:
+    if session_number == 0 and (cl_method == "our" or cl_method == "l2r"):
         buffer.init(inputs[1][: buffer.buffer_size])
     inputs[1] = inputs[1][buffer.buffer_size :]
 
