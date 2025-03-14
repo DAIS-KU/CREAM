@@ -95,7 +95,7 @@ class Buffer(torch.nn.Module):
         )
 
     def init(self, qid, doc_ids):
-        self.buffer_qid2dids[qid] = doc_ids
+        self.buffer_qid2dids[qid] = doc_ids[: self.buffer_size]
         self.n_seen_so_far = len(doc_ids)
 
     def read_data(self, is_query, data_path):

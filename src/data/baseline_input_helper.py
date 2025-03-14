@@ -35,7 +35,8 @@ def _prepare_inputs(
         prepared.append(x)
 
     if session_number == 0:
-        buffer.init(inputs[1])
+        buffer.init(inputs[1][: buffer.buffer_size])
+    inputs[1] = inputs[1][buffer.buffer_size :]
 
     if cl_method == "er":
         if not compatible:
@@ -371,7 +372,12 @@ def get_candidates(session_number, bm25, query, doc_ids):
 
 
 def getitem(
-    session_number, query, docs, filtered=False, bm25=None, train_n_passages=12
+    session_number,
+    query,
+    docs,
+    train_n_passages,
+    filtered=False,
+    bm25=None,
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
     qry_id = query["qid"]
     qry = query["query"]
@@ -412,7 +418,10 @@ def load_inputs(
     bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:
-        features = getitem(session_number, query, docs, filtered, bm25)
+        train_n_passages = 40 if session_number == 0 else 8
+        features = getitem(
+            session_number, query, docs, train_n_passages, filtered, bm25
+        )
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")
