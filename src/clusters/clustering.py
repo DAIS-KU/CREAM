@@ -6,8 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
+from .prototype import RandomProjectionLSH
 
-from functions.similarities import calculate_S_qd_regl_dict
+from functions.similarities import calculate_S_qd_regl_dict, calculate_S_qd_regl_batch
 
 MAX_SCORE = 256.0
 
@@ -104,11 +105,11 @@ def compute_distances_for_partition(args):
     return distances
 
 
-def initialize_centroids(X, k):
+def initialize_centroids(X, k, lsh: RandomProjectionLSH):
     print("Initialize centroid")
     n_samples = len(X)
     random_indices = np.random.randint(0, n_samples, size=k)
-    centroids = [X[i]["LSH_MAPS"] for i in random_indices]
+    centroids = [lsh.encode(X[i]["TOKEN_EMBS"]) for i in random_indices]
     return centroids
 
 
@@ -121,9 +122,7 @@ def create_centroid(instances, instance_ids):
     return merged_hash
 
 
-def get_closest_clusters(args):
-    partition, centroids, device, batch_size = args
-
+def get_closest_clusters(partition, centroids, device, batch_size=128):
     with torch.cuda.device(device):
         closest_clusters = []
         num_batches = (len(partition) + batch_size - 1) // batch_size
@@ -141,7 +140,6 @@ def get_closest_clusters(args):
             distances_tensor = torch.stack(batch_clusters, dim=1)  # (batch, k)
             closest_batch_clusters = torch.argmin(distances_tensor, dim=1)  # (batch,)
             closest_clusters.extend(closest_batch_clusters.tolist())
-
         return closest_clusters
 
 
@@ -151,7 +149,8 @@ def kmeans_pp(X, k, max_iters):
     for iter_num in range(max_iters):
         print(f"Starting iteration {iter_num + 1} | centroids: #{len(centroids)}")
         start_time = time.time()
-        batch_size = 512
+        batch_size = 256
+        centroid_batch_size = 32
         clusters = defaultdict(list)
 
         partitions = np.array_split(X, len(devices))
@@ -160,7 +159,13 @@ def kmeans_pp(X, k, max_iters):
                 executor.map(
                     get_closest_clusters,
                     [
-                        (partition, centroids, devices[idx], batch_size)
+                        (
+                            partition,
+                            centroids,
+                            devices[idx],
+                            batch_size,
+                            centroid_batch_size,
+                        )
                         for idx, partition in enumerate(partitions)
                     ],
                 )

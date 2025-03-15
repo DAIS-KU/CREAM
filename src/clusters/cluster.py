@@ -28,13 +28,15 @@ class Cluster:
         centroid,
         cluster_docs,
         docs: dict,
+        use_tensor_key,
         timestamp=0,
         batch_size=256,
-        z=1.96,
+        z=2.58,  # 99%
         u=5,
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
+        self.use_tensor_key = use_tensor_key
         self.timestamp = timestamp
         self.batch_size = batch_size
         self.z = z
@@ -46,29 +48,44 @@ class Cluster:
         else:
             self.update_statistics(model, docs)
 
-    def get_topk_docids(self, model, query, docs: dict, k) -> List[str]:
+    def get_topk_docids(self, model, query, docs: dict, k, batch_size=128) -> List[str]:
         query_token_embs = get_passage_embeddings(model, query["query"], devices[-1])
-        regl_scores = []
-        for i in range(0, len(self.doc_ids), self.batch_size):
-            batch_doc_ids = self.doc_ids[i : i + self.batch_size]
-            batch_docs = [
-                get_passage_embeddings(
-                    model, docs[doc_id]["text"], devices[-1]
-                ).squeeze()
-                for doc_id in batch_doc_ids
+
+        def process_batch(device, batch_doc_ids):
+            regl_scores = []
+            temp_model = copy.deepcopy(model).to(device)
+            temp_query_token_embs = query_token_embs.clone().to(device)
+            for i in range(0, len(batch_doc_ids), batch_size):
+                batch_ids = batch_doc_ids[i : i + batch_size]
+                batch_texts = [docs[doc_id]["text"] for doc_id in batch_ids]
+                batch_emb = get_passage_embeddings(temp_model, batch_texts, device)
+                if batch_emb.dim() > 3:
+                    batch_emb = batch_emb.squeeze()
+                # print(f"get_topk_docids({device}) | batch_emb:{batch_emb.shape}")
+                regl_score = calculate_S_qd_regl_batch(
+                    temp_query_token_embs, batch_emb, device
+                )
+                regl_scores.append(regl_score)
+                # print(f"regl_scores: {len(regl_scores)}")
+            regl_scores = torch.cat(regl_scores, dim=0)
+            return [
+                (doc_id, regl_scores[idx].item())
+                for idx, doc_id in enumerate(batch_doc_ids)
             ]
-            combined_embs = torch.stack(batch_docs, dim=0)
-            # print(f"query_token_embs: {query_token_embs.shape}, combined_embs:{combined_embs.shape}")
-            regl_score = calculate_S_qd_regl_batch(
-                query_token_embs, combined_embs, devices[-1]
-            )
-            # print(f"regl_score: {regl_score.shape}")
-            regl_scores.extend(
-                [
-                    (doc_id, regl_score[idx].item())
-                    for idx, doc_id in enumerate(batch_doc_ids)
-                ]
-            )
+
+        regl_scores = []
+        # stride, 순서 보장 필요X
+        batch_cnt = min(num_devices, len(self.doc_ids))
+        doc_ids_batches = [self.doc_ids[i::batch_cnt] for i in range(batch_cnt)]
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for i, device in enumerate(range(batch_cnt)):
+                futures.append(
+                    executor.submit(process_batch, device, doc_ids_batches[i])
+                )
+            for future in futures:
+                regl_scores.extend(future.result())
+
         combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
         top_k_regl_docs = combined_regl_scores[:k]
         top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
@@ -106,14 +123,22 @@ class Cluster:
         self.S1 += distance.item()
         self.S2 += distance.item() ** 2
         self.N += 1
-        for key, value in doc_hash.items():
-            self.prototype[key] += value.cpu()
+        if self.use_tensor_key:
+            self.prototype += doc_hash
+        else:
+            for key, value in doc_hash.items():
+                self.prototype[key] += value.cpu()
         self.timestamp = ts
 
     def evict(self, model, lsh: RandomProjectionLSH, docs: dict) -> bool:  # isNotEmpty
-        temp_docids, temp_doc_hashes = [], []
-        BOUNDARY = self.get_boundary()
         before_n = len(self.doc_ids)
+        self.docids = []
+        self.prototype = (
+            torch.zeros_like(self.prototype)
+            if self.use_tensor_key
+            else defaultdict(lambda: torch.zeros(768))
+        )
+        BOUNDARY = self.get_boundary()
         for batch_start in range(0, len(self.doc_ids), self.batch_size):
             batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
             batch_doc_embs = torch.stack(
@@ -131,18 +156,18 @@ class Cluster:
             # print(f"evict x_dists:{x_dists.shape}, mask: {mask.shape}")
             for i in range(len(batch_doc_ids)):
                 if mask[i].item():
-                    temp_docids.append(batch_doc_ids[i])
-                    temp_doc_hashes.append(lsh.encode(batch_doc_embs[i]))
-        if len(temp_docids) == 0:
+                    self.docids.append(batch_doc_ids[i])
+                    doc_hash = lsh.encode(batch_doc_embs[i])
+                    if self.use_tensor_key:
+                        self.prototype += doc_hash
+                    else:
+                        for key, value in doc_hash.items():
+                            self.prototype[key] += value.cpu()
+        if len(self.docids) == 0:
             return False
-        self.doc_ids = temp_docids
         after_n = len(self.doc_ids)
-        self.prototype = defaultdict(lambda: torch.zeros(768))
-        for doc_hash in temp_doc_hashes:
-            for key, value in doc_hash.items():
-                self.prototype[key] += value.cpu()
+        print(f"doc_ids# {before_n} -> {after_n}")
         self.update_statistics(model, docs)
-        # print(f"doc_ids# {before_n} -> {after_n}")
         return True
 
     def get_statistics(self):
@@ -150,14 +175,14 @@ class Cluster:
 
     def update_statistics(self, model, docs: dict):
         partition = min(len(self.doc_ids), num_devices)
-        id_batches = [self.doc_ids[i::num_devices] for i in range(partition)]
+        id_batches = [self.doc_ids[i::partition] for i in range(partition)]
         # print(f"id_batches {id_batches}")
 
         def process_batch(
             id_batch,
             device,
         ):
-            temp_model = copy.deepcopy(model)
+            temp_model = copy.deepcopy(model).to(device)
             S1, S2 = 0.0, 0.0
             for i in range(0, len(id_batch), self.batch_size):
                 batch_docs = [
@@ -165,9 +190,17 @@ class Cluster:
                     for doc_id in id_batch[i : i + self.batch_size]
                 ]
                 batch_token_embs = torch.stack(batch_docs, dim=0).squeeze(1)
-                score = calculate_S_qd_regl_dict(
-                    batch_token_embs, self.prototype, device
-                )
+                if self.use_tensor_key:
+                    if batch_token_embs.dim() == 2:
+                        batch_token_embs = batch_token_embs.unsqueeze(0)
+                    # print(f"update_statistics batch_token_embs:{batch_token_embs.shape}, self.prototype:{self.prototype.shape}")
+                    score = calculate_S_qd_regl_batch(
+                        batch_token_embs, self.prototype.unsqueeze(0), device
+                    )
+                else:
+                    score = calculate_S_qd_regl_dict(
+                        batch_token_embs, self.prototype, device
+                    )
 
                 x_dist = MAX_SCORE - score
                 # print(f"batch_token_embs{batch_token_embs.shape}, x_dist: {x_dist.shape} score:{score.shape}")

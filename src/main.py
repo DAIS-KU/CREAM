@@ -64,26 +64,55 @@ if __name__ == "__main__":
         help="apply time-decayed weight.",
     )
     parser.add_argument(
+        "--use_tensor_key",
+        action="store_true",
+        help="Use hash as tensor instead of map.",
+    )
+    parser.add_argument(
         "--negative_k",
         default=6,
+        type=int,
         help="number of negative samples.",
     )
     parser.add_argument(
         "--mi",
-        default=5,
-        help="max iterss",
+        default=3,
+        type=int,
+        help="max iters to converge centroids.",
     )
     parser.add_argument(
         "--wr",
         default=0.2,
+        type=float,
         help="warming up rate",
+    )
+    parser.add_argument(
+        "--init_k",
+        type=int,
+        help="warming up k cluster",
+    )
+    parser.add_argument(
+        "--cmnsz",
+        type=int,
+        help="cluster minimum number of instances before adding new centroids.",
+    )
+    parser.add_argument(
+        "--sr",
+        type=float,
+        help="Document stream sampling rate",
     )
     args = parser.parse_args()
 
     print(f"Running experiments: {args.exp}")
     if args.exp == "proposal":
-        print(f"Use Label: {args.use_label}")
-        print(f"Use Weight: {args.use_weight}")
+        print(f"Use label: {args.use_label}")
+        print(f"Use weight: {args.use_weight}")
+        print(f"Use tensor key: {args.use_tensor_key}")
+        print(f"Use max_iters: {args.mi}")
+        print(f"Use warmingup_rate: {args.wr}")
+        print(f"Use warmingup_k: {args.init_k}")
+        print(f"Use cluster_min_size: {args.cmnsz}")
+        print(f"Use stream sampling rate: {args.sr}")
         # print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             num_epochs=args.num_epochs,
@@ -91,6 +120,12 @@ if __name__ == "__main__":
             negative_k=args.negative_k,
             use_label=args.use_label,
             use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
         )
     elif args.exp == "bm25":
         bm25_evaluate()

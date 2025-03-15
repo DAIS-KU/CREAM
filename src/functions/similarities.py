@@ -30,7 +30,28 @@ def calculate_S_qd_regl_batch(E_q, E_d, device):
     # print(f'calculate_S_qd_regl_batch max_scores:{max_scores.shape}')
     S_qd_scores = max_scores.sum(dim=1)
     # print(f'calculate_S_qd_regl_batch S_qd_scores:{S_qd_scores.shape}')
-    return S_qd_scores
+    return S_qd_scores  # (batch_size,)
+
+
+def calculate_S_qd_regl_batch_batch(E_q, E_d, device):
+    # E_q(a, qlen, 768), E_d(b, dlen, 768)
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
+    E_q_normalized = torch.nn.functional.normalize(E_q, p=2, dim=2)
+    E_d_normalized = torch.nn.functional.normalize(E_d, p=2, dim=2)
+    # 텐서 확장 (E_q와 E_d의 차원을 맞추기 위해)
+    E_q_expanded = E_q_normalized.unsqueeze(1)  # (a, 1, 254, 768)
+    E_d_expanded = E_d_normalized.unsqueeze(0)  # (1, b, 66556, 768)
+
+    # 코사인 유사도 계산 (내적)
+    cosine_sim_matrix = torch.matmul(
+        E_q_expanded, E_d_expanded.transpose(3, 2)
+    )  # (a, b, 254, 66556)
+    # 각 쿼리와 문서 간의 최대 코사인 유사도
+    max_scores, _ = torch.max(cosine_sim_matrix, dim=3)  # (a, b, 254)
+    # 최대 코사인 유사도의 합
+    S_qd_scores = max_scores.sum(dim=2)  # (a, b)
+    return S_qd_scores  # (a, b)
 
 
 # find_best_k_experiment

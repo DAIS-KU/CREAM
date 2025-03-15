@@ -51,6 +51,7 @@ def streaming_train(
     batch_size=32,
     use_label=False,
     use_weight=False,
+    use_tensor_key=False,
 ):
     query_cnt = len(queries)
     loss_fn = InfoNCELoss()
@@ -70,7 +71,14 @@ def streaming_train(
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
                 pos_ids, pos_weights, neg_ids, neg_weights = get_samples_and_weights(
-                    model, query, docs, clusters, positive_k, negative_k, ts
+                    model=model,
+                    query=query,
+                    docs=docs,
+                    clusters=clusters,
+                    positive_k=positive_k,
+                    negative_k=negative_k,
+                    ts=ts,
+                    use_tensor_key=use_tensor_key,
                 )
                 if use_label:
                     pos_docs = random.sample(query["answer_pids"], 1)[0]
@@ -132,30 +140,37 @@ def streaming_train(
 
 def train(
     sesison_count=4,
+    sampling_rate=0.5,
     num_epochs=1,
     batch_size=32,
     warmingup_rate=0.2,
     negative_k=6,
-    k=103,
-    nbits=16,
+    k=12,  # 103
+    cluster_min_size=10,
+    nbits=12,  # 16,
+    max_iters=3,
     use_label=False,
     use_weight=False,
+    use_tensor_key=False,
 ):
     ts = 0
     total_loss_values = []
     loss_values_path = "../data/loss/total_loss_values_proposal.txt"
 
     random_vectors = torch.randn(nbits, 768)
-    lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
+    lsh = RandomProjectionLSH(
+        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
+    )
     prev_docs = None
     for session_number in range(sesison_count):
         print(f"Training Session {session_number}")
         stream = Stream(
-            session_number,
-            f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl",
-            f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl",
-            warmingup_rate,
-            prev_docs,
+            session_number=session_number,
+            query_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl",
+            doc_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl",
+            warmingup_rate=warmingup_rate,
+            sampling_rate=sampling_rate,
+            prev_docs=prev_docs,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
@@ -169,7 +184,7 @@ def train(
         # Initial
         if session_number == 0:
             start_time = time.time()
-            clusters = initialize(model, stream, k, nbits)
+            clusters = initialize(model, stream, k, nbits, max_iters)
             end_time = time.time()
             print(
                 f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
@@ -177,10 +192,20 @@ def train(
         # Assign
         stream_size = stream.get_stream_size()
         for i in range(0, stream_size):
-            print(f"Assign {i}th stream")
+            print(f"Assign {i}th stream starts.")
+            start_time = time.time()
             assign_instance_or_add_cluster(
-                model, lsh, clusters, stream.stream_docs[i], stream.docs, ts
+                model=model,
+                lsh=lsh,
+                clusters=clusters,
+                cluster_min_size=cluster_min_size,
+                stream_docs=stream.stream_docs[i],
+                docs=stream.docs,
+                ts=ts,
+                use_tensor_key=use_tensor_key,
             )
+            end_time = time.time()  # 크크 좃댐 감지 *-(ㅋ_ㅋ
+            print(f"Assign {i}th stream ended({end_time - start_time}sec).")
         # Train
         loss_values, ts = streaming_train(
             queries=stream.queries,
@@ -201,22 +226,36 @@ def train(
         torch.save(model.state_dict(), new_model_path)
         # Evaluate
         clusters = evaluate_with_cluster(
-            session_number, stream.docs, clusters, new_model_path, ts
+            session_number=session_number,
+            nbits=nbits,
+            docs=stream.docs,
+            clusters=clusters,
+            model_path=new_model_path,
+            ts=ts,
+            use_tensor_key=use_tensor_key,
+            cluster_min_size=cluster_min_size,
         )
         # Evict
         evict_clusters(model, lsh, stream.docs, clusters, ts)
-        # Pass
+        # Accumulate
         prev_docs = stream.docs
         ts += 1
 
 
 def evaluate_with_cluster(
-    session_number, docs: dict, clusters: List[Cluster], model_path, ts, nbits=16
+    session_number,
+    docs: dict,
+    clusters: List[Cluster],
+    model_path,
+    ts,
+    use_tensor_key,
+    nbits,
+    cluster_min_size,
 ) -> List[Cluster]:
     eval_query_path = (
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
     )
-    eval_queries = read_jsonl(eval_query_path, True)[:3]
+    eval_queries = read_jsonl(eval_query_path, True)
     eval_docs = read_jsonl_as_dict(
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl", "doc_id"
     )
@@ -232,8 +271,10 @@ def evaluate_with_cluster(
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     random_vectors = torch.randn(nbits, 768)
-    lsh = RandomProjectionLSH(random_vectors=random_vectors, embedding_dim=768)
-    stream_docs = list(eval_docs.values())[:3]
+    lsh = RandomProjectionLSH(
+        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
+    )
+    stream_docs = list(eval_docs.values())
     assign_instance_or_add_cluster(
         model=model,
         lsh=lsh,
@@ -241,10 +282,14 @@ def evaluate_with_cluster(
         stream_docs=stream_docs,
         docs=docs,
         ts=ts,
+        use_tensor_key=use_tensor_key,
+        cluster_min_size=cluster_min_size,
     )
 
     # Retrieve
-    result = retrieve_top_k_docs_from_cluster(model, eval_queries, clusters, docs, 10)
+    result = retrieve_top_k_docs_from_cluster(
+        model, eval_queries, clusters, docs, use_tensor_key, 10
+    )
     end_time = time.time()
     print(f"Spend {end_time-start_time} seconds for retrieval.")
 
