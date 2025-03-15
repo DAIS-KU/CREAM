@@ -18,7 +18,7 @@ class Stream:
     ):
         queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
-        doc_list = list(docs.values())[:3000]
+        doc_list = list(docs.values())
 
         random.shuffle(queries)
         random.shuffle(doc_list)

@@ -204,7 +204,7 @@ def train(
                 ts=ts,
                 use_tensor_key=use_tensor_key,
             )
-            end_time = time.time()  # 크크 좃댐 감지 *-(ㅋ_ㅋ
+            end_time = time.time()
             print(f"Assign {i}th stream ended({end_time - start_time}sec).")
         # Train
         loss_values, ts = streaming_train(
