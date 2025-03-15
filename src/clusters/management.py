@@ -1,7 +1,7 @@
 import copy
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
-
+from collections import defaultdict
 import torch
 
 from data import Stream
@@ -19,7 +19,7 @@ from .tensor_clustering import kmeans_pp_use_tensor_key
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
 
-num_devices = torch.cuda.device_count()
+num_devices = 3  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -165,8 +165,8 @@ def assign_instance_or_add_cluster(
         batch_closest_ids = find_k_closest_clusters(
             temp_model, texts, clusters, 1, device, lsh.use_tensor_key
         )
-        # TODO 모든 인스턴스별 로직(병목), cpu작업(비동기 소용x) 우야노............더 못 줄이겠는데
-        # Str
+        # 모든 인스턴스별 로직(병목), cpu작업(비동기 소용x) 우야노............더 못 줄이겠는데
+        # 정답률 2-3% 이므로,넉넉하게 20%만 샘플리하여 사용
         for i, doc in enumerate(batch):
             closest_cluster_id = batch_closest_ids[i][0]
             closest_cluster = clusters[closest_cluster_id]
@@ -263,44 +263,110 @@ def evict_clusters(
         }
         for future in futures:
             remaining_clusters.extend(future.result())
-
     print(f"evict_cluster_instances finished. (left #{len(remaining_clusters)})")
     return remaining_clusters
 
 
-def retrieve_top_k_docs_from_cluster(
-    model, queries, clusters, docs: dict, use_tensor_key, k=10, batch_size=64
-):
-    print("retrieve_top_k_docs_from_cluster started.")
-    result = {}
-    # stride. 순서 보장 필요X
-    batches = [queries[i::num_devices] for i in range(num_devices)]
+def get_topk_docids(model, query, docs, doc_ids, k, batch_size=128) -> List[str]:
+    query_token_embs = get_passage_embeddings(model, query["query"], devices[-1])
 
-    def process_batch(batch, device):
-        print(f"ㄴ Batch {len(batch)} starts on {device}.")
-        batch_result = {}
+    def process_batch(device, batch_doc_ids):
+        regl_scores = []
         temp_model = copy.deepcopy(model).to(device)
+        temp_query_token_embs = query_token_embs.clone().to(device)
+        for i in range(0, len(batch_doc_ids), batch_size):
+            batch_ids = batch_doc_ids[i : i + batch_size]
+            batch_texts = [docs[doc_id]["text"] for doc_id in batch_ids]
+            batch_emb = get_passage_embeddings(temp_model, batch_texts, device)
+            if batch_emb.dim() > 3:
+                batch_emb = batch_emb.squeeze()
+            # print(f"get_topk_docids({device}) | batch_emb:{batch_emb.shape}")
+            regl_score = calculate_S_qd_regl_batch(
+                temp_query_token_embs, batch_emb, device
+            )
+            regl_scores.append(regl_score)
+            # print(f"regl_scores: {len(regl_scores)}")
+        regl_scores = torch.cat(regl_scores, dim=0)
+        return [
+            (doc_id, regl_scores[idx].item())
+            for idx, doc_id in enumerate(batch_doc_ids)
+        ]
 
-        qids = [query["qid"] for query in batch]
-        texts = [query["query"] for query in batch]
-        batch_closest_ids = find_k_closest_clusters(
-            temp_model, texts, clusters, 1, device, use_tensor_key
+    # stride, 순서 보장 필요X
+    regl_scores = []
+    batch_cnt = min(num_devices, len(doc_ids))
+    doc_ids_batches = [doc_ids[i::batch_cnt] for i in range(batch_cnt)]
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for i, device in enumerate(range(batch_cnt)):
+            futures.append(executor.submit(process_batch, device, doc_ids_batches[i]))
+        for future in futures:
+            regl_scores.extend(future.result())
+
+    combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
+    top_k_regl_docs = combined_regl_scores[:k]
+    top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+    return top_k_regl_doc_ids
+
+
+def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_key, k):
+    print("retrieve_top_k_docs_from_cluster started.")
+    # stride. 순서 보장 필요X
+    doc_list = list(stream.docs.values())
+    doc_batches = [
+        doc_list[i::num_devices] for i in range(num_devices)
+    ]  # only eval docs
+
+    def doc_process_batch(batch, device, batch_size=256):
+        print(f"ㄴ Document batch {len(batch)} starts on {device}.")
+        random_vectors = torch.randn(nbits, 768)
+        lsh = RandomProjectionLSH(
+            random_vectors=random_vectors,
+            embedding_dim=768,
+            use_tensor_key=use_tensor_key,
         )
-
-        for i, query in enumerate(batch):
-            closest_cluster_id = batch_closest_ids[i][0]
-            closest_cluster = clusters[closest_cluster_id]
-            top_k_doc_ids = closest_cluster.get_topk_docids(temp_model, query, docs, k)
-            batch_result[qids[i]] = top_k_doc_ids
-        return batch_result
+        cluster_docids_dict = defaultdict(list)
+        temp_model = copy.deepcopy(model).to(device)
+        mini_batches = [
+            batch[i : i + batch_size] for i in range(0, len(batch), batch_size)
+        ]
+        for i, mini_batch in enumerate(mini_batches):
+            print(f" ㄴ {i}th minibatch({(i+1)*batch_size}/{len(batch)})")
+            mini_batch_texts = [doc["text"] for doc in mini_batch]
+            mini_batch_closest_ids = find_k_closest_clusters(
+                temp_model, mini_batch_texts, clusters, 1, device, use_tensor_key
+            )
+            for j in range(len(mini_batch_closest_ids)):
+                closest_cluster_id = mini_batch_closest_ids[j][0]
+                cluster_docids_dict[closest_cluster_id].append(mini_batch[j]["doc_id"])
+        return cluster_docids_dict
 
     with ThreadPoolExecutor(max_workers=num_devices) as executor:
         futures = {
-            executor.submit(process_batch, batch, devices[i % num_devices]): batch
-            for i, batch in enumerate(batches)
+            executor.submit(
+                doc_process_batch, doc_batches[i], devices[i % num_devices]
+            ): batch
+            for i, batch in enumerate(doc_batches)
         }
-        for future in futures:
-            result.update(future.result())
+    cluster_docids_dict = defaultdict(list)
+    for future in futures:
+        batch_result = future.result()
+        for cluster_id, doc_ids in batch_result.items():
+            cluster_docids_dict[cluster_id].extend(doc_ids)
 
+    result = {}
+    texts = [q["query"] for q in stream.queries]
+    batch_closest_ids = find_k_closest_clusters(
+        model, texts, clusters, 1, devices[1], use_tensor_key
+    )
+    for i, query in enumerate(stream.queries):
+        print(f"Retrieval {i}th query.")
+        closest_cluster_id = batch_closest_ids[i][0]
+        cand_docids = cluster_docids_dict[closest_cluster_id]
+        print(f"ㄴ cand_docids{len(cand_docids)}")
+        ans_ids = get_topk_docids(
+            model=model, query=query, docs=stream.docs, doc_ids=cand_docids, k=k
+        )
+        result[query["qid"]] = ans_ids
     print("retrieve_top_k_docs_from_cluster finished.")
     return result

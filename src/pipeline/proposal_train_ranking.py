@@ -53,7 +53,7 @@ def streaming_train(
     use_weight=False,
     use_tensor_key=False,
 ):
-    query_cnt = len(queries)
+    query_cnt = 3  # len(queries)
     loss_fn = InfoNCELoss()
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -140,7 +140,8 @@ def streaming_train(
 
 def train(
     sesison_count=4,
-    sampling_rate=0.5,
+    sampling_rate=None,
+    sampling_size_per_query=30,
     num_epochs=1,
     batch_size=32,
     warmingup_rate=0.2,
@@ -170,6 +171,7 @@ def train(
             doc_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
+            sampling_size_per_query=sampling_size_per_query,
             prev_docs=prev_docs,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
@@ -225,70 +227,51 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         # Evaluate
-        clusters = evaluate_with_cluster(
+        clusters, eval_stream_docs = evaluate_with_cluster(
             session_number=session_number,
+            ts=ts,
             nbits=nbits,
-            docs=stream.docs,
             clusters=clusters,
             model_path=new_model_path,
-            ts=ts,
             use_tensor_key=use_tensor_key,
-            cluster_min_size=cluster_min_size,
         )
         # Evict
         evict_clusters(model, lsh, stream.docs, clusters, ts)
         # Accumulate
-        prev_docs = stream.docs
+        prev_docs = {**stream.docs, **eval_stream_docs}
         ts += 1
 
 
 def evaluate_with_cluster(
     session_number,
-    docs: dict,
-    clusters: List[Cluster],
-    model_path,
     ts,
-    use_tensor_key,
+    model_path,
+    clusters: List[Cluster],
     nbits,
-    cluster_min_size,
+    use_tensor_key,
 ) -> List[Cluster]:
     eval_query_path = (
         f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
     )
-    eval_queries = read_jsonl(eval_query_path, True)
-    eval_docs = read_jsonl_as_dict(
-        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl", "doc_id"
+    eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+    stream = Stream(
+        session_number=session_number,
+        query_path=eval_query_path,
+        doc_path=eval_doc_path,
     )
-    eval_query_count, eval_doc_count = len(eval_queries), len(eval_docs)
+    eval_query_count = len(stream.queries)
+    eval_doc_count = len(stream.docs)
     print(
         f"Evaluate session {session_number} | #Query:{eval_query_count}, #Document:{eval_doc_count}"
     )
-    docs.update(eval_docs)
-    start_time = time.time()
 
-    # Assign
+    # Assign and Retrieve
+    start_time = time.time()
     model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
-    random_vectors = torch.randn(nbits, 768)
-    lsh = RandomProjectionLSH(
-        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
-    )
-    stream_docs = list(eval_docs.values())
-    assign_instance_or_add_cluster(
-        model=model,
-        lsh=lsh,
-        clusters=clusters,
-        stream_docs=stream_docs,
-        docs=docs,
-        ts=ts,
-        use_tensor_key=use_tensor_key,
-        cluster_min_size=cluster_min_size,
-    )
-
-    # Retrieve
     result = retrieve_top_k_docs_from_cluster(
-        model, eval_queries, clusters, docs, use_tensor_key, 10
+        model, stream, clusters, nbits, use_tensor_key, 10
     )
     end_time = time.time()
     print(f"Spend {end_time-start_time} seconds for retrieval.")
@@ -297,4 +280,4 @@ def evaluate_with_cluster(
     write_file(rankings_path, result)
     eval_log_path = f"../data/evals/proposal_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    return clusters
+    return clusters, stream.docs

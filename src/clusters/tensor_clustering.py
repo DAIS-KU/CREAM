@@ -15,7 +15,7 @@ from functions.similarities import (
 
 MAX_SCORE = 256.0
 
-num_devices = torch.cuda.device_count()
+num_devices = 3  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -129,7 +129,7 @@ def get_closest_clusters_use_tensor_key(args):
                 distances_tensor, dim=1
             )  # (partition_bsz,)
             closest_clusters.extend(closest_batch_clusters.tolist())
-        print(f"closest_clusters: {len(closest_clusters)}")
+        # print(f"closest_clusters: {len(closest_clusters)}")
         return closest_clusters
 
 

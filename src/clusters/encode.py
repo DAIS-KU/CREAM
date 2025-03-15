@@ -18,7 +18,7 @@ tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
 def _renew_queries_with_text(
-    model, lsh, query_batch, device, batch_size=2048, max_length=256
+    model, lsh, query_batch, device, batch_size=1024, max_length=256
 ):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
@@ -49,7 +49,7 @@ def _renew_queries_with_text(
     return new_q_data
 
 
-def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=256):
+def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=256):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
     query_ids = [q["qid"] for q in query_batch]
@@ -72,7 +72,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=2048, max_length=
 
 
 def _renew_docs_with_text(
-    model, lsh, document_batch, device, batch_size=2048, max_length=2
+    model, lsh, document_batch, device, batch_size=1024, max_length=2
 ):
     document_texts = [d["text"] for d in document_batch]
     document_ids = [d["doc_id"] for d in document_batch]
@@ -99,7 +99,7 @@ def _renew_docs_with_text(
     return new_d_data
 
 
-def _renew_docs(model, lsh, document_batch, device, batch_size=2048, max_length=256):
+def _renew_docs(model, lsh, document_batch, device, batch_size=1024, max_length=256):
     torch.cuda.set_device(device)
     document_texts = [d["text"] for d in document_batch]
     document_ids = [d["doc_id"] for d in document_batch]
@@ -129,7 +129,7 @@ def _renew_data(
     device,
     renew_q=True,
     renew_d=True,
-    batch_size=2048,
+    batch_size=1024,
     max_length=256,
 ):
     torch.cuda.set_device(device)
@@ -159,7 +159,7 @@ def renew_data(
     renew_q=True,
     renew_d=True,
 ):
-    num_gpus = torch.cuda.device_count()
+    num_gpus = 2  # torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
     print(f"Using {num_gpus} GPUs: {devices}")
 
