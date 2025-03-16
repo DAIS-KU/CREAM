@@ -1,26 +1,28 @@
-from functions.utils import draw_elbow
-from data import read_jsonl, renew_data
-from cluster import kmeans_pp, compute_sse
+import random
+import time
 
+import numpy as np
 import torch
 
-import time
+from clusters import compute_sse, kmeans_pp, renew_data
+from data import read_jsonl
+from functions.utils import draw_elbow
 
 
-import time
-
-
-def find_best_k(doc_data, start, end, gap, max_iters, devices):
+def find_best_k(doc_data, max_iters, devices, num_intervals=5):
     X = list(doc_data.values())
     print(len(X))
     sse, execution_times = [], []
-    k_values = range(start, end + 1, gap)
-    filename = "./find_k.txt"
+    min_k = np.log2(len(X))
+    max_k = np.sqrt(len(X) / 2)
+    k_values = [int(_k) for _k in np.linspace(min_k, max_k, num_intervals)]
+    print(f"Search k range: {k_values}")
+    filename = "../data/find_k.txt"
     with open(filename, "a") as file:
         for _k in k_values:
             start_time = time.time()
-            centroids, cluster_instances = kmeans_pp(X, _k, max_iters, devices)
-            _sse = compute_sse(centroids, cluster_instances, devices)
+            centroids, cluster_instances = kmeans_pp(X, _k, max_iters)
+            _sse = compute_sse(centroids, cluster_instances)
             sse.append(_sse)
             end_time = time.time()
             execution_time = end_time - start_time
@@ -32,14 +34,18 @@ def find_best_k(doc_data, start, end, gap, max_iters, devices):
             file.write(result)
 
 
-def find_best_k_experiment(start, end, gap, max_iters):
-    doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+def find_best_k_experiment(max_iters=5, warmingup_rate=0.2):
     num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
-    doc_data = read_jsonl(doc_path)
+
+    doc_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+    doc_data = read_jsonl(doc_path, False)
+    wr_cnt = int(len(doc_data) * warmingup_rate)
+    random.shuffle(doc_data)
+    doc_data = doc_data[:wr_cnt]
 
     doc_count = len(doc_data)
-    print(f"Document count:{doc_count}")
+    print(f"Document count:{doc_count}, devices:{devices}")
     _, doc_data = renew_data(
         queries=None,
         documents=doc_data,
@@ -51,4 +57,4 @@ def find_best_k_experiment(start, end, gap, max_iters):
     )
     print(f"doc_data: {len(doc_data)}")
 
-    find_best_k(doc_data, start, end, gap, max_iters, devices)
+    find_best_k(doc_data, max_iters, devices)

@@ -1,26 +1,21 @@
 import random
+import time
+
 import torch
 from transformers import BertTokenizer
+
+from buffer import (
+    Buffer,
+    DataArguments,
+    DenseModel,
+    ModelArguments,
+    TevatronTrainingArguments,
+)
+from data import load_eval_docs, prepare_inputs, read_jsonl, write_file
 from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,
     get_top_k_documents_by_cosine,
-)
-
-from data import (
-    read_jsonl,
-    write_file,
-    renew_data,
-    prepare_inputs,
-    renew_data_mean_pooling,
-)
-import time
-from buffer import (
-    Buffer,
-    DataArguments,
-    TevatronTrainingArguments,
-    DenseModel,
-    ModelArguments,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -44,8 +39,8 @@ def build_model(model_path=None):
 
 
 def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
-    query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
-    doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+    query_data = f"../data/train_session0_queries.jsonl"
+    doc_data = f"../data/train_session0_docs.jsonl"
     # buffer_data = "../data"
     output_dir = "../data"
 
@@ -57,7 +52,7 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
         DataArguments(
             retrieve_method="mir",
             query_data=query_data,
-            doc_data=doc_data,
+            doc_data=None,  # doc_data,
             # buffer_data=buffer_data,
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
@@ -71,10 +66,12 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, buffer, num_epochs, batch_size=8, compatible=False):
+def session_train(
+    session_number, inputs, model, buffer, num_epochs, batch_size=8, compatible=False
+):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
-    print(f"Total inputs #{input_cnt}")
+    print(f"Total inputs #{input_cnt} with compatiblity {compatible}")
     random.shuffle(inputs)
 
     loss_values = []
@@ -92,8 +89,14 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=8, compatible=Fa
             print(f"batch {start_idx}-{end_idx}")
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
-                q_tensors, docs_tensors, docid_lst = inputs[qid]
-                output = model(q_tensors, docs_tensors)
+                if not compatible or session_number == 0:
+                    q_tensors, docs_tensors, docid_lst = inputs[qid]
+                    output = model(q_tensors, docs_tensors)
+                else:
+                    q_tensors, docs_tensors, identity, doc_oldemb, docid_lst = inputs[
+                        qid
+                    ]
+                    output = model(q_tensors, docs_tensors, identity, doc_oldemb)
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
@@ -128,7 +131,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=8, compatible=Fa
 def train(
     session_count=4,
     num_epochs=1,
-    batch_size=32,
+    batch_size=16,
     compatible=False,
     new_batch_size=3,
     mem_batch_size=3,
@@ -139,8 +142,8 @@ def train(
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
-        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
+        query_path = f"../data/train_session0_queries.jsonl"
+        doc_path = f"../data/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -153,7 +156,7 @@ def train(
         )
 
         model = build_model()
-        model.to(devices[2])
+        model.to(devices[0])
         if session_number != 0:
             model_path = f"../data/model/{method}_session_{session_number-1}.pth"
             print(f"Load model {model_path}")
@@ -161,7 +164,9 @@ def train(
         new_model_path = f"../data/model/{method}_session_{session_number}.pth"
         model.train()
 
-        loss_values = session_train(inputs, model, buffer, num_epochs, batch_size)
+        loss_values = session_train(
+            session_number, inputs, model, buffer, num_epochs, batch_size, compatible
+        )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
 
@@ -170,15 +175,9 @@ def evaluate(sesison_count=4):
     method = "mir"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = (
-            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
-        )
-        eval_doc_path = (
-            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
-        )
-
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+        eval_query_path = f"../data/test_session{session_number}_queries.jsonl"
+        eval_query_data = read_jsonl(eval_query_path, True)
+        eval_doc_data = load_eval_docs(session_number)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -188,16 +187,7 @@ def evaluate(sesison_count=4):
         model_path = f"../data/model/{method}_session_{session_number}.pth"
 
         start_time = time.time()
-        new_q_data, new_d_data = renew_data_mean_pooling(
-            queries_data=eval_query_data,
-            documents_data=eval_doc_data,
-            model_path=model_path,
-        )
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for encoding.")
-
-        start_time = time.time()
-        result = get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10)
+        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 

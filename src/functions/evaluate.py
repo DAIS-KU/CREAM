@@ -1,13 +1,14 @@
+import time
 from collections import defaultdict
 from typing import List
 
-import time
 from data import *
+
 from .retriever import get_top_k_documents_by_cosine
 
 
 def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
-    eval_queries = read_jsonl(query_path)
+    eval_queries = read_jsonl(query_path, True)
 
     rankings = defaultdict(list)
     with open(rankings_path, "r") as f:

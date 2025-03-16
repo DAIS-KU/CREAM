@@ -1,5 +1,6 @@
-from . import *
 from collections import defaultdict
+
+from . import *
 
 
 def check_query_answer_docs(domains):

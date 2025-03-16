@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List, Optional
+
 from transformers import TrainingArguments
 
 
@@ -66,8 +67,8 @@ class DataArguments:
     doc_data: str = field(
         default=None
     )  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
-    mem_size: int = field(default=0)
-    mem_batch_size: int = field(default=0)
+    mem_size: int = field(default=30)
+    mem_batch_size: int = field(default=2)
     cl_method: str = field(default=None)
     retrieve_method: str = field(default="random")
     update_method: str = field(default="random")
@@ -80,14 +81,14 @@ class DataArguments:
     gss_batch_size: int = field(default=0)
 
     # ### our method
-    new_batch_size: int = field(default=0)  # 用于memory retrieval
-    alpha: float = field(default=0.0)  # 用于memory retrieval
-    beta: float = field(default=0.0)  # 用于memory retrieval
+    new_batch_size: int = field(default=2)  # 用于memory retrieval
+    alpha: float = field(default=0.6)  # 用于memory retrieval
+    beta: float = field(default=0.4)  # 用于memory retrieval
     gamma: float = field(default=0.0)  # 用于memory retrieval ocs 수정
-    mem_upsample: int = field(default=0)  # 用于memory retrieval
-    mem_eval_size: int = field(default=0)  # 用于memory update
-    mem_replace_size: int = field(default=0)  # 用于memory update
-    upsample_scale: float = field(default=1.0)  # 用于memory update
+    mem_upsample: int = field(default=6)  # 用于memory retrieval
+    mem_eval_size: int = field(default=10)  # 用于memory update
+    mem_replace_size: int = field(default=10)  # 用于memory update
+    upsample_scale: float = field(default=2.0)  # 用于memory update
 
     train_dir: str = field(default=None, metadata={"help": "Path to train directory"})
     dataset_name: str = field(

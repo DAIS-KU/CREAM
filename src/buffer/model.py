@@ -2,25 +2,23 @@
 # https://github.com/caiyinqiong/L-2R/blob/022f1282cd5bdf42c29d0f006e5c1b77c2c5c724/src/tevatron/modeling/encoder.py#L81
 # https://github.com/caiyinqiong/L-2R/blob/022f1282cd5bdf42c29d0f006e5c1b77c2c5c724/src/tevatron/modeling/dense.py#L29
 
-import torch
-import torch.nn as nn
-from torch import Tensor
 import copy
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
-from torch import nn, Tensor
 import torch.distributed as dist
-from transformers import PreTrainedModel, AutoModel
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor, nn
+from transformers import AutoModel, PreTrainedModel
 from transformers.file_utils import ModelOutput
 
-from .arguments import ModelArguments, TevatronTrainingArguments as TrainingArguments
-
-import logging
-import torch.nn.functional as F
+from .arguments import ModelArguments
+from .arguments import TevatronTrainingArguments as TrainingArguments
 
 logger = logging.getLogger(__name__)
 
