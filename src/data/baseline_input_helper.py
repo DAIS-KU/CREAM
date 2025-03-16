@@ -32,7 +32,10 @@ def _prepare_inputs(
         prepared.append(x)
     # print(f"inputs: {inputs}")
     if session_number == 0 and (
-        cl_method == "our" or cl_method == "l2r" or cl_method == "er"
+        cl_method == "mir"
+        or cl_method == "our"
+        or cl_method == "l2r"
+        or cl_method == "er"
     ):
         buffer.init(inputs[0][0], inputs[4][0])
 

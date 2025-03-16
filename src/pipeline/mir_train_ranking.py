@@ -52,7 +52,7 @@ def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
         DataArguments(
             retrieve_method="mir",
             query_data=query_data,
-            doc_data=doc_data,
+            doc_data=None,  # doc_data,
             # buffer_data=buffer_data,
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,

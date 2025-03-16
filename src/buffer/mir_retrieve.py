@@ -56,6 +56,8 @@ class MIR_retrieve(object):
             sub_docids = random_retrieve(buffer.buffer_qid2dids[qid], subsample)
             docids_lst_from_mem.extend(docids_lst_from_new[i].tolist() + sub_docids)
 
+        doc_lst_from_mem = [buffer.did2doc[str(did)] for did in docids_lst_from_mem]
+
         doc_lst = [buffer.did2doc[did] for did in docids_lst_from_mem]
         doc_lst = buffer.tokenizer.batch_encode_plus(
             doc_lst,
