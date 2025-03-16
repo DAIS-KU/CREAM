@@ -132,13 +132,13 @@ if __name__ == "__main__":
     elif args.exp == "find_k":
         find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":
-        er_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-        )
+        # er_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        # )
         er_evaluate()
     elif args.exp == "mir":
         mir_train(
