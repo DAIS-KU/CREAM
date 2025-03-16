@@ -4,7 +4,6 @@ import torch
 from transformers import BertTokenizer
 from buffer import (
     DataArguments,
-    Model,
     ModelArguments,
     TevatronTrainingArguments,
 )
@@ -68,19 +67,7 @@ def process_batch(
     return results
 
 
-def renew_data_mean_pooling(queries_data, documents_data, model_path):
-    def build_model(model_path=None):
-        model_args = ModelArguments(model_name_or_path="bert-base-uncased")
-        training_args = TevatronTrainingArguments(output_dir="../data/model")
-        model = DenseModel.build(
-            model_args,
-            training_args,
-            cache_dir=model_args.cache_dir,
-        )
-        if model_path:
-            model.load_state_dict(torch.load(model_path, weights_only=True))
-        return model
-
+def renew_data_mean_pooling(model_builder, queries_data, documents_data):
     num_gpus = 3  # torch.cuda.device_count()
     models = [build_model(model_path) for _ in range(num_gpus)]
     query_batches = []

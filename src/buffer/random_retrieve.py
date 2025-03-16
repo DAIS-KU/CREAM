@@ -25,6 +25,7 @@ class Random_retrieve(object):
         # print(f"docids_lst_from_mem: {docids_lst_from_mem}")
 
         doc_lst_from_mem = [buffer.did2doc[str(did)] for did in docids_lst_from_mem]
+        # print(f"doc_lst_from_mem : {doc_lst_from_mem}")
         doc_lst_from_mem = buffer.tokenizer.batch_encode_plus(
             doc_lst_from_mem,
             add_special_tokens=True,

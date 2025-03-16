@@ -17,10 +17,10 @@ from data import (
     read_jsonl,
     write_file,
     read_jsonl_as_dict,
+    get_top_k_documents_by_cosine,
 )
 
 from functions import (
-    get_top_k_documents_by_cosine,
     SimpleContrastiveLoss,
     evaluate_dataset,
     renew_data_mean_pooling,
@@ -28,6 +28,10 @@ from functions import (
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+
+num_gpus = 2  # torch.cuda.device_count()
+devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def build_model(model_path=None):
@@ -40,12 +44,13 @@ def build_model(model_path=None):
     )
     if model_path:
         model.load_state_dict(torch.load(model_path, weights_only=True))
+    model.to(devices[1])
     return model
 
 
 def build_er_buffer(new_batch_size, mem_batch_size, compatible):
-    query_data = f"../data/train_session0_queries.jsonl"
-    doc_data = f"../data/train_session0_docs.jsonl"
+    query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+    doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     # buffer_data = "../data"
     output_dir = "../data"
 
@@ -58,7 +63,7 @@ def build_er_buffer(new_batch_size, mem_batch_size, compatible):
         tokenizer,
         DataArguments(
             query_data=query_data,
-            doc_data=doc_data,
+            doc_data=None,  # doc_data,
             # buffer_data=buffer_data,
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
@@ -93,7 +98,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=32, compatible=F
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
                 q_tensors, docs_tensors, docid_lst = inputs[qid]
-                output = model(q_tensors, docs_tensors)
+                output = model(q_tensors.to(devices[1]), docs_tensors.to(devices[1]))
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
@@ -138,11 +143,11 @@ def train(
     buffer = build_er_buffer(new_batch_size, mem_batch_size, compatible)
     method = "er"
     output_dir = "../data"
-    for session_number in range(session_count):
+    for session_number in range(1, session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = f"../data/train_session0_queries.jsonl"
-        doc_path = f"../data/train_session{session_number}_docs.jsonl"
+        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -173,9 +178,12 @@ def evaluate(sesison_count=4):
     method = "er"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data//huijeong/test_session{session_number}_docs.jsonl"
-
+        eval_query_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+        )
+        eval_doc_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+        )
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
 
@@ -187,16 +195,7 @@ def evaluate(sesison_count=4):
         model_path = f"../data/model/{method}_session_{session_number}.pth"
 
         start_time = time.time()
-        new_q_data, new_d_data = renew_data_mean_pooling(
-            queries_data=eval_query_data,
-            documents_data=eval_doc_data,
-            model_path=model_path,
-        )
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for encoding.")
-
-        start_time = time.time()
-        result = get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10)
+        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 
@@ -204,4 +203,3 @@ def evaluate(sesison_count=4):
         write_file(rankings_path, result)
         eval_log_path = f"../data/evals/{method}_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del new_q_data, new_d_data

@@ -476,7 +476,7 @@ def load_inputs(
 ):
     queries = read_jsonl(query_path, True, compatible)
     random.shuffle(queries)
-    docs = load_train_docs(session_number)
+    docs = load_train_docs()
     bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:

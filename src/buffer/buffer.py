@@ -4,7 +4,7 @@ import os
 import pickle
 
 import torch
-
+from data import load_train_docs
 from functions import convert_str_id_to_number_id
 
 from .arguments import DataArguments, TevatronTrainingArguments
@@ -77,9 +77,15 @@ class Buffer(torch.nn.Module):
         self.qid2query = self.read_data(
             is_query=True, data_path=params.query_data
         )  # {'qid':query text}
-        self.did2doc = self.read_data(
-            is_query=False, data_path=params.doc_data
-        )  # {'doc_id':doc text}
+        if params.doc_data == None:
+            self.did2doc = load_train_docs()
+            self.did2doc = {
+                doc_id: value["text"] for doc_id, value in self.did2doc.items()
+            }
+        else:
+            self.did2doc = self.read_data(
+                is_query=False, data_path=params.doc_data
+            )  # {'doc_id':doc text}
         print("total did2doc:", len(self.did2doc))
 
         if self.params.update_method == "gss":
