@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 def calculate_S_qd_regl(E_q, E_d, device):
@@ -77,3 +79,25 @@ def calculate_S_qd_regl_dict(E_q, E_d, device):
     # print(f"max_scores: {max_scores.shape}")
     S_qd_score = max_scores.sum(dim=1)  # batch[i]에 대해 합 구하기. (batch_size,)
     return S_qd_score
+
+
+def calculate_S_qd_regl_logits(E_q, E_d):
+    # E_q: (batch_size, qlen, 768), E_d: (batch_size, samples, dlen, 768)
+    device = E_q.device
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
+    E_q_normalized = torch.nn.functional.normalize(
+        E_q, p=2, dim=-1
+    )  # (batch_size, qlen, 768)
+    E_d_normalized = torch.nn.functional.normalize(
+        E_d, p=2, dim=-1
+    )  # (batch_size, samples, dlen, 768)
+    cosine_sim_matrix = torch.matmul(
+        E_q_normalized.unsqueeze(1),  # (batch_size, 1, qlen, 768)
+        E_d_normalized.transpose(2, 3),
+    )  # (batch_size, samples, 768, dlen)
+    # (batch_size, samples, qlen, dlen) → q별 최대 유사도 계산, 합산
+    max_scores, _ = torch.max(cosine_sim_matrix, dim=-1)  # (batch_size, samples, qlen)
+    S_qd_scores = max_scores.sum(dim=-1)  # (batch_size, samples)
+
+    return S_qd_scores

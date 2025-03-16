@@ -2,6 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import torch
 from transformers import BertTokenizer
+from buffer import (
+    DataArguments,
+    Model,
+    ModelArguments,
+    TevatronTrainingArguments,
+)
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
@@ -75,7 +81,7 @@ def renew_data_mean_pooling(queries_data, documents_data, model_path):
             model.load_state_dict(torch.load(model_path, weights_only=True))
         return model
 
-    num_gpus = torch.cuda.device_count()
+    num_gpus = 3  # torch.cuda.device_count()
     models = [build_model(model_path) for _ in range(num_gpus)]
     query_batches = []
     doc_batches = []

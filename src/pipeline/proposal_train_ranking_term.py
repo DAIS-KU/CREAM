@@ -15,7 +15,7 @@ from clusters import (
     retrieve_top_k_docs_from_cluster,
 )
 from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
-from functions import InfoNCELoss, evaluate_dataset
+from functions import InfoNCELoss, evaluate_dataset, InfoNCETermLoss
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -26,15 +26,19 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 def encode_texts(model, texts, max_length=256):
     device = model.device
-    no_padding_inputs = tokenizer(
-        texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
+    batch_inputs = tokenizer(
+        texts,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=max_length,
     )
-    no_padding_inputs = {
-        key: value.to(device) for key, value in no_padding_inputs.items()
-    }
-    outputs = model(**no_padding_inputs).last_hidden_state
-    embedding = outputs[:, 0, :]  # [CLS]만 사용
-    return embedding
+    batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
+    outputs = model(**batch_inputs).last_hidden_state
+    token_embeddings = outputs[:, 1:-1, :]
+    attention_mask = batch_inputs["attention_mask"][:, 1:-1]
+    token_embeddings = token_embeddings * (attention_mask[:, :, None].to(device))
+    return token_embeddings
 
 
 def streaming_train(
@@ -54,7 +58,7 @@ def streaming_train(
     use_tensor_key=False,
 ):
     query_cnt = len(queries)
-    loss_fn = InfoNCELoss()
+    loss_fn = InfoNCETermLoss()
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_values = []
@@ -67,7 +71,7 @@ def streaming_train(
             end_idx = min(start_idx + batch_size, query_cnt)
             print(f"query {start_idx}-{end_idx}")
 
-            query_batch, pos_docs_batch, neg_docs_batch = [], [], []
+            query_batches, doc_batches = [], []
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
                 pos_ids, pos_weights, neg_ids, neg_weights = get_samples_and_weights(
@@ -86,39 +90,29 @@ def streaming_train(
                     pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
-                query_batch.append(query["query"])
-                query_embeddings = encode_texts(model=model, texts=query["query"])
-                pos_embeddings = encode_texts(
-                    model=model, texts=pos_docs
-                )  # (positive_k, embedding_dim)
+                q_embedding = encode_texts(
+                    model=model, texts=query["query"]
+                )  # (1, 254, 768)
+                d_embedding = encode_texts(
+                    model=model, texts=pos_docs + neg_docs
+                )  # (positive_k + negative_k, 254, 768)
                 if use_weight:
-                    pos_weights = (
-                        torch.tensor(pos_weights).unsqueeze(1).to(pos_embeddings.device)
-                    )  # (positive_k, 1)
-                    pos_embeddings = pos_embeddings * pos_weights
-                pos_docs_batch.append(pos_embeddings)
+                    d_weights = (
+                        torch.tensor(pos_weights + neg_weights)
+                        .unsqueeze(1)
+                        .to(neg_embeddings.device)
+                    )  # (positive_k + negative_k, 1)
+                    d_embedding = d_embedding * d_weights
+                query_batches.append(q_embedding)
+                doc_batches.append(d_embedding)
 
-                neg_embeddings = encode_texts(
-                    model=model, texts=neg_docs
-                )  # (negative_k, embedding_dim)
-                if use_weight:
-                    neg_weights = (
-                        torch.tensor(neg_weights).unsqueeze(1).to(neg_embeddings.device)
-                    )  # (negative_k, 1)
-                    neg_embeddings = neg_embeddings * neg_weights
-                neg_docs_batch.append(neg_embeddings)
-
-            query_embeddings = encode_texts(
-                model=model, texts=query_batch
-            )  # (batch_size, embedding_dim)
-            positive_embeddings = torch.stack(
-                pos_docs_batch
-            )  # (batch_size, positive_k, embedding_dim)
-            negative_embeddings = torch.stack(
-                neg_docs_batch
-            )  # (batch_size, negative_k, embedding_dim)
-
-            loss = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+            q_embeddings = torch.stack(query_batches)  # (batch_size, 254, 768)
+            d_embeddings = torch.stack(
+                doc_batches
+            )  # (batch_size, positive_k + negative_k, 254, 768)
+            loss = loss_fn(
+                q_embeddings, d_embeddings
+            )  # loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
 
             optimizer.zero_grad()
             loss.backward()
@@ -144,10 +138,10 @@ def train(
     sampling_rate=None,
     sampling_size_per_query=30,
     num_epochs=1,
-    batch_size=32,
+    batch_size=1,  # 32,
     warmingup_rate=0.2,
     negative_k=6,
-    k=74,
+    k=12,  # 103
     cluster_min_size=10,
     nbits=12,  # 16,
     max_iters=3,

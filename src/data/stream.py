@@ -28,8 +28,9 @@ class Stream:
         sampling_size_per_query=None,
         stream_batch_size=512,
     ):
-        queries = read_jsonl(query_path, True)[:250]
+        queries = read_jsonl(query_path, True)
         random.shuffle(queries)
+        queries = queries
         self.queries = queries
 
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
@@ -50,13 +51,13 @@ class Stream:
             doc_list[i : i + stream_batch_size]
             for i in range(0, len(doc_list), stream_batch_size)
         ]
-        self.index = 0
         print(
-            f"queries #{len(self.queries)}, initial_docs #{len(self.initial_docs)}, #stream {len(self.stream_docs)}, {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
+            f"queries #{len(self.queries)}, initial_docs #{len(self.initial_docs)}, #stream {len(self.stream_docs)}"
         )
-
-    def get_stream(self, index):
-        return self.queries[index], self.stream_docs[index]
+        if len(self.stream_docs) > 0:
+            print(
+                f"stream size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
+            )
 
     def get_stream_size(self):
         return len(self.stream_docs)
@@ -86,5 +87,5 @@ class Stream:
             return doc_list
         else:
             print(f"Documents are raw.")
-            doc_list = list(docs.values())[:10000]
+            doc_list = list(docs.values())
             return doc_list

@@ -76,7 +76,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--nbits",
-        default=16,
+        default=12,
         type=int,
         help="number of hash bits.",
     )
@@ -123,6 +123,7 @@ if __name__ == "__main__":
         print(f"Use label: {args.use_label}")
         print(f"Use weight: {args.use_weight}")
         print(f"Use tensor key: {args.use_tensor_key}")
+        print(f"Use nbits: {args.nbits}")
         print(f"Use max_iters: {args.mi}")
         print(f"Use warmingup_rate: {args.wr}")
         print(f"Use warmingup_k: {args.init_k}")
@@ -143,19 +144,20 @@ if __name__ == "__main__":
             cluster_min_size=args.cmnsz,
             sampling_rate=args.sr,
             sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
         )
     elif args.exp == "bm25":
         bm25_evaluate()
     elif args.exp == "find_k":
         find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":
-        er_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-        )
+        # er_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        # )
         er_evaluate()
     elif args.exp == "mir":
         mir_train(

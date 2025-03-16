@@ -19,7 +19,7 @@ from .tensor_clustering import kmeans_pp_use_tensor_key
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
 
-num_devices = 3  # torch.cuda.device_count()
+num_devices = 2  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -42,7 +42,6 @@ def initialize(
         centroids, cluster_instances = kmeans_pp(
             list(initial_docs.values()), k, max_iters, nbits
         )
-
     clusters = []
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
@@ -125,8 +124,9 @@ def find_k_closest_clusters_for_sampling(
             )
 
         with ThreadPoolExecutor(num_devices) as executor:
-            # map 결과 순서 보장
-            scores = list(executor.map(process_on_device, devices, prototype_batches))
+            scores = list(
+                executor.map(process_on_device, devices, prototype_batches)
+            )  # map 결과 순서 보장
     else:
         for prototype in prototypes:
             score = calculate_S_qd_regl_dict(token_embs, prototype, devices[1])
@@ -165,8 +165,6 @@ def assign_instance_or_add_cluster(
         batch_closest_ids = find_k_closest_clusters(
             temp_model, texts, clusters, 1, device, lsh.use_tensor_key
         )
-        # 모든 인스턴스별 로직(병목), cpu작업(비동기 소용x) 우야노............더 못 줄이겠는데
-        # 정답률 2-3% 이므로,넉넉하게 20%만 샘플리하여 사용
         for i, doc in enumerate(batch):
             closest_cluster_id = batch_closest_ids[i][0]
             closest_cluster = clusters[closest_cluster_id]
@@ -179,9 +177,6 @@ def assign_instance_or_add_cluster(
             if n <= cluster_min_size or closest_distance <= closest_boundary:
                 closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
             else:
-                # 왜 이렇게 많지..? 그냥 저냥 납득할만한 거리인 것 같기도 하고..
-                # 작은 클러스터 반경이 넘 작아서 그런가?  초기화 때 많이 만들어 놓는게 안정적인가? <- 그런듯 <- 꼭 그렇지만도 안음,,흑,,,,,,,,,,
-                # n <= min_size 이런식으로 좀 묶어줘야하나 뒤로 갈수록 많이 생기는 거 같은데
                 print(f"closest_cluster: {s1}, {s2}, {n}")
                 print(
                     f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
@@ -197,7 +192,6 @@ def assign_instance_or_add_cluster(
             futures.append(executor.submit(process_batch, batch, device))
         for future in futures:
             future.result()
-
     print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
     return clusters
 
@@ -217,6 +211,7 @@ def get_samples_and_weights(
     print(f"positive_id:{positive_id} | negative_ids:{negative_ids}")
 
     positive_cluster = clusters[positive_id]
+
     positive_samples = positive_cluster.get_topk_docids(model, query, docs, 1)
     positive_weights = [positive_cluster.get_weight(ts)]
 
@@ -353,7 +348,6 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         batch_result = future.result()
         for cluster_id, doc_ids in batch_result.items():
             cluster_docids_dict[cluster_id].extend(doc_ids)
-
     result = {}
     texts = [q["query"] for q in stream.queries]
     batch_closest_ids = find_k_closest_clusters(

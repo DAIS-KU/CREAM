@@ -11,11 +11,19 @@ from buffer import (
     ModelArguments,
     TevatronTrainingArguments,
 )
-from data import load_eval_docs, prepare_inputs, read_jsonl, write_file
+from data import (
+    load_eval_docs,
+    prepare_inputs,
+    read_jsonl,
+    write_file,
+    read_jsonl_as_dict,
+)
+
 from functions import (
+    get_top_k_documents_by_cosine,
     SimpleContrastiveLoss,
     evaluate_dataset,
-    get_top_k_documents_by_cosine,
+    renew_data_mean_pooling,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -166,8 +174,10 @@ def evaluate(sesison_count=4):
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = f"../data/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data//huijeong/test_session{session_number}_docs.jsonl"
+
         eval_query_data = read_jsonl(eval_query_path, True)
-        eval_doc_data = load_eval_docs(session_number)
+        eval_doc_data = read_jsonl(eval_doc_path, False)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -177,7 +187,16 @@ def evaluate(sesison_count=4):
         model_path = f"../data/model/{method}_session_{session_number}.pth"
 
         start_time = time.time()
-        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
+        new_q_data, new_d_data = renew_data_mean_pooling(
+            queries_data=eval_query_data,
+            documents_data=eval_doc_data,
+            model_path=model_path,
+        )
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for encoding.")
+
+        start_time = time.time()
+        result = get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 

@@ -25,18 +25,16 @@ def _prepare_inputs(
     mem_batch_size,
     compatible,
 ) -> List[Dict[str, Union[torch.Tensor, Any]]]:
-    # tuple로 들어와야하는데 리스트고, 리스트안에 튜플 들어있음 어케 쎃아서 줘야햄,,,,
-    # Trainer에서는 하나씩 퍼다나르나
-    # print(f"inputs: {inputs}")
     prepared = []
-    for x in inputs[2:]:
+    for x in inputs[2:4]:
         for key, val in x.items():
             x[key] = val.to(device)
         prepared.append(x)
-
-    if session_number == 0 and (cl_method == "our" or cl_method == "l2r"):
-        buffer.init(inputs[1][: buffer.buffer_size])
-    inputs[1] = inputs[1][buffer.buffer_size :]
+    # print(f"inputs: {inputs}")
+    if session_number == 0 and (
+        cl_method == "our" or cl_method == "l2r" or cl_method == "er"
+    ):
+        buffer.init(inputs[0][0], inputs[4][0])
 
     if cl_method == "er":
         if not compatible:
@@ -229,20 +227,22 @@ def _prepare_inputs(
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
-            # print(f"prepared: {len(prepared)}, {len(prepared[0])}")      
-    elif cl_method == "ocs":                       
+            # print(f"prepared: {len(prepared)}, {len(prepared[0])}")
+    elif cl_method == "ocs":
         if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # mem_passage: training(data selection)    candidate_neg_docids: candidate for updating (난 res_did_lst로)
-            mem_passage, pos_docids, candidate_neg_docids, res_did_lst = buffer.retrieve(
-                qid_lst=qid_lst,
-                docids_lst=docids_lst,
-                q_lst=prepared[0],
-                d_lst=prepared[1],
+            mem_passage, pos_docids, candidate_neg_docids, res_did_lst = (
+                buffer.retrieve(
+                    qid_lst=qid_lst,
+                    docids_lst=docids_lst,
+                    q_lst=prepared[0],
+                    d_lst=prepared[1],
+                )
             )  # [num_q*(new_bz+mem_bz), d_len]
             buffer.update(
                 qid_lst=qid_lst,
-                docids_lst= res_did_lst,
+                docids_lst=res_did_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
             )
@@ -254,11 +254,13 @@ def _prepare_inputs(
         else:
             qid_lst, docids_lst = inputs[0], inputs[1]
 
-            mem_passage, pos_docids, candidate_neg_docids, res_did_lst = buffer.retrieve(
-                qid_lst=qid_lst,
-                docids_lst=docids_lst,
-                q_lst=prepared[0],
-                d_lst=prepared[1],
+            mem_passage, pos_docids, candidate_neg_docids, res_did_lst = (
+                buffer.retrieve(
+                    qid_lst=qid_lst,
+                    docids_lst=docids_lst,
+                    q_lst=prepared[0],
+                    d_lst=prepared[1],
+                )
             )  # [num_q*(1+mem_bz), 768],gpu; [num_q*(new_bz+mem_bz), d_len],gpu
             buffer.update(
                 qid_lst=qid_lst,
@@ -372,7 +374,13 @@ def create_one_example(text_encoding: List[int], is_query=False):
 
 def collate(features):
     # features 단일아이템 처리??
-    qq_id, dd_id, qq, dd = [features[0]], [features[1]], [features[2]], [features[3]]
+    qq_id, dd_id, qq, dd, init = (
+        [features[0]],
+        [features[1]],
+        [features[2]],
+        [features[3]],
+        [features[4]],
+    )
     # qq_id = [f[0] for f in features]
     # dd_id = [f[1] for f in features]
     # qq = [f[2] for f in features]
@@ -405,7 +413,7 @@ def collate(features):
     )
     # print(f"q_collated: {q_collated}")
     # print(f"d_collated: {d_collated}")
-    return qq_id, dd_id, q_collated, d_collated
+    return qq_id, dd_id, q_collated, d_collated, init
 
 
 def build_bm25(docs):
@@ -427,7 +435,7 @@ def getitem(
     session_number,
     query,
     docs,
-    train_n_passages,
+    train_n_passages=8,
     filtered=False,
     bm25=None,
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
@@ -442,6 +450,7 @@ def getitem(
     pos_psg = docs[pos_id]["text"]
     psg_ids.append(pos_id)
     encoded_passages.append(create_one_example(pos_psg))
+    addtional_passages = []
 
     negative_size = train_n_passages - 1
     doc_ids = list(docs.keys())
@@ -454,7 +463,8 @@ def getitem(
     for neg_id in neg_ids:
         psg_ids.append(neg_id)
         encoded_passages.append(create_one_example(docs[neg_id]["text"]))
-    return qry_id, psg_ids, encoded_query, encoded_passages
+    init_neg_ids = random.sample(valid_neg_ids, 32) if session_number == 0 else []
+    return qry_id, psg_ids, encoded_query, encoded_passages, init_neg_ids
 
 
 def load_inputs(
@@ -470,10 +480,7 @@ def load_inputs(
     bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:
-        train_n_passages = 40 if session_number == 0 else 8
-        features = getitem(
-            session_number, query, docs, train_n_passages, filtered, bm25
-        )
+        features = getitem(session_number, query, docs, 8, filtered, bm25)
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")
