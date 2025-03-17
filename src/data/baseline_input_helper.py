@@ -11,7 +11,7 @@ from .loader import read_jsonl, read_jsonl_as_dict, load_train_docs
 
 max_q_len: int = 32
 max_p_len: int = 128
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 

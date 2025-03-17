@@ -62,7 +62,7 @@ def build_gss_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
             retrieve_method="random",
             update_method="gss",
             query_data=query_data,
-            doc_data=doc_data,
+            doc_data=None, # 수정
             # buffer_data=buffer_data,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
