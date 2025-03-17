@@ -8,3 +8,5 @@ from .mir_train_ranking import train as mir_train
 from .ocs_train_ranking import evaluate as ocs_evaluate
 from .ocs_train_ranking import train as ocs_train
 from .proposal_train_ranking import train as proposal_train
+from .gss_train_ranking import train as gss_train
+from .gss_train_ranking import evaluate as gss_evaluate

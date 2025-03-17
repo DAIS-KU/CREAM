@@ -160,6 +160,7 @@ class GSSGreedyUpdate(object):
             docids_lst = np.insert(docids_lst, 0, did_pos)
 
             doc_lst = [buffer.did2doc[did] for did in docids_lst]
+            
             doc_lst = buffer.tokenizer.batch_encode_plus(
                 doc_lst,
                 add_special_tokens=True,
