@@ -453,7 +453,6 @@ def getitem(
     pos_psg = docs[pos_id]["text"]
     psg_ids.append(pos_id)
     encoded_passages.append(create_one_example(pos_psg))
-    addtional_passages = []
 
     negative_size = train_n_passages - 1
     doc_ids = list(docs.keys())
@@ -479,11 +478,19 @@ def load_inputs(
 ):
     queries = read_jsonl(query_path, True, compatible)
     random.shuffle(queries)
+
+    session_docs = load_train_docs(session_number)
     docs = load_train_docs()
+    answer_doc_ids = set()
+    for q in queries:
+        answer_doc_ids.update(q["cos_ans_pids"])
+    answer_docs = {k: v for k, v in docs.items() if k in answer_doc_ids}
+    session_docs.update(answer_docs)
+
     bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
     for query in queries:
-        features = getitem(session_number, query, docs, 8, filtered, bm25)
+        features = getitem(session_number, query, session_docs, 8, filtered, bm25)
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")

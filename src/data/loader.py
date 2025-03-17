@@ -70,13 +70,19 @@ def read_jsonl_as_dict(file_path, id_field, as_number_id=False):
     return data_dict
 
 
-def load_train_docs():
+def load_train_docs(session_number=None):
     train_docs = {}
-    for i in range(4):
+    if session_number:
         print(f"Read {i}th docs")
         doc_path = f"../data/train_session{i}_docs.jsonl"
         doc_data = read_jsonl_as_dict(doc_path, "doc_id")
         train_docs.update(doc_data)
+    else:
+        for i in range(4):
+            print(f"Read {i}th docs")
+            doc_path = f"../data/train_session{i}_docs.jsonl"
+            doc_data = read_jsonl_as_dict(doc_path, "doc_id")
+            train_docs.update(doc_data)
     print(f"train doc size {len(train_docs)}")
     return train_docs
 
