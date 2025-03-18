@@ -279,21 +279,21 @@ if __name__ == "__main__":
     #     need_train_query_counts=[360,300,300,300],
     #     need_test_query_counts=[40,33, 33, 33])
     cnt = 3
-    for i in range(1, 4):
-        src_queries_path = f"/mnt/DAIS_NAS/huijeong/train_session{i}_queries.jsonl"
-        src_docs_path = f"/mnt/DAIS_NAS/huijeong/train_session{i}_docs.jsonl"
+    for i in range(1,4):
+        src_queries_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_queries.jsonl"
+        src_docs_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_docs.jsonl"
         with open(src_queries_path, "r", encoding="utf-8") as f:
             queries = [json.loads(line) for line in f]
         with open(src_docs_path, "r", encoding="utf-8") as f:
             documents = [json.loads(line) for line in f]
-        query_subsets, doc_subsets = split_data(queries, documents, 3, 100)
+        query_subsets, doc_subsets = split_data(queries, documents, 3, 11)
         for query_subset, doc_subset in zip(query_subsets, doc_subsets):
             save_jsonl(
                 query_subset,
-                f"/mnt/DAIS_NAS/huijeong/sub/train_session{cnt}_queries.jsonl",
+                f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_queries.jsonl",
             )
             save_jsonl(
                 doc_subset,
-                f"/mnt/DAIS_NAS/huijeong/sub/train_session{cnt}_docs.jsonl",
+                f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_docs.jsonl",
             )
             cnt += 1
