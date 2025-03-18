@@ -19,7 +19,7 @@ from .tensor_clustering import kmeans_pp_use_tensor_key
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
 
-num_devices = 2  # torch.cuda.device_count()
+num_devices = 3  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -312,7 +312,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         doc_list[i::num_devices] for i in range(num_devices)
     ]  # only eval docs
 
-    def doc_process_batch(batch, device, batch_size=256):
+    def doc_process_batch(batch, device, batch_size=128):
         print(f"ㄴ Document batch {len(batch)} starts on {device}.")
         random_vectors = torch.randn(nbits, 768)
         lsh = RandomProjectionLSH(

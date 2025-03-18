@@ -3,6 +3,8 @@ import time
 from typing import List
 
 import torch
+import pickle
+
 from transformers import BertModel, BertTokenizer
 
 from clusters import (
@@ -20,7 +22,7 @@ from functions import InfoNCELoss, evaluate_dataset
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-num_gpus = 2  # torch.cuda.device_count()
+num_gpus = 3  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
@@ -140,7 +142,9 @@ def streaming_train(
 
 
 def train(
-    sesison_count=4,
+    start_session_number=0,
+    end_sesison_number=3,
+    load_cluster=False,
     sampling_rate=None,
     sampling_size_per_query=30,
     num_epochs=1,
@@ -164,7 +168,7 @@ def train(
         random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
     )
     prev_docs = None
-    for session_number in range(sesison_count):
+    for session_number in range(start_session_number, end_sesison_number):
         print(f"Training Session {session_number}")
         stream = Stream(
             session_number=session_number,
@@ -177,10 +181,10 @@ def train(
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
-        if session_number != 0:
-            model_path = f"../data/model/proposal_session_{session_number-1}.pth"
-            model.load_state_dict(torch.load(model_path, weights_only=True))
+        model = BertModel.from_pretrained("bert-base-uncased").to(devices[1])
+        # if session_number != 0:
+        #     model_path = f"../data/model/proposal_session_{session_number-1}.pth"
+        #     model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
@@ -192,41 +196,51 @@ def train(
             print(
                 f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
             )
-        # Assign
-        stream_size = stream.get_stream_size()
-        for i in range(0, stream_size):
-            print(f"Assign {i}th stream starts.")
-            start_time = time.time()
-            assign_instance_or_add_cluster(
-                model=model,
-                lsh=lsh,
-                clusters=clusters,
-                cluster_min_size=cluster_min_size,
-                stream_docs=stream.stream_docs[i],
-                docs=stream.docs,
-                ts=ts,
-                use_tensor_key=use_tensor_key,
-            )
-            end_time = time.time()
-            print(f"Assign {i}th stream ended({end_time - start_time}sec).")
-        # Train
-        loss_values, ts = streaming_train(
-            queries=stream.queries,
-            docs=stream.docs,
-            ts=ts,
-            clusters=clusters,
-            model=model,
-            lsh=lsh,
-            num_epochs=num_epochs,
-            negative_k=negative_k,
-            batch_size=batch_size,
-            use_label=use_label,
-            use_weight=use_weight,
-        )
-        write_line(
-            loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
-        )
-        torch.save(model.state_dict(), new_model_path)
+        if load_cluster:
+            with open(
+                f"/mnt/DAIS_NAS/huijeong/cluster_{session_number}.pkl", "rb"
+            ) as f:
+                pickle.dump(cluster, f)
+        # # Assign
+        # stream_size = stream.get_stream_size()
+        # for i in range(0, stream_size):
+        #     print(f"Assign {i}th stream starts.")
+        #     start_time = time.time()
+        #     assign_instance_or_add_cluster(
+        #         model=model,
+        #         lsh=lsh,
+        #         clusters=clusters,
+        #         cluster_min_size=cluster_min_size,
+        #         stream_docs=stream.stream_docs[i],
+        #         docs=stream.docs,
+        #         ts=ts,
+        #         use_tensor_key=use_tensor_key,
+        #     )
+        #     end_time = time.time()
+        #     print(f"Assign {i}th stream ended({end_time - start_time}sec).")
+        # # Train
+        # loss_values, ts = streaming_train(
+        #     queries=stream.queries,
+        #     docs=stream.docs,
+        #     ts=ts,
+        #     clusters=clusters,
+        #     model=model,
+        #     lsh=lsh,
+        #     num_epochs=num_epochs,
+        #     negative_k=negative_k,
+        #     batch_size=batch_size,
+        #     use_label=use_label,
+        #     use_weight=use_weight,
+        # )
+        # write_line(
+        #     loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
+        # )
+        # torch.save(model.state_dict(), new_model_path)
+        if load_cluster:
+            with open(
+                f"/mnt/DAIS_NAS/huijeong/cluster_{session_number}.pkl", "wb"
+            ) as f:
+                pickle.dump(cluster, f)
         # Evaluate
         clusters, eval_stream_docs = evaluate_with_cluster(
             session_number=session_number,

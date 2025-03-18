@@ -17,7 +17,7 @@ from functions import (
 from .prototype import RandomProjectionLSH
 
 MAX_SCORE = 256.0
-num_devices = 2  # torch.cuda.device_count()
+num_devices = 3  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 

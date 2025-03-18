@@ -71,6 +71,23 @@ if __name__ == "__main__":
         help="Use hash as tensor instead of map.",
     )
     parser.add_argument(
+        "--load_cluster",
+        action="store_true",
+        help="start with loading previous session cluster",
+    )
+    parser.add_argument(
+        "--start",
+        default=0,
+        type=int,
+        help="start session number.",
+    )
+    parser.add_argument(
+        "--end",
+        default=4,
+        type=int,
+        help="end session number.",
+    )
+    parser.add_argument(
         "--negative_k",
         default=6,
         type=int,
@@ -122,6 +139,9 @@ if __name__ == "__main__":
 
     print(f"Running experiments: {args.exp}")
     if args.exp == "proposal":
+        print(f"Start session: {args.start}")
+        print(f"End session: {args.end}")
+        print(f"Load cluster: {args.load_cluster}")
         print(f"Use label: {args.use_label}")
         print(f"Use weight: {args.use_weight}")
         print(f"Use tensor key: {args.use_tensor_key}")
@@ -134,6 +154,9 @@ if __name__ == "__main__":
         print(f"Use sampling size per query: {args.sspq}")
         # print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
             negative_k=args.negative_k,
@@ -153,13 +176,13 @@ if __name__ == "__main__":
     elif args.exp == "find_k":
         find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":
-        er_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-        )
+        # er_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        # )
         er_evaluate()
     elif args.exp == "mir":
         mir_train(
@@ -194,7 +217,7 @@ if __name__ == "__main__":
         gss_train(
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
-            compatible=args.comp, # 필요
+            compatible=args.comp,  # 필요
             new_batch_size=args.new_bz,
             mem_batch_size=args.mem_bz,
             mem_upsample=args.mem_upsample,

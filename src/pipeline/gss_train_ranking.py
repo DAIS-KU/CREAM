@@ -32,7 +32,9 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 def build_model(model_path=None):
     model_args = ModelArguments(model_name_or_path="bert-base-uncased")
-    training_args = TevatronTrainingArguments(output_dir="/home/sunho/continual_retrieval/ContinualRetrieval_paper/data/model")
+    training_args = TevatronTrainingArguments(
+        output_dir="/home/sunho/continual_retrieval/ContinualRetrieval_paper/data/model"
+    )
     model = DenseModel.build(
         model_args,
         training_args,
@@ -47,7 +49,7 @@ def build_model(model_path=None):
 def build_gss_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
     query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
     doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
-    buffer_data = "/home/sunho/continual_retrieval/ContinualRetrieval_paper/data" # comp시에는 필요
+    buffer_data = "/home/sunho/continual_retrieval/ContinualRetrieval_paper/data"  # comp시에는 필요
     output_dir = "/home/sunho/continual_retrieval/ContinualRetrieval_paper/data"
 
     method = "gss"
@@ -62,15 +64,14 @@ def build_gss_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
             retrieve_method="random",
             update_method="gss",
             query_data=query_data,
-            doc_data=None, # 수정
+            doc_data=None,  # 수정
             # buffer_data=buffer_data,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
             mem_size=30,
-            gss_batch_size=3,# 메모리에서 하나의 배치 샘플링시 포함할 샘플 개수
-            gss_mem_strength=3, # 메모리에서 최대 몇 개의 배치를 샘플링할 지
+            gss_batch_size=3,  # 메모리에서 하나의 배치 샘플링시 포함할 샘플 개수
+            gss_mem_strength=3,  # 메모리에서 최대 몇 개의 배치를 샘플링할 지
             # --------------------수정 여부 판단--------------------
-
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -99,7 +100,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=32, compatible=F
             print(f"batch {start_idx}-{end_idx}")
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
-                
+
                 q_tensors, docs_tensors, docid_lst = inputs[qid]
                 output = model(q_tensors, docs_tensors)
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
@@ -165,9 +166,9 @@ def train(
 
         model = build_model()
         # ---------------------수정함---------------------
-        # model.to(devices[0]) 
+        # model.to(devices[0])
         # ---------------------수정함---------------------
- 
+
         if session_number != 0:
             model_path = f"/home/sunho/continual_retrieval/ContinualRetrieval_paper/data/model/{method}_session_{session_number-1}.pth"
             print(f"Load model {model_path}")
