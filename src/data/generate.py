@@ -1,7 +1,7 @@
 import random
 from collections import defaultdict, Counter
 import json
-from loader import read_jsonl, append_to_jsonl, read_jsonl_as_dict
+from .loader import read_jsonl, append_to_jsonl, read_jsonl_as_dict
 
 
 def check_query_answer_docs(domains):
@@ -266,34 +266,71 @@ def split_data(queries, documents, num_splits=3, queries_per_prefix=13):
     return query_subsets, doc_subsets
 
 
+def read_jsonl_line(filepath):
+    res = []
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            res.append(json.loads(line.strip()))
+    return res
+
+
 def save_jsonl(data, path):
     with open(path, "w", encoding="utf-8") as f:
         for item in data:
             f.write(json.dumps(item) + "\n")
 
 
+def process_hotpot_qa(path="/mnt/DAIS_NAS/huijeong/raw/hotpot_dev_distractor_v1.json"):
+    datas = read_jsonl_line(path)[0]
+    processed = []
+    for i, data in enumerate(datas):
+        question = data["question"]
+        golden_answer_parts = [data["answer"]]
+        for fact in data["supporting_facts"]:
+            context_name, sentence_idx = fact
+            for context_item in data["context"]:
+                if context_item[0] == context_name:
+                    if sentence_idx < len(context_item[1]):
+                        golden_answer_parts.append(context_item[1][sentence_idx])
+                    else:
+                        print(
+                            f"Warning: Index {sentence_idx} out of range for context '{context_name}'"
+                        )
+                        continue
+        golden_answer = " ".join(golden_answer_parts)
+        qna = {"query": question, "answer": golden_answer}
+        processed.append(qna)
+        if i % 1000 == 0:
+            print(f"{i}th query and answer: {qna}")
+        if i == 15000:
+            break
+    save_jsonl(processed, "/mnt/DAIS_NAS/huijeong/pretrained,jsonl")
+
+
 if __name__ == "__main__":
+    process_hotpot_qa()
+
     # exp_sessioning(
     #     domains=['lifestyle'], # , 'writing', 'science', 'recreation', 'lifestyle'
     #     domain_answer_rate=[ 6.43], # 1.82, 6.47, 1.47, 5.17, 6.43
     #     need_train_query_counts=[360,300,300,300],
     #     need_test_query_counts=[40,33, 33, 33])
-    cnt = 3
-    for i in range(1,4):
-        src_queries_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_queries.jsonl"
-        src_docs_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_docs.jsonl"
-        with open(src_queries_path, "r", encoding="utf-8") as f:
-            queries = [json.loads(line) for line in f]
-        with open(src_docs_path, "r", encoding="utf-8") as f:
-            documents = [json.loads(line) for line in f]
-        query_subsets, doc_subsets = split_data(queries, documents, 3, 11)
-        for query_subset, doc_subset in zip(query_subsets, doc_subsets):
-            save_jsonl(
-                query_subset,
-                f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_queries.jsonl",
-            )
-            save_jsonl(
-                doc_subset,
-                f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_docs.jsonl",
-            )
-            cnt += 1
+    # cnt = 3
+    # for i in range(1, 4):
+    #     src_queries_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_queries.jsonl"
+    #     src_docs_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_docs.jsonl"
+    #     with open(src_queries_path, "r", encoding="utf-8") as f:
+    #         queries = [json.loads(line) for line in f]
+    #     with open(src_docs_path, "r", encoding="utf-8") as f:
+    #         documents = [json.loads(line) for line in f]
+    #     query_subsets, doc_subsets = split_data(queries, documents, 3, 11)
+    #     for query_subset, doc_subset in zip(query_subsets, doc_subsets):
+    #         save_jsonl(
+    #             query_subset,
+    #             f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_queries.jsonl",
+    #         )
+    #         save_jsonl(
+    #             doc_subset,
+    #             f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_docs.jsonl",
+    #         )
+    #         cnt += 1

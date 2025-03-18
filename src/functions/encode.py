@@ -29,6 +29,21 @@ def get_passage_embeddings(model, passages, device, max_length=256):
     return token_embeddings
 
 
+def encode_mean_pooling(model, encoded_input, max_length=256):
+    with torch.no_grad():
+        outputs = model(**encoded_input).last_hidden_state
+    attention_mask = encoded_input["attention_mask"].unsqueeze(
+        -1
+    )  # (batch_size, seq_len, 1)
+    # Ensure token_embeddings and attention_mask are of the same length
+    token_embeddings = outputs[
+        :, :max_length, :
+    ]  # Limit token embeddings to the max length
+    masked_embeddings = token_embeddings * attention_mask  # Element-wise multiplication
+    mean_embeddings = masked_embeddings.sum(dim=1) / attention_mask.sum(dim=1)
+    return mean_embeddings
+
+
 def process_batch(
     batch_data,
     model,
@@ -50,13 +65,15 @@ def process_batch(
         texts = [item[text_field] for item in batch_chunk]
 
         encoded_input = tokenizer(
-            texts, padding=True, truncation=True, max_length=512, return_tensors="pt"
+            texts, padding=True, truncation=True, max_length=256, return_tensors="pt"
         )
         encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
 
         with torch.no_grad():
-            model_output = model.encode_mean_pooling(
-                encoded_input
+            model_output = (
+                encode_mean_pooling(  # DenseModel의 경우 model.encode_mean_pooling
+                    model, encoded_input
+                )
             )  # [batch_size, emb_dim]
 
         for item_id, emb in zip(item_ids, model_output.cpu()):
@@ -67,9 +84,9 @@ def process_batch(
     return results
 
 
-def renew_data_mean_pooling(model_builder, queries_data, documents_data):
-    num_gpus = 3  # torch.cuda.device_count()
-    models = [build_model(model_path) for _ in range(num_gpus)]
+def renew_data_mean_pooling(model_builder, model_path, queries_data, documents_data):
+    num_gpus = torch.cuda.device_count()
+    models = [model_builder(model_path) for _ in range(num_gpus)]
     query_batches = []
     doc_batches = []
 

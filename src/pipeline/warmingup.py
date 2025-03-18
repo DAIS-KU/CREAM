@@ -5,146 +5,154 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import BertTokenizer, BertModel
 from datasets import load_dataset
 
-from functions import renew_data_mean_pooling, get_top_k_documents_by_cosine
+from functions import (
+    renew_data_mean_pooling,
+    get_top_k_documents_by_cosine,
+    evaluate_dataset,
+    InfoNCELoss,
+    SimpleContrastiveLoss,
+)
+from data import read_jsonl, write_file
+import time
+import random
+import json
+
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-class MSMARCODataset(Dataset):
-    def __init__(self, dataset, tokenizer, max_length=512):
-        self.dataset = dataset[:3000]
+class CustomDataset(Dataset):
+    def __init__(self, dataset, tokenizer, negative_k=6, samples=2500, max_length=256):
+        if dataset is None:
+            dataset = self.read_jsonl("/mnt/DAIS_NAS/huijeong/pretrained.jsonl")
+            print(f"Read {len(dataset)} elements.")
+        self.dataset = dataset[:samples]
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.samples = samples
+        self.negative_k = negative_k
+
+    def read_jsonl(self, filepath):
+        res = []
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                res.append(json.loads(line.strip()))
+        return res
 
     def __len__(self):
-        return len(self.dataset)
+        return self.samples
 
     def __getitem__(self, idx):
-        sample = self.dataset[idx]
-        query = sample["query"]
-        query_id = sample["query_id"]
-        query_type = sample["query_type"]
-        positive = (
-            sample["passages"]["passage_text"][
-                sample["passages"]["is_selected"].index(1)
-            ]
-            if 1 in sample["passages"]["is_selected"]
-            else ""
-        )
-        negative = (
-            sample["passages"]["passage_text"][
-                sample["passages"]["is_selected"].index(0)
-            ]
-            if 0 in sample["passages"]["is_selected"]
-            else ""
-        )
-
-        pos_encoding = self.tokenizer(
-            query,
-            positive,
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors="pt",
-        )
-        neg_encoding = self.tokenizer(
-            query,
-            negative,
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors="pt",
-        )
+        data = self.dataset[idx]
+        query = data["query"]
+        positive = data["answer"]
+        random_items = random.sample(self.dataset, self.negative_k)
+        negatives = [d["answer"] for d in random_items]
+        # print(f"query_encoding:{query_encoding['input_ids'].shape}, pos_encoding:{pos_encoding['input_ids'].shape}, neg_encodings:{neg_encodings['input_ids'].shape}")
 
         return {
-            "query_id": query_id,
-            "query_type": query_type,
-            "pos_input": pos_encoding,
-            "neg_input": neg_encoding,
+            "query_input": query,
+            "pos_input": positive,
+            "neg_inputs": negatives,
         }
 
 
-class ContrastiveBERT(nn.Module):
-    def __init__(self, model_name="bert-base-uncased"):
-        super().__init__()
-        self.bert = BertModel.from_pretrained(model_name)
-        self.projection = nn.Linear(self.bert.config.hidden_size, 128)
+def encode_texts(model, texts, max_length=256):
+    device = model.device
+    batch_inputs = tokenizer(
+        texts,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=max_length,
+    )
+    batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
+    outputs = model(**batch_inputs).last_hidden_state
+    attention_mask = batch_inputs["attention_mask"].unsqueeze(
+        -1
+    )  # (batch_size, seq_len, 1)
 
-    def forward(self, input_ids, attention_mask):
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        cls_embedding = outputs.last_hidden_state[:, 0, :]
-        projected = self.projection(cls_embedding)
-        return projected
+    # Ensure token_embeddings and attention_mask are of the same length
+    token_embeddings = outputs[
+        :, :max_length, :
+    ]  # Limit token embeddings to the max length
+    masked_embeddings = token_embeddings * attention_mask  # Element-wise multiplication
+    mean_embeddings = masked_embeddings.sum(dim=1) / attention_mask.sum(dim=1)
 
-
-class ContrastiveLoss(nn.Module):
-    def __init__(self, temperature=0.5):
-        super().__init__()
-        self.temperature = temperature
-        self.cosine_similarity = nn.CosineSimilarity(dim=-1)
-
-    def forward(self, query_emb, pos_emb, neg_emb):
-        pos_sim = self.cosine_similarity(query_emb, pos_emb)
-        neg_sim = self.cosine_similarity(query_emb, neg_emb)
-        loss = -torch.log(
-            torch.exp(pos_sim / self.temperature)
-            / (
-                torch.exp(pos_sim / self.temperature)
-                + torch.exp(neg_sim / self.temperature)
-            )
-        )
-        return loss.mean()
+    return mean_embeddings
 
 
 def train():
-    dataset = load_dataset("microsoft/ms_marco", "v2.1", split="train")
+    dataset = CustomDataset(None, tokenizer)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
 
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    dataset = MSMARCODataset(dataset, tokenizer)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    model = BertModel.from_pretrained("bert-base-uncased").to(device)
+    model.train()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ContrastiveBERT().to(device)
-    criterion = ContrastiveLoss()
+    criterion = InfoNCELoss()
     optimizer = optim.AdamW(model.parameters(), lr=2e-5)
     epochs = 1
+    i = 1
+
     for epoch in range(epochs):
         model.train()
         total_loss = 0
-        for i, batch in enumerate(dataloader):
-            optimizer.zero_grad()
+        batch_cnt = 1
+        # print(f"epoch {epoch}")
+        for batch in dataloader:
+            # print(f"{i}th batch")
+            query_input = batch["query_input"]
             pos_input = batch["pos_input"]
-            neg_input = batch["neg_input"]
+            neg_inputs = batch["neg_inputs"]
 
-            input_ids_pos = pos_input["input_ids"].squeeze(1).to(device)
-            attention_mask_pos = pos_input["attention_mask"].squeeze(1).to(device)
-            input_ids_neg = neg_input["input_ids"].squeeze(1).to(device)
-            attention_mask_neg = neg_input["attention_mask"].squeeze(1).to(device)
+            query_emb = encode_texts(model, query_input)
+            # query_emb = query_emb.unsqueeze(1)
+            pos_emb = encode_texts(model, pos_input)
+            pos_emb = pos_emb.unsqueeze(1)
+            neg_embs = []
+            for neg_input in neg_inputs:
+                neg_emb = encode_texts(model, neg_input)
+                neg_embs.append(neg_emb)
+            neg_embs = torch.stack(neg_embs, dim=1)
+            # print(
+            #     f"query_emb:{query_emb.shape}, pos_emb:{pos_emb.shape}, neg_embs:{neg_embs.shape}"
+            # )
+            loss = criterion(query_emb, pos_emb, neg_embs)
+            # psg_embs= torch.cat((pos_emb, neg_embs), dim=1)
+            # print(
+            #     f"query_emb:{query_emb.shape}, psg_embs:{psg_embs.shape}"
+            # )
+            # loss = criterion(query_emb, psg_embs)
 
-            query_emb = model(input_ids_pos, attention_mask_pos)
-            pos_emb = model(input_ids_pos, attention_mask_pos)
-            neg_emb = model(input_ids_neg, attention_mask_neg)
-
-            loss = criterion(query_emb, pos_emb, neg_emb)
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-            print(f"Batch {i+1}, Loss: {total_loss/len(dataloader):.4f}")
+            print(f"Batch {i}, Loss: {loss.item():.4f}, {total_loss/batch_cnt:.4f}")
+            i += 1
+            batch_cnt += 1
     torch.save(model.state_dict(), "./base_model.pth")
 
 
 def evaluate(session_cnt=12):
     def model_builder(model_path):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
         model = BertModel.from_pretrained("bert-base-uncased").to(device)
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()
         return model
-    for i in range(session_cnt):
-        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sub/huijeong/test_session{session_number}_docs.jsonl"
 
-        eval_query_data = read_jsonl(eval_query_path)
-        eval_doc_data = read_jsonl(eval_doc_path)
+    for session_number in range(session_cnt):
+        method = "warmingup"
+        eval_query_path = (
+            f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_queries.jsonl"
+        )
+        eval_doc_path = (
+            f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_docs.jsonl"
+        )
+
+        eval_query_data = read_jsonl(eval_query_path, True)
+        eval_doc_data = read_jsonl(eval_doc_path, False)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -170,7 +178,3 @@ def evaluate(session_cnt=12):
         eval_log_path = f"../data/evals/{method}_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
         del new_q_data, new_d_data
-
-
-if __name__ == "__main__":
-    train()

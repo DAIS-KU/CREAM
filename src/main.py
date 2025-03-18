@@ -12,8 +12,8 @@ from pipeline import (
     ocs_train,
     proposal_train,
     test_buffer,
-    gss_train,
-    gss_evaluate,
+    waringup_train,
+    waringup_evaluate,
 )
 
 if __name__ == "__main__":
@@ -214,14 +214,18 @@ if __name__ == "__main__":
         )
         l2r_evaluate()
     elif args.exp == "gss":
-        gss_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,  # 필요
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-            mem_upsample=args.mem_upsample,
-        )
-        gss_evaluate()
+        # gss_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,  # 필요
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        #     mem_upsample=args.mem_upsample,
+        # )
+        # gss_evaluate()
+        pass
+    elif args.exp == "wu":
+        waringup_train()
+        waringup_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")
