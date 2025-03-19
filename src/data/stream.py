@@ -31,19 +31,6 @@ class Stream:
         query_stream_batch_size=128,
         doc_stream_batch_size=512,
     ):
-        docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
-        doc_list = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
-        self.docs = {
-            doc["doc_id"]: {
-                "doc_id": doc["doc_id"],
-                "text": doc["text"],
-                "is_query": False,
-            }
-            for doc in doc_list
-        }
-        if prev_docs is not None:
-            self.docs.update(prev_docs)
-
         queries = read_jsonl(query_path, True)
         random.shuffle(queries)
         self.queries = queries
@@ -55,8 +42,21 @@ class Stream:
             }
             for query in queries
         }
-        self.docs.update(query_docs)
         query_list = list(query_docs.values())
+
+        docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+        doc_list = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
+        self.docs = {
+            doc["doc_id"]: {
+                "doc_id": doc["doc_id"],
+                "text": doc["text"],
+                "is_query": False,
+            }
+            for doc in doc_list
+        }
+        self.docs.update(query_docs)
+        if prev_docs is not None:
+            self.docs.update(prev_docs)
 
         if warming_up_method == "initial_cluster":
             if session_number == 0 and warmingup_rate is not None:
