@@ -31,7 +31,7 @@ class Cluster:
         use_tensor_key,
         timestamp=0,
         batch_size=256,
-        z=2.58,  # 99%
+        z=2.27,  # 99%
         u=5,
     ):
         self.prototype = centroid
@@ -82,9 +82,8 @@ class Cluster:
 
         regl_scores = []
         # stride, 순서 보장 필요X
-
-        batch_cnt = min(num_devices, len(only_doc_ids))
         only_doc_ids = self.get_only_docids(docs)
+        batch_cnt = min(num_devices, len(only_doc_ids))
         doc_ids_batches = [only_doc_ids[i::batch_cnt] for i in range(batch_cnt)]
         with ThreadPoolExecutor() as executor:
             futures = []

@@ -40,6 +40,30 @@ def encode_texts(model, texts, max_length=256):
     embedding = outputs[:, 0, :]  # [CLS]만 사용
     return embedding
 
+    # def encode_texts(model, texts, max_length=256):
+    #     device = model.device
+    #     batch_inputs = tokenizer(
+    #         texts,
+    #         return_tensors="pt",
+    #         truncation=True,
+    #         padding="max_length",
+    #         max_length=max_length,
+    #     )
+    #     batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
+    #     outputs = model(**batch_inputs).last_hidden_state
+    #     attention_mask = batch_inputs["attention_mask"].unsqueeze(
+    #         -1
+    #     )  # (batch_size, seq_len, 1)
+
+    #     # Ensure token_embeddings and attention_mask are of the same length
+    #     token_embeddings = outputs[
+    #         :, :max_length, :
+    #     ]  # Limit token embeddings to the max length
+    #     masked_embeddings = token_embeddings * attention_mask  # Element-wise multiplication
+    #     mean_embeddings = masked_embeddings.sum(dim=1) / attention_mask.sum(dim=1)
+
+    return mean_embeddings
+
 
 def streaming_train(
     queries,

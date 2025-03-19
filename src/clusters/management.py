@@ -68,20 +68,16 @@ def find_k_closest_clusters(
     scores = []
     if use_tensor_key:
         for i in range(0, len(prototypes), batch_size):
-            batch_prototypes = prototypes[i : i + batch_size]  # batch_size만큼 자르기
             batch_prototypes = torch.stack(prototypes[i : i + batch_size]).to(device)
-            # print(
-            #     f"token_embs:{token_embs.shape}, batch_prototypes:{batch_prototypes.shape}"
-            # )
             batch_scores = calculate_S_qd_regl_batch_batch(
                 token_embs, batch_prototypes, device
-            )
+            ).cpu()  # (t_bsz, p_bsz)
             scores.append(batch_scores)
     else:
         for prototype in prototypes:
             score = calculate_S_qd_regl_dict(token_embs, prototype, device)
             scores.append(score.unsqueeze(1))
-    scores_tensor = torch.cat(scores, dim=1)
+    scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
     topk_values, topk_indices = torch.topk(
         scores_tensor, k, dim=1
     )  # 각 샘플별 k개 선택
@@ -359,7 +355,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
     return result
 
 
-def clear_invalid_clusters(clsuters: List[Cluster], docs: dict):
+def clear_invalid_clusters(clusters: List[Cluster], docs: dict):
     valid_clusters = []
     before_n = len(clusters)
     for cluster in clusters:
