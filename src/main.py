@@ -76,6 +76,12 @@ if __name__ == "__main__":
         help="start with loading previous session cluster",
     )
     parser.add_argument(
+        "--warming_up_method",
+        default=None,
+        type=str,
+        help="use cluster warming up for the first session.(doc only/query only/mixed)",
+    )
+    parser.add_argument(
         "--start",
         default=0,
         type=int,
@@ -107,8 +113,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--wr",
-        default=0.2,
-        type=float,
+        default=None,
         help="warming up rate",
     )
     parser.add_argument(
@@ -142,6 +147,7 @@ if __name__ == "__main__":
         print(f"Start session: {args.start}")
         print(f"End session: {args.end}")
         print(f"Load cluster: {args.load_cluster}")
+        print(f"Use cluster warming up: {args.cw}")
         print(f"Use label: {args.use_label}")
         print(f"Use weight: {args.use_weight}")
         print(f"Use tensor key: {args.use_tensor_key}")
@@ -170,6 +176,7 @@ if __name__ == "__main__":
             sampling_rate=args.sr,
             sampling_size_per_query=args.sspq,
             nbits=args.nbits,
+            use_cluster_warming_up=args.cw,
         )
     elif args.exp == "bm25":
         bm25_evaluate()

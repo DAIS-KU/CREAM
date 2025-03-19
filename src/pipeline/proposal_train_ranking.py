@@ -158,6 +158,7 @@ def train(
     use_label=False,
     use_weight=False,
     use_tensor_key=False,
+    warming_up_method=None,
 ):
     ts = 0
     total_loss_values = []
@@ -172,70 +173,116 @@ def train(
         print(f"Training Session {session_number}")
         stream = Stream(
             session_number=session_number,
-            query_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_queries.jsonl",
-            doc_path=f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl",
+            query_path=f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl",
+            doc_path=f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
-            sampling_size_per_query=sampling_size_per_query,
             prev_docs=prev_docs,
+            sampling_size_per_query=sampling_size_per_query,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
         model = BertModel.from_pretrained("bert-base-uncased").to(devices[1])
-        # if session_number != 0:
-        #     model_path = f"../data/model/proposal_session_{session_number-1}.pth"
-        #     model.load_state_dict(torch.load(model_path, weights_only=True))
+        if session_number != 0:
+            model_path = f"../data/model/proposal_session_{session_number-1}.pth"
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = f"../data/model/proposal_session_{session_number}.pth"
 
         # Initial
-        if session_number == 0:
-            start_time = time.time()
-            clusters = initialize(model, stream, k, nbits, max_iters)
-            end_time = time.time()
-            print(
-                f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {len(stream.initial_docs)}) warming up."
-            )
         if load_cluster:
             with open(
                 f"/mnt/DAIS_NAS/huijeong/cluster_{session_number}.pkl", "rb"
             ) as f:
                 pickle.dump(cluster, f)
-        # # Assign
-        # stream_size = stream.get_stream_size()
-        # for i in range(0, stream_size):
-        #     print(f"Assign {i}th stream starts.")
-        #     start_time = time.time()
-        #     assign_instance_or_add_cluster(
-        #         model=model,
-        #         lsh=lsh,
-        #         clusters=clusters,
-        #         cluster_min_size=cluster_min_size,
-        #         stream_docs=stream.stream_docs[i],
-        #         docs=stream.docs,
-        #         ts=ts,
-        #         use_tensor_key=use_tensor_key,
-        #     )
-        #     end_time = time.time()
-        #     print(f"Assign {i}th stream ended({end_time - start_time}sec).")
-        # # Train
-        # loss_values, ts = streaming_train(
-        #     queries=stream.queries,
-        #     docs=stream.docs,
-        #     ts=ts,
-        #     clusters=clusters,
-        #     model=model,
-        #     lsh=lsh,
-        #     num_epochs=num_epochs,
-        #     negative_k=negative_k,
-        #     batch_size=batch_size,
-        #     use_label=use_label,
-        #     use_weight=use_weight,
-        # )
-        # write_line(
-        #     loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
-        # )
-        # torch.save(model.state_dict(), new_model_path)
+        else:
+            if session_number == 0:
+                start_time = time.time()
+                if warming_up_method == "initial_cluster":
+                    clusters = initialize_kmeans(
+                        model,
+                        stream.initial_docs,
+                        stream.docs,
+                        k,
+                        nbits,
+                        max_iters,
+                        use_tensor_key,
+                    )
+                    initial_size = len(stream.initial_docs)
+                    batch_start = 0
+                elif warming_up_method == "query_seed":
+                    clusters = initialize_kmeans(
+                        model,
+                        stream.stream_queries[0],
+                        stream.docs,
+                        k,
+                        nbits,
+                        max_iters,
+                        use_tensor_key,
+                    )
+                    initial_size = len(stream.stream_queries[0])
+                    batch_start = 1
+                elif warming_up_method == "stream_seed":
+                    clusters = initialize_kmeans(
+                        model,
+                        stream.stream_docs[0],
+                        stream.docs,
+                        k,
+                        nbits,
+                        max_iters,
+                        use_tensor_key,
+                    )
+                    initial_size = len(stream.stream_docs[0])
+                    batch_start = 1
+                else:
+                    raise NotImplementedError(
+                        f"Unsupported warming_up_method: {warming_up_method}"
+                    )
+                end_time = time.time()
+                print(
+                    f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {initial_size}) warming up."
+                )
+            else:
+                raise ValueError("Loading or initialization is required.")
+
+        # Assign stream batch
+        for i in range(batch_start, len(stream.stream_docs)):
+            print(f"Assign {i}th stream starts.")
+            start_time = time.time()
+            assign_instance_or_add_cluster(
+                model=model,
+                lsh=lsh,
+                clusters=clusters,
+                cluster_min_size=cluster_min_size,
+                stream_docs=stream.stream_docs[i],
+                docs=stream.docs,
+                ts=ts,
+                use_tensor_key=use_tensor_key,
+            )
+            if i % 50 == 0:
+                for j, cluster in enumerate(clusters):
+                    print(f"{j}th size: {len(cluster.doc_ids)}")
+        end_time = time.time()
+        print(f"Assign {i}th stream ended({end_time - start_time}sec).")
+
+        # Train
+        loss_values, ts = streaming_train(
+            queries=stream.queries,
+            docs=stream.docs,
+            ts=ts,
+            clusters=clusters,
+            model=model,
+            lsh=lsh,
+            num_epochs=num_epochs,
+            negative_k=negative_k,
+            batch_size=batch_size,
+            use_label=use_label,
+            use_weight=use_weight,
+        )
+        write_line(
+            loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
+        )
+        torch.save(model.state_dict(), new_model_path)
         if load_cluster:
             with open(
                 f"/mnt/DAIS_NAS/huijeong/cluster_{session_number}.pkl", "wb"
@@ -266,9 +313,11 @@ def evaluate_with_cluster(
     use_tensor_key,
 ) -> List[Cluster]:
     eval_query_path = (
-        f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+        f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_queries.jsonl"
     )
-    eval_doc_path = f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+    eval_doc_path = (
+        f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_docs.jsonl"
+    )
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,

@@ -24,11 +24,11 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
 def initialize(
-    model, stream: Stream, k, nbits, max_iters, use_tensor_key=True
+    model, stream_docs, docs, k, nbits, max_iters, use_tensor_key=True
 ) -> List[Cluster]:
     _, initial_docs = renew_data(
         queries=None,
-        documents=stream.initial_docs,
+        documents=stream_docs,
         renew_q=False,
         renew_d=True,
         nbits=nbits,
@@ -36,20 +36,16 @@ def initialize(
     )
     if use_tensor_key:
         centroids, cluster_instances = kmeans_pp_use_tensor_key(
-            list(initial_docs.values()), k, max_iters, nbits
+            list(stream_docs), k, max_iters, nbits
         )
     else:
-        centroids, cluster_instances = kmeans_pp(
-            list(initial_docs.values()), k, max_iters, nbits
-        )
+        centroids, cluster_instances = kmeans_pp(list(stream_docs), k, max_iters, nbits)
     clusters = []
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
             clusters.append(
-                Cluster(
-                    model, centroid, cluster_instances[cid], stream.docs, use_tensor_key
-                )
+                Cluster(model, centroid, cluster_instances[cid], docs, use_tensor_key)
             )
     return clusters
 
