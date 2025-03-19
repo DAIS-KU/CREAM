@@ -17,7 +17,7 @@ from functions import (
 from .prototype import RandomProjectionLSH
 
 MAX_SCORE = 256.0
-num_devices = 3  # torch.cuda.device_count()
+num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -48,6 +48,13 @@ class Cluster:
         else:
             self.update_statistics(model, docs)
 
+    def get_only_docids(self, docs):
+        only_doc_ids = [
+            doc_id for doc_id in self.doc_ids if not docs[doc_id]["is_query"]
+        ]
+        print(f"Document only #{len(only_doc_ids)}")
+        return only_doc_ids
+
     def get_topk_docids(self, model, query, docs: dict, k, batch_size=128) -> List[str]:
         query_token_embs = get_passage_embeddings(model, query["query"], devices[-1])
 
@@ -75,8 +82,10 @@ class Cluster:
 
         regl_scores = []
         # stride, 순서 보장 필요X
-        batch_cnt = min(num_devices, len(self.doc_ids))
-        doc_ids_batches = [self.doc_ids[i::batch_cnt] for i in range(batch_cnt)]
+
+        batch_cnt = min(num_devices, len(only_doc_ids))
+        only_doc_ids = self.get_only_docids(docs)
+        doc_ids_batches = [only_doc_ids[i::batch_cnt] for i in range(batch_cnt)]
         with ThreadPoolExecutor() as executor:
             futures = []
             for i, device in enumerate(range(batch_cnt)):

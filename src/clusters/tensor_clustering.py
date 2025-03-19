@@ -15,7 +15,7 @@ from functions.similarities import (
 
 MAX_SCORE = 256.0
 
-num_devices = 3  # torch.cuda.device_count()
+num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 

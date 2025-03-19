@@ -8,11 +8,12 @@ from .loader import read_jsonl, read_jsonl_as_dict
 
 
 def preprocess(corpus, max_length=256):
-    corpus = corpus.lower()
-    corpus = "".join([char for char in corpus if char not in string.punctuation])
-    tokens = word_tokenize(corpus)
-    max_len = min(max_length, len(tokens))
-    tokens = tokens[:max_len]
+    # corpus = corpus.lower()
+    # corpus = "".join([char for char in corpus if char not in string.punctuation])
+    # tokens = word_tokenize(corpus)
+    # max_len = min(max_length, len(tokens))
+    # tokens = tokens[:max_len]
+    tokens = corpus.split(" ")
     return tokens
 
 
@@ -22,6 +23,7 @@ class Stream:
         session_number,
         query_path,
         doc_path,
+        warming_up_method,
         prev_docs=None,
         warmingup_rate=None,
         sampling_rate=None,
@@ -29,73 +31,70 @@ class Stream:
         query_stream_batch_size=128,
         doc_stream_batch_size=512,
     ):
+        docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+        doc_list = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
+        self.docs = {
+            doc["doc_id"]: {
+                "doc_id": doc["doc_id"],
+                "text": doc["text"],
+                "is_query": False,
+            }
+            for doc in doc_list
+        }
+        if prev_docs is not None:
+            self.docs.update(prev_docs)
+
         queries = read_jsonl(query_path, True)
         random.shuffle(queries)
         self.queries = queries
-
-        docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
-        doc_list = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
-
-        self.docs = {doc["doc_id"]: doc for doc in doc_list}
         query_docs = {
-            query["qid"]: {"doc_id": query["qid"], "text": query["query"]}
+            query["qid"]: {
+                "doc_id": query["qid"],
+                "text": query["query"],
+                "is_query": True,
+            }
             for query in queries
         }
-        query_list = list(query_docs.values())
         self.docs.update(query_docs)
-        if prev_docs is not None:
-            self.docs.update(prev_docs)
+        query_list = list(query_docs.values())
 
         if warming_up_method == "initial_cluster":
             if session_number == 0 and warmingup_rate is not None:
                 print(f"Documents are sampled for warming up.")
                 warmingup_cnt = int(len(doc_list) * warmingup_rate)
                 self.initial_docs = doc_list[:warmingup_cnt]
-                doc_list = doc_list[warmingup_cnt:]
-                self.stream_queries = [
-                    query_list[i : i + query_stream_batch_size]
-                    for i in range(0, len(query_list), query_stream_batch_size)
-                ]
-                self.stream_docs = [
-                    doc_list[i : i + doc_stream_batch_size]
-                    for i in range(0, len(_list), doc_stream_batch_size)
-                ]
+                doc_list = query_list + doc_list[warmingup_cnt:]
+                self.stream_queries = []
             else:
-                raise ValueError("No initial_cluster parameters.")
+                raise ValueError("Invalid initial_cluster condition and parameters.")
         elif warming_up_method == "query_seed":
             self.initial_docs = []
-            self.stream_queries = [
-                query_list[i : i + query_stream_batch_size]
-                for i in range(0, len(query_list), query_stream_batch_size)
-            ]
-            self.stream_docs = [
-                doc_list[i : i + doc_stream_batch_size]
-                for i in range(0, len(_list), doc_stream_batch_size)
-            ]
+            self.stream_queries = [query_list[:query_stream_batch_size]]
+            doc_list = query_list[query_stream_batch_size:] + doc_list
         elif warming_up_method == "stream_seed":
             self.initial_docs = []
-            _list = query_list + doc_list
-            random.shuffle(_list)
-            self.stream_docs = [
-                doc_list[i : i + doc_stream_batch_size]
-                for i in range(0, len(_list), doc_stream_batch_size)
-            ]
+            self.stream_queries = []
+            doc_list = query_list + doc_list
         else:
             raise NotImplementedError(
                 f"Unsupported warming_up_method: {warming_up_method}"
             )
+        random.shuffle(doc_list)
+        self.stream_docs = [
+            doc_list[i : i + doc_stream_batch_size]
+            for i in range(0, len(doc_list), doc_stream_batch_size)
+        ]
 
         print(
             f"queries #{len(self.queries)}, documents #{len(self.docs)} initial_docs #{len(self.initial_docs)}"
         )
         if len(self.stream_queries) > 0:
             print(
-                f"#query_stream {len(self.stream_queries)}, stream_queries size {min(map(len, self.stream_queries))}-{max(map(len, self.stream_queries))}"
+                f"#stream_queries {len(self.stream_queries)}, stream_queries size {min(map(len, self.stream_queries))}-{max(map(len, self.stream_queries))}"
             )
-        if len(self.stream_docs) > 0:
-            print(
-                f"#doc_stream {len(self.stream_docs)}, stream_docs size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
-            )
+        print(
+            f"#doc_stream {len(self.stream_docs)}, stream_docs size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
+        )
 
     def filter(self, queries, docs, sampling_rate=None, sampling_size_per_query=None):
         if sampling_rate is not None:

@@ -119,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--init_k",
         type=int,
-        default=12,
+        default=None,
         help="warming up k cluster",
     )
     parser.add_argument(
@@ -147,7 +147,7 @@ if __name__ == "__main__":
         print(f"Start session: {args.start}")
         print(f"End session: {args.end}")
         print(f"Load cluster: {args.load_cluster}")
-        print(f"Use cluster warming up: {args.cw}")
+        print(f"Use cluster warming up: {args.warming_up_method}")
         print(f"Use label: {args.use_label}")
         print(f"Use weight: {args.use_weight}")
         print(f"Use tensor key: {args.use_tensor_key}")
@@ -171,12 +171,12 @@ if __name__ == "__main__":
             use_tensor_key=args.use_tensor_key,
             max_iters=args.mi,
             warmingup_rate=args.wr,
-            k=args.init_k,
+            init_k=args.init_k,
             cluster_min_size=args.cmnsz,
             sampling_rate=args.sr,
             sampling_size_per_query=args.sspq,
             nbits=args.nbits,
-            use_cluster_warming_up=args.cw,
+            warming_up_method=args.warming_up_method,
         )
     elif args.exp == "bm25":
         bm25_evaluate()

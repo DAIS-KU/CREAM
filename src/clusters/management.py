@@ -19,14 +19,14 @@ from .tensor_clustering import kmeans_pp_use_tensor_key
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
 
-num_devices = 3  # torch.cuda.device_count()
+num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
 def initialize(
     model, stream_docs, docs, k, nbits, max_iters, use_tensor_key=True
 ) -> List[Cluster]:
-    _, initial_docs = renew_data(
+    _, enoded_stream_docs = renew_data(
         queries=None,
         documents=stream_docs,
         renew_q=False,
@@ -34,12 +34,15 @@ def initialize(
         nbits=nbits,
         use_tensor_key=use_tensor_key,
     )
+    enoded_stream_docs = list(enoded_stream_docs.values())
     if use_tensor_key:
         centroids, cluster_instances = kmeans_pp_use_tensor_key(
-            list(stream_docs), k, max_iters, nbits
+            enoded_stream_docs, k, max_iters, nbits
         )
     else:
-        centroids, cluster_instances = kmeans_pp(list(stream_docs), k, max_iters, nbits)
+        centroids, cluster_instances = kmeans_pp(
+            enoded_stream_docs, k, max_iters, nbits
+        )
     clusters = []
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
@@ -310,12 +313,6 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
 
     def doc_process_batch(batch, device, batch_size=128):
         print(f"ㄴ Document batch {len(batch)} starts on {device}.")
-        random_vectors = torch.randn(nbits, 768)
-        lsh = RandomProjectionLSH(
-            random_vectors=random_vectors,
-            embedding_dim=768,
-            use_tensor_key=use_tensor_key,
-        )
         cluster_docids_dict = defaultdict(list)
         temp_model = copy.deepcopy(model).to(device)
         mini_batches = [
@@ -360,3 +357,14 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         result[query["qid"]] = ans_ids
     print("retrieve_top_k_docs_from_cluster finished.")
     return result
+
+
+def clear_invalid_clusters(clsuters: List[Cluster], docs: dict):
+    valid_clusters = []
+    before_n = len(clusters)
+    for cluster in clusters:
+        if len(cluster.get_only_docids(docs)) != 0:
+            valid_clusters.append(cluster)
+    after_n = len(valid_clusters)
+    print(f"Cleared invalid clusters #{before_n} -> #{after_n}")
+    return valid_clusters

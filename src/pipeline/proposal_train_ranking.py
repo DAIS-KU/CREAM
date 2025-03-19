@@ -1,6 +1,7 @@
 import random
 import time
 from typing import List
+import numpy as np
 
 import torch
 import pickle
@@ -15,6 +16,7 @@ from clusters import (
     get_samples_and_weights,
     initialize,
     retrieve_top_k_docs_from_cluster,
+    clear_invalid_clusters,
 )
 from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import InfoNCELoss, evaluate_dataset
@@ -151,10 +153,10 @@ def train(
     batch_size=32,
     warmingup_rate=0.2,
     negative_k=6,
-    k=74,
     cluster_min_size=10,
     nbits=12,  # 16,
     max_iters=3,
+    init_k=None,
     use_label=False,
     use_weight=False,
     use_tensor_key=False,
@@ -179,6 +181,7 @@ def train(
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
             sampling_size_per_query=sampling_size_per_query,
+            warming_up_method=warming_up_method,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
@@ -199,11 +202,16 @@ def train(
             if session_number == 0:
                 start_time = time.time()
                 if warming_up_method == "initial_cluster":
-                    clusters = initialize_kmeans(
+                    init_k = (
+                        int(np.sqrt(len(stream.initial_docs) / 2))
+                        if init_k is None
+                        else init_k
+                    )
+                    clusters = initialize(
                         model,
                         stream.initial_docs,
                         stream.docs,
-                        k,
+                        init_k,
                         nbits,
                         max_iters,
                         use_tensor_key,
@@ -211,11 +219,16 @@ def train(
                     initial_size = len(stream.initial_docs)
                     batch_start = 0
                 elif warming_up_method == "query_seed":
-                    clusters = initialize_kmeans(
+                    init_k = (
+                        int(np.sqrt(len(stream.stream_queries[0]) / 2))
+                        if init_k is None
+                        else init_k
+                    )
+                    clusters = initialize(
                         model,
                         stream.stream_queries[0],
                         stream.docs,
-                        k,
+                        init_k,
                         nbits,
                         max_iters,
                         use_tensor_key,
@@ -223,11 +236,16 @@ def train(
                     initial_size = len(stream.stream_queries[0])
                     batch_start = 1
                 elif warming_up_method == "stream_seed":
-                    clusters = initialize_kmeans(
+                    init_k = (
+                        int(np.sqrt(len(stream.stream_docs[0]) / 2))
+                        if init_k is None
+                        else init_k
+                    )
+                    clusters = initialize(
                         model,
                         stream.stream_docs[0],
                         stream.docs,
-                        k,
+                        init_k,
                         nbits,
                         max_iters,
                         use_tensor_key,
@@ -264,6 +282,9 @@ def train(
                     print(f"{j}th size: {len(cluster.doc_ids)}")
         end_time = time.time()
         print(f"Assign {i}th stream ended({end_time - start_time}sec).")
+
+        # Remain only trainable clusters
+        clusters = clear_invalid_clusters(clusters, stream.docs)
 
         # Train
         loss_values, ts = streaming_train(
