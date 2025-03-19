@@ -12,7 +12,7 @@ from functions.similarities import calculate_S_qd_regl_dict, calculate_S_qd_regl
 
 MAX_SCORE = 256.0
 
-num_gpus = torch.cuda.device_count()
+num_gpus = 2  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 

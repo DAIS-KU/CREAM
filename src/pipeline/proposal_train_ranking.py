@@ -24,7 +24,7 @@ from functions import InfoNCELoss, evaluate_dataset
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-num_gpus = 3  # torch.cuda.device_count()
+num_gpus = 2  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
@@ -178,8 +178,9 @@ def train(
     warmingup_rate=0.2,
     negative_k=6,
     cluster_min_size=10,
-    nbits=12,  # 16,
+    nbits=16,
     max_iters=3,
+    required_doc_size=2,
     init_k=None,
     use_label=False,
     use_weight=False,
@@ -227,7 +228,7 @@ def train(
                 start_time = time.time()
                 if warming_up_method == "initial_cluster":
                     init_k = (
-                        int(np.sqrt(len(stream.initial_docs) / 2))
+                        int(np.log2(len(stream.initial_docs)))
                         if init_k is None
                         else init_k
                     )
@@ -244,7 +245,7 @@ def train(
                     batch_start = 0
                 elif warming_up_method == "query_seed":
                     init_k = (
-                        int(np.sqrt(len(stream.stream_queries[0]) / 2))
+                        int(np.log2(len(stream.stream_queries[0])))
                         if init_k is None
                         else init_k
                     )
@@ -261,7 +262,7 @@ def train(
                     batch_start = 1
                 elif warming_up_method == "stream_seed":
                     init_k = (
-                        int(np.sqrt(len(stream.stream_docs[0]) / 2))
+                        int(np.log2(len(stream.stream_docs[0])))
                         if init_k is None
                         else init_k
                     )
@@ -308,7 +309,7 @@ def train(
         print(f"Assign {i}th stream ended({end_time - start_time}sec).")
 
         # Remain only trainable clusters
-        clusters = clear_invalid_clusters(clusters, stream.docs)
+        clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
 
         # Train
         loss_values, ts = streaming_train(

@@ -159,7 +159,7 @@ def renew_data(
     renew_q=True,
     renew_d=True,
 ):
-    num_gpus = torch.cuda.device_count()
+    num_gpus = 2  # torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
     print(f"Using {num_gpus} GPUs: {devices}")
 

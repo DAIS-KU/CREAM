@@ -17,7 +17,7 @@ from functions import (
 from .prototype import RandomProjectionLSH
 
 MAX_SCORE = 256.0
-num_devices = torch.cuda.device_count()
+num_devices = 2  # torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
@@ -138,7 +138,9 @@ class Cluster:
                 self.prototype[key] += value.cpu()
         self.timestamp = ts
 
-    def evict(self, model, lsh: RandomProjectionLSH, docs: dict) -> bool:  # isNotEmpty
+    def evict(
+        self, model, lsh: RandomProjectionLSH, docs: dict, required_doc_size
+    ) -> bool:  # isNotEmpty
         before_n = len(self.doc_ids)
         self.docids = []
         self.prototype = (
@@ -171,7 +173,7 @@ class Cluster:
                     else:
                         for key, value in doc_hash.items():
                             self.prototype[key] += value.cpu()
-        if len(self.docids) == 0:
+        if len(self.get_only_docids(docs)) < required_doc_size:
             return False
         after_n = len(self.doc_ids)
         print(f"doc_ids# {before_n} -> {after_n}")
