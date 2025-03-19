@@ -75,6 +75,10 @@ class Stream:
             self.initial_docs = []
             self.stream_queries = []
             doc_list = query_list + doc_list
+        elif warming_up_method == "eval":
+            self.initial_docs = []
+            self.stream_queries = []
+            doc_list = []
         else:
             raise NotImplementedError(
                 f"Unsupported warming_up_method: {warming_up_method}"

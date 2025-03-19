@@ -343,6 +343,7 @@ def evaluate_with_cluster(
         session_number=session_number,
         query_path=eval_query_path,
         doc_path=eval_doc_path,
+        warming_up_method="eval",
     )
     eval_query_count = len(stream.queries)
     eval_doc_count = len(stream.docs)
