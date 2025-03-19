@@ -68,16 +68,16 @@ def find_k_closest_clusters(
     scores = []
     if use_tensor_key:
         for i in range(0, len(prototypes), batch_size):
-            batch_prototypes = torch.stack(prototypes[i : i + batch_size]).to(device)
+            batch_prototypes = torch.stack(prototypes[i : i + batch_size]).to(device) 
             batch_scores = calculate_S_qd_regl_batch_batch(
                 token_embs, batch_prototypes, device
-            ).cpu()  # (t_bsz, p_bsz)
+            ).cpu() # (t_bsz, p_bsz)
             scores.append(batch_scores)
     else:
         for prototype in prototypes:
             score = calculate_S_qd_regl_dict(token_embs, prototype, device)
             scores.append(score.unsqueeze(1))
-    scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
+    scores_tensor = torch.cat(scores, dim=1) # (t_bsz, len(prototypes))
     topk_values, topk_indices = torch.topk(
         scores_tensor, k, dim=1
     )  # 각 샘플별 k개 선택
@@ -105,9 +105,8 @@ def find_k_closest_clusters_for_sampling(
         def process_on_device(device, batch_prototypes):
             device_scores = []
             temp_token_embs = token_embs.clone().to(device)
-            for i in range(0, len(batch_prototypes), batch_size):
-                batch = batch_prototypes[i : i + batch_size]
-                batch_tensor = torch.stack(batch).to(device)
+            for i in range(0, len(batch_prototypes), batch_size): 
+                batch_tensor = torch.stack(batch_prototypes[i : i + batch_size]).to(device)
                 batch_scores = calculate_S_qd_regl_batch_batch(
                     temp_token_embs, batch_tensor, device
                 ).cpu()
