@@ -30,8 +30,8 @@ torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-# num_gpus = 2  # torch.cuda.device_count()
-# devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+num_gpus = 2  # torch.cuda.device_count()
+devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def build_model(model_path=None):
@@ -44,13 +44,13 @@ def build_model(model_path=None):
     )
     if model_path:
         model.load_state_dict(torch.load(model_path, weights_only=True))
-    # model.to(devices[1])
+    model.to(devices[1])
     return model
 
 
 def build_er_buffer(new_batch_size, mem_batch_size, compatible):
-    query_data = f"../data/train_session0_queries.jsonl"
-    doc_data = f"../data/train_session0_docs.jsonl"
+    query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+    doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     # buffer_data = "../data"
     output_dir = "../data"
 
@@ -98,7 +98,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=32, compatible=F
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
                 q_tensors, docs_tensors, docid_lst = inputs[qid]
-                output = model(q_tensors, docs_tensors)
+                output = model(q_tensors.to(devices[1]), docs_tensors.to(devices[1]))
                 # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
@@ -146,8 +146,8 @@ def train(
     for session_number in range(1, session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = f"../data/train_session0_queries.jsonl"
-        doc_path = f"../data/train_session{session_number}_docs.jsonl"
+        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -176,10 +176,14 @@ def train(
 
 def evaluate(sesison_count=4):
     method = "er"
-    for session_number in range(sesison_count):
+    for session_number in range(1, sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/test_session{session_number}_docs.jsonl"
+        eval_query_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+        )
+        eval_doc_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+        )
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
 

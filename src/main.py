@@ -12,8 +12,8 @@ from pipeline import (
     ocs_train,
     proposal_train,
     test_buffer,
-    gss_train,
-    gss_evaluate,
+    waringup_train,
+    waringup_evaluate,
 )
 
 if __name__ == "__main__":
@@ -71,6 +71,29 @@ if __name__ == "__main__":
         help="Use hash as tensor instead of map.",
     )
     parser.add_argument(
+        "--load_cluster",
+        action="store_true",
+        help="start with loading previous session cluster",
+    )
+    parser.add_argument(
+        "--warming_up_method",
+        default=None,
+        type=str,
+        help="use cluster warming up for the first session.(doc only/query only/mixed)",
+    )
+    parser.add_argument(
+        "--start",
+        default=0,
+        type=int,
+        help="start session number.",
+    )
+    parser.add_argument(
+        "--end",
+        default=4,
+        type=int,
+        help="end session number.",
+    )
+    parser.add_argument(
         "--negative_k",
         default=6,
         type=int,
@@ -90,14 +113,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--wr",
-        default=0.2,
-        type=float,
+        default=None,
         help="warming up rate",
     )
     parser.add_argument(
         "--init_k",
         type=int,
-        default=12,
+        default=None,
         help="warming up k cluster",
     )
     parser.add_argument(
@@ -122,6 +144,10 @@ if __name__ == "__main__":
 
     print(f"Running experiments: {args.exp}")
     if args.exp == "proposal":
+        print(f"Start session: {args.start}")
+        print(f"End session: {args.end}")
+        print(f"Load cluster: {args.load_cluster}")
+        print(f"Use cluster warming up: {args.warming_up_method}")
         print(f"Use label: {args.use_label}")
         print(f"Use weight: {args.use_weight}")
         print(f"Use tensor key: {args.use_tensor_key}")
@@ -134,6 +160,9 @@ if __name__ == "__main__":
         print(f"Use sampling size per query: {args.sspq}")
         # print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
             negative_k=args.negative_k,
@@ -142,24 +171,25 @@ if __name__ == "__main__":
             use_tensor_key=args.use_tensor_key,
             max_iters=args.mi,
             warmingup_rate=args.wr,
-            k=args.init_k,
+            init_k=args.init_k,
             cluster_min_size=args.cmnsz,
             sampling_rate=args.sr,
             sampling_size_per_query=args.sspq,
             nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
         )
     # elif args.exp == "bm25":
     #     bm25_evaluate()
     elif args.exp == "find_k":
         find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":
-        er_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-        )
+        # er_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        # )
         er_evaluate()
     elif args.exp == "mir":
         mir_train(
@@ -191,14 +221,18 @@ if __name__ == "__main__":
         )
         l2r_evaluate()
     elif args.exp == "gss":
-        gss_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp, # 필요
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-            mem_upsample=args.mem_upsample,
-        )
-        gss_evaluate()
+        # gss_train(
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     compatible=args.comp,  # 필요
+        #     new_batch_size=args.new_bz,
+        #     mem_batch_size=args.mem_bz,
+        #     mem_upsample=args.mem_upsample,
+        # )
+        # gss_evaluate()
+        pass
+    elif args.exp == "wu":
+        waringup_train()
+        waringup_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

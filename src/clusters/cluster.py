@@ -31,7 +31,7 @@ class Cluster:
         use_tensor_key,
         timestamp=0,
         batch_size=256,
-        z=2.58,  # 99%
+        z=2.27,  # 99%
         u=5,
     ):
         self.prototype = centroid
@@ -47,6 +47,13 @@ class Cluster:
             self.N = 1
         else:
             self.update_statistics(model, docs)
+
+    def get_only_docids(self, docs):
+        only_doc_ids = [
+            doc_id for doc_id in self.doc_ids if not docs[doc_id]["is_query"]
+        ]
+        print(f"Document only #{len(only_doc_ids)}")
+        return only_doc_ids
 
     def get_topk_docids(self, model, query, docs: dict, k, batch_size=128) -> List[str]:
         query_token_embs = get_passage_embeddings(model, query["query"], devices[-1])
@@ -75,8 +82,9 @@ class Cluster:
 
         regl_scores = []
         # stride, 순서 보장 필요X
-        batch_cnt = min(num_devices, len(self.doc_ids))
-        doc_ids_batches = [self.doc_ids[i::batch_cnt] for i in range(batch_cnt)]
+        only_doc_ids = self.get_only_docids(docs)
+        batch_cnt = min(num_devices, len(only_doc_ids))
+        doc_ids_batches = [only_doc_ids[i::batch_cnt] for i in range(batch_cnt)]
         with ThreadPoolExecutor() as executor:
             futures = []
             for i, device in enumerate(range(batch_cnt)):
@@ -130,7 +138,9 @@ class Cluster:
                 self.prototype[key] += value.cpu()
         self.timestamp = ts
 
-    def evict(self, model, lsh: RandomProjectionLSH, docs: dict) -> bool:  # isNotEmpty
+    def evict(
+        self, model, lsh: RandomProjectionLSH, docs: dict, required_doc_size
+    ) -> bool:  # isNotEmpty
         before_n = len(self.doc_ids)
         self.docids = []
         self.prototype = (
@@ -163,7 +173,7 @@ class Cluster:
                     else:
                         for key, value in doc_hash.items():
                             self.prototype[key] += value.cpu()
-        if len(self.docids) == 0:
+        if len(self.get_only_docids(docs)) < required_doc_size:
             return False
         after_n = len(self.doc_ids)
         print(f"doc_ids# {before_n} -> {after_n}")

@@ -24,32 +24,31 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
 def initialize(
-    model, stream: Stream, k, nbits, max_iters, use_tensor_key=True
+    model, stream_docs, docs, k, nbits, max_iters, use_tensor_key=True
 ) -> List[Cluster]:
-    _, initial_docs = renew_data(
+    _, enoded_stream_docs = renew_data(
         queries=None,
-        documents=stream.initial_docs,
+        documents=stream_docs,
         renew_q=False,
         renew_d=True,
         nbits=nbits,
         use_tensor_key=use_tensor_key,
     )
+    enoded_stream_docs = list(enoded_stream_docs.values())
     if use_tensor_key:
         centroids, cluster_instances = kmeans_pp_use_tensor_key(
-            list(initial_docs.values()), k, max_iters, nbits
+            enoded_stream_docs, k, max_iters, nbits
         )
     else:
         centroids, cluster_instances = kmeans_pp(
-            list(initial_docs.values()), k, max_iters, nbits
+            enoded_stream_docs, k, max_iters, nbits
         )
     clusters = []
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
             clusters.append(
-                Cluster(
-                    model, centroid, cluster_instances[cid], stream.docs, use_tensor_key
-                )
+                Cluster(model, centroid, cluster_instances[cid], docs, use_tensor_key)
             )
     return clusters
 
@@ -69,20 +68,16 @@ def find_k_closest_clusters(
     scores = []
     if use_tensor_key:
         for i in range(0, len(prototypes), batch_size):
-            batch_prototypes = prototypes[i : i + batch_size]  # batch_size만큼 자르기
             batch_prototypes = torch.stack(prototypes[i : i + batch_size]).to(device)
-            # print(
-            #     f"token_embs:{token_embs.shape}, batch_prototypes:{batch_prototypes.shape}"
-            # )
             batch_scores = calculate_S_qd_regl_batch_batch(
                 token_embs, batch_prototypes, device
-            )
+            ).cpu()  # (t_bsz, p_bsz)
             scores.append(batch_scores)
     else:
         for prototype in prototypes:
             score = calculate_S_qd_regl_dict(token_embs, prototype, device)
             scores.append(score.unsqueeze(1))
-    scores_tensor = torch.cat(scores, dim=1)
+    scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
     topk_values, topk_indices = torch.topk(
         scores_tensor, k, dim=1
     )  # 각 샘플별 k개 선택
@@ -111,8 +106,9 @@ def find_k_closest_clusters_for_sampling(
             device_scores = []
             temp_token_embs = token_embs.clone().to(device)
             for i in range(0, len(batch_prototypes), batch_size):
-                batch = batch_prototypes[i : i + batch_size]
-                batch_tensor = torch.stack(batch).to(device)
+                batch_tensor = torch.stack(batch_prototypes[i : i + batch_size]).to(
+                    device
+                )
                 batch_scores = calculate_S_qd_regl_batch_batch(
                     temp_token_embs, batch_tensor, device
                 ).cpu()
@@ -229,7 +225,7 @@ def get_samples_and_weights(
 
 
 def evict_clusters(
-    model, lsh, docs: dict, clusters: List[Cluster], ts
+    model, lsh, docs: dict, clusters: List[Cluster], ts, required_doc_size
 ) -> List[Cluster]:
     print("evict_cluster_instances started.")
     # stride. 순서 보장 필요X
@@ -242,7 +238,7 @@ def evict_clusters(
             is_alive = (
                 True
                 if cluster.timestamp >= ts
-                else cluster.evict(local_model, lsh, docs)
+                else cluster.evict(local_model, lsh, docs, required_doc_size)
             )
             if is_alive:
                 local_result.append(cluster)
@@ -312,14 +308,8 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         doc_list[i::num_devices] for i in range(num_devices)
     ]  # only eval docs
 
-    def doc_process_batch(batch, device, batch_size=256):
+    def doc_process_batch(batch, device, batch_size=128):
         print(f"ㄴ Document batch {len(batch)} starts on {device}.")
-        random_vectors = torch.randn(nbits, 768)
-        lsh = RandomProjectionLSH(
-            random_vectors=random_vectors,
-            embedding_dim=768,
-            use_tensor_key=use_tensor_key,
-        )
         cluster_docids_dict = defaultdict(list)
         temp_model = copy.deepcopy(model).to(device)
         mini_batches = [
@@ -364,3 +354,14 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         result[query["qid"]] = ans_ids
     print("retrieve_top_k_docs_from_cluster finished.")
     return result
+
+
+def clear_invalid_clusters(clusters: List[Cluster], docs: dict, required_doc_size):
+    valid_clusters = []
+    before_n = len(clusters)
+    for cluster in clusters:
+        if len(cluster.get_only_docids(docs)) >= required_doc_size:
+            valid_clusters.append(cluster)
+    after_n = len(valid_clusters)
+    print(f"Cleared invalid clusters #{before_n} -> #{after_n}")
+    return valid_clusters

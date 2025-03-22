@@ -231,7 +231,7 @@ def _prepare_inputs(
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
-    
+
     elif cl_method == "gss":
         if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -433,7 +433,7 @@ def _prepare_inputs(
                 identity = torch.stack(identity, dim=0).transpose(0, 1).reshape(-1)
                 prepared.append(identity)
                 prepared.append(mem_emb)
-            prepared.append(docids_lst)  # for updating old emb        
+            prepared.append(docids_lst)  # for updating old emb
     elif cl_method == "incre":
         if compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -574,7 +574,7 @@ def load_inputs(
     random.shuffle(queries)
     queries = queries[:10] # 10개만 사용
 
-    session_docs = load_train_docs(session_number)
+    session_docs = load_train_docs(session_number=session_number)
     docs = load_train_docs()
     answer_doc_ids = set()
     for q in queries:

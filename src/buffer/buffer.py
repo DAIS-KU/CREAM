@@ -101,7 +101,7 @@ class Buffer(torch.nn.Module):
         )
 
     def init(self, qid, doc_ids):
-        print(f"init buffer {qid} {doc_ids}")
+        # print(f"init buffer {qid} {doc_ids}")
         self.buffer_qid2dids[qid] = doc_ids
         self.n_seen_so_far[qid] = len(doc_ids)
 

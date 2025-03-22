@@ -11,11 +11,17 @@ from buffer import (
     ModelArguments,
     TevatronTrainingArguments,
 )
-from data import load_eval_docs, prepare_inputs, read_jsonl, write_file
+from data import (
+    get_top_k_documents_by_cosine,
+    load_eval_docs,
+    prepare_inputs,
+    read_jsonl,
+    write_file,
+)
+
 from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,
-    get_top_k_documents_by_cosine,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -39,8 +45,8 @@ def build_model(model_path=None):
 
 
 def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
-    query_data = f"../data/train_session0_queries.jsonl"
-    doc_data = f"../data/train_session0_docs.jsonl"
+    query_data = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+    doc_data = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
     # buffer_data = "../data"
     output_dir = "../data"
 
@@ -139,11 +145,11 @@ def train(
     buffer = build_mir_buffer(new_batch_size, mem_batch_size, compatible)
     method = "mir"
     output_dir = "../data"
-    for session_number in range(session_count):
+    for session_number in range(1, session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = f"../data/train_session0_queries.jsonl"
-        doc_path = f"../data/train_session{session_number}_docs.jsonl"
+        query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -175,9 +181,14 @@ def evaluate(sesison_count=4):
     method = "mir"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/test_session{session_number}_queries.jsonl"
+        eval_query_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_queries.jsonl"
+        )
+        eval_doc_path = (
+            f"/mnt/DAIS_NAS/huijeong/test_session{session_number}_docs.jsonl"
+        )
         eval_query_data = read_jsonl(eval_query_path, True)
-        eval_doc_data = load_eval_docs(session_number)
+        eval_doc_data = read_jsonl(eval_doc_path, False)
 
         eval_query_count = len(eval_query_data)
         eval_doc_count = len(eval_doc_data)
@@ -195,4 +206,3 @@ def evaluate(sesison_count=4):
         write_file(rankings_path, result)
         eval_log_path = f"../data/evals/{method}_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del new_q_data, new_d_data
