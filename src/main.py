@@ -37,17 +37,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--new_bz",
         default=3,
-        help="sampling batch size of new documents.",
+        help="sampling batch size of new documents.", # 모델 업데이트 시 사용할 신 샘플
     )
     parser.add_argument(
         "--mem_upsample",
         default=6,
-        help="candidates sampling from memory.",
+        help="candidates sampling from memory.", # 30개의 샘플 중 뽑을 후보
     )
     parser.add_argument(
         "--mem_bz",
         default=3,
-        help="sampling batch size of old documents from memory.",
+        help="sampling batch size of old documents from memory.", # 모델 업데이트 시 사용할 구 샘플
     )
     parser.add_argument(
         "--comp",
@@ -148,8 +148,8 @@ if __name__ == "__main__":
             sampling_size_per_query=args.sspq,
             nbits=args.nbits,
         )
-    elif args.exp == "bm25":
-        bm25_evaluate()
+    # elif args.exp == "bm25":
+    #     bm25_evaluate()
     elif args.exp == "find_k":
         find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
     elif args.exp == "er":

@@ -304,7 +304,7 @@ class DenseModel(EncoderModel):
     def encode_query(self, qry):
         if qry is None:
             return None
-        qry_out = self.lm_q(**qry, return_dict=True)
+        qry_out = self.lm_q(**qry, return_dict=True)    
         q_hidden = qry_out.last_hidden_state
         if self.pooler is not None:
             q_reps = self.pooler(q=q_hidden)

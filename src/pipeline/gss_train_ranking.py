@@ -5,14 +5,13 @@ from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,
     get_top_k_documents_by_cosine,
+    renew_data_mean_pooling,
 )
 
 from data import (
     read_jsonl,
     write_file,
-    renew_data,
     prepare_inputs,
-    renew_data_mean_pooling,
 )
 import time
 from buffer import (
@@ -65,10 +64,14 @@ def build_gss_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
             doc_data=None, # 수정
             # buffer_data=buffer_data,
             mem_batch_size=mem_batch_size,
+            new_batch_size=new_batch_size,
+            mem_upsample=mem_upsample,
             compatible=compatible,
             mem_size=30,
             gss_batch_size=3,# 메모리에서 하나의 배치 샘플링시 포함할 샘플 개수
             gss_mem_strength=3, # 메모리에서 최대 몇 개의 배치를 샘플링할 지
+            
+
             # --------------------수정 여부 판단--------------------
 
         ),

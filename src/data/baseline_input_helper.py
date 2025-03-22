@@ -11,7 +11,7 @@ from .loader import read_jsonl, read_jsonl_as_dict, load_train_docs
 
 max_q_len: int = 32
 max_p_len: int = 128
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 
@@ -36,6 +36,7 @@ def _prepare_inputs(
         or cl_method == "our"
         or cl_method == "l2r"
         or cl_method == "er"
+        or cl_method == "gss"
     ):
         buffer.init(inputs[0][0], inputs[4][0])
 
@@ -571,6 +572,7 @@ def load_inputs(
 ):
     queries = read_jsonl(query_path, True, compatible)
     random.shuffle(queries)
+    queries = queries[:10] # 10개만 사용
 
     session_docs = load_train_docs(session_number)
     docs = load_train_docs()
