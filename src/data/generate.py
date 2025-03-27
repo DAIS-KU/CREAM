@@ -2,9 +2,10 @@ import random
 from collections import defaultdict, Counter
 import json
 from .loader import read_jsonl, append_to_jsonl, read_jsonl_as_dict
+from datasets import load_dataset
 
 
-def check_query_answer_docs(domains):
+def lotte_check_query_answer_docs(domains):
     for domain in domains:
         quries_path = f"./raw/merged/{domain}_queries.jsonl"
         queries = read_jsonl(quries_path)
@@ -23,13 +24,15 @@ def check_query_answer_docs(domains):
         )
 
 
-def exp_sessioning(
-    domains, domain_answer_rate, need_train_query_counts, need_test_query_counts
+def sessioning(
+    dataset,
+    domains,
+    domain_answer_rate,
+    need_train_query_counts,
+    need_test_query_counts,
 ):
     for domain, ans_rate in zip(domains, domain_answer_rate):
-        queries = read_jsonl(
-            f"/mnt/DAIS_NAS/huijeong/raw/lotte/{domain}_queries.jsonl", True
-        )
+        queries = read_jsonl(f"../data/raw/{dataset}/{domain}_queries.jsonl", True)
         random.shuffle(queries)
         answer_train_doc_ids, answer_test_doc_ids = defaultdict(set), defaultdict(set)
 
@@ -41,36 +44,36 @@ def exp_sessioning(
         for query in queries:
             # TRAIN
             if train_cnt0 < need_train_query_counts[0]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session0_queries.jsonl"
                 train_cnt0 += 1
                 answer_train_doc_ids[0].update(query["answer_pids"])
             elif train_cnt1 < need_train_query_counts[1]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session1_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session1_queries.jsonl"
                 train_cnt1 += 1
                 answer_train_doc_ids[1].update(query["answer_pids"])
             elif train_cnt2 < need_train_query_counts[2]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session2_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session2_queries.jsonl"
                 train_cnt2 += 1
                 answer_train_doc_ids[2].update(query["answer_pids"])
             elif train_cnt3 < need_train_query_counts[3]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session3_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session3_queries.jsonl"
                 train_cnt3 += 1
                 answer_train_doc_ids[3].update(query["answer_pids"])
             # TEST
             elif test_cnt0 < need_test_query_counts[0]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session0_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session0_queries.jsonl"
                 test_cnt0 += 1
                 answer_test_doc_ids[0].update(query["answer_pids"])
             elif test_cnt1 < need_test_query_counts[1]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session1_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session1_queries.jsonl"
                 test_cnt1 += 1
                 answer_test_doc_ids[1].update(query["answer_pids"])
             elif test_cnt2 < need_test_query_counts[2]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session2_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session2_queries.jsonl"
                 test_cnt2 += 1
                 answer_test_doc_ids[2].update(query["answer_pids"])
             elif test_cnt3 < need_test_query_counts[3]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session3_queries.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session3_queries.jsonl"
                 test_cnt3 += 1
                 answer_test_doc_ids[3].update(query["answer_pids"])
             else:
@@ -82,7 +85,7 @@ def exp_sessioning(
         print(
             f"[DONE] Test Query {domain} | {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
         )
-        doc_path = f"/mnt/DAIS_NAS/huijeong/raw/lotte/{domain}_docs.jsonl"
+        doc_path = f"../data/raw/{dataset}/{domain}_docs.jsonl"
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
         train_need_doc_counts = [
             len(answer_train_doc_ids[0]) / ans_rate * 100,
@@ -103,19 +106,19 @@ def exp_sessioning(
         # TRAIN
         train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
         for doc_id in answer_train_doc_ids[0]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/train_session0_docs.jsonl"
             train_cnt0 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_train_doc_ids[1]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/train_session1_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/train_session1_docs.jsonl"
             train_cnt1 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_train_doc_ids[2]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/train_session2_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/train_session2_docs.jsonl"
             train_cnt2 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_train_doc_ids[3]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/train_session3_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/train_session3_docs.jsonl"
             train_cnt3 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         print(
@@ -124,19 +127,19 @@ def exp_sessioning(
         # TEST
         test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
         for doc_id in answer_test_doc_ids[0]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/test_session0_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/test_session0_docs.jsonl"
             test_cnt0 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_test_doc_ids[1]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/test_session1_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/test_session1_docs.jsonl"
             test_cnt1 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_test_doc_ids[2]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/test_session2_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/test_session2_docs.jsonl"
             test_cnt2 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         for doc_id in answer_test_doc_ids[3]:
-            dest_path = f"/mnt/DAIS_NAS/huijeong/test_session3_docs.jsonl"
+            dest_path = f"../data/raw/{dataset}/test_session3_docs.jsonl"
             test_cnt3 += 1
             append_to_jsonl(dest_path, docs[doc_id])
         print(
@@ -159,29 +162,29 @@ def exp_sessioning(
         for doc_cnt, doc_id in enumerate(left_doc_ids):
             # TRAIN
             if train_cnt0 < train_need_doc_counts[0]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session0_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session0_docs.jsonl"
                 train_cnt0 += 1
             elif train_cnt1 < train_need_doc_counts[1]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session1_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session1_docs.jsonl"
                 train_cnt1 += 1
             elif train_cnt2 < train_need_doc_counts[2]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session2_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session2_docs.jsonl"
                 train_cnt2 += 1
             elif train_cnt3 < train_need_doc_counts[3]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/train_session3_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/train_session3_docs.jsonl"
                 train_cnt3 += 1
             # TEST
             elif test_cnt0 < test_need_doc_counts[0]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session0_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session0_docs.jsonl"
                 test_cnt0 += 1
             elif test_cnt1 < test_need_doc_counts[1]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session1_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session1_docs.jsonl"
                 test_cnt1 += 1
             elif test_cnt2 < test_need_doc_counts[2]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session2_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session2_docs.jsonl"
                 test_cnt2 += 1
             elif test_cnt3 < test_need_doc_counts[3]:
-                dest_path = f"/mnt/DAIS_NAS/huijeong/test_session3_docs.jsonl"
+                dest_path = f"../data/raw/{dataset}/test_session3_docs.jsonl"
                 test_cnt3 += 1
             else:
                 break
@@ -280,7 +283,7 @@ def save_jsonl(data, path):
             f.write(json.dumps(item) + "\n")
 
 
-def process_hotpot_qa(path="/mnt/DAIS_NAS/huijeong/raw/hotpot_dev_distractor_v1.json"):
+def process_hotpot_qa(path="../data/hotpot_dev_distractor_v1.json"):
     datas = read_jsonl_line(path)[0]
     processed = []
     for i, data in enumerate(datas):
@@ -304,21 +307,22 @@ def process_hotpot_qa(path="/mnt/DAIS_NAS/huijeong/raw/hotpot_dev_distractor_v1.
             print(f"{i}th query and answer: {qna}")
         if i == 15000:
             break
-    save_jsonl(processed, "/mnt/DAIS_NAS/huijeong/pretrained,jsonl")
+    save_jsonl(processed, "../data/raw/lotte/pretrained,jsonl")
 
 
 if __name__ == "__main__":
     process_hotpot_qa()
 
-    # exp_sessioning(
+    # sessioning(
+    # .    dataset= 'lotte',
     #     domains=['lifestyle'], # , 'writing', 'science', 'recreation', 'lifestyle'
     #     domain_answer_rate=[ 6.43], # 1.82, 6.47, 1.47, 5.17, 6.43
     #     need_train_query_counts=[360,300,300,300],
     #     need_test_query_counts=[40,33, 33, 33])
     # cnt = 3
     # for i in range(1, 4):
-    #     src_queries_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_queries.jsonl"
-    #     src_docs_path = f"/mnt/DAIS_NAS/huijeong/test_session{i}_docs.jsonl"
+    #     src_queries_path = f"../data/raw/lotte/test_session{i}_queries.jsonl"
+    #     src_docs_path = f"../data/raw/lotte/test_session{i}_docs.jsonl"
     #     with open(src_queries_path, "r", encoding="utf-8") as f:
     #         queries = [json.loads(line) for line in f]
     #     with open(src_docs_path, "r", encoding="utf-8") as f:
@@ -327,10 +331,10 @@ if __name__ == "__main__":
     #     for query_subset, doc_subset in zip(query_subsets, doc_subsets):
     #         save_jsonl(
     #             query_subset,
-    #             f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_queries.jsonl",
+    #             f"../data/sub/lotte/test_session{cnt}_queries.jsonl",
     #         )
     #         save_jsonl(
     #             doc_subset,
-    #             f"/mnt/DAIS_NAS/huijeong/sub/test_session{cnt}_docs.jsonl",
+    #             f"../data/sub/lotte/test_session{cnt}_docs.jsonl",
     #         )
     #         cnt += 1

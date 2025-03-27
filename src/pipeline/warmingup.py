@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
 from transformers import BertTokenizer, BertModel
+from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset
 
 from functions import (
@@ -16,14 +16,119 @@ from data import read_jsonl, write_file
 import time
 import random
 import json
+from torch.utils.data.dataloader import default_collate
+from data import read_jsonl_as_dict
+
+
+class LOTTEDataset(Dataset):
+    def __init__(self, tokenizer, max_samples=2000, split="train", max_length=512):
+        self.queries = {}
+        self.passages = {}
+        for domain in ["technology", "science", "lifestyle", "writing", "recreation"]:
+            _q = read_jsonl_as_dict(
+                f"../data/lotte/{domain}/{domain}_queries.jsonl", "qid"
+            )
+            self.queries.update(_q)
+            _d = read_jsonl_as_dict(
+                f"../data/lotte/{domain}/{domain}_docs.jsonl", "doc_id"
+            )
+            self.passages.update(_d)
+
+        for session_number in range(12):
+            _t = read_jsonl_as_dict(
+                f"../data/sub/lotte/train_session{session_number}_queries.jsonl", "qid"
+            )
+            keys_to_remove = list(_t.keys())
+            [self.queries.pop(key, None) for key in keys_to_remove]
+            _t = read_jsonl_as_dict(
+                f"../data/sub/lotte/test_session{session_number}_queries.jsonl", "qid"
+            )
+            keys_to_remove = list(_t.keys())
+            [self.queries.pop(key, None) for key in keys_to_remove]
+        self.queries = list(self.queries.values())
+        print(f"Read LOTTE queries {len(self.queries)}, passages {len(self.passages)}")
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.indexes = range(len(self.queries))
+        self.max_samples = min(max_samples, len(self.queries))
+
+    def __len__(self):
+        return len(self.max_samples)
+
+    def __getitem__(self, idx):
+        item = self.queries[idx]
+        query = item["query"]
+        pos_passage_id = item["answer_pids"][0]
+        pos_passage = self.passages[pos_passage_id]["text"]
+
+        random_indices = random.sample(self.indexes, 6)
+        negative_ids = [self.queries[_id]["answer_pids"][0] for _id in random_indices]
+        neg_passages = [self.passages[_id]["text"] for _id in negative_ids]
+
+        return {
+            "query_enc": query,
+            "pos_enc": pos_passage,
+            "neg_enc": neg_passages,
+        }
+
+
+def collate_fn(batch):
+    batch = [b for b in batch if b is not None]  # None 제거
+    return default_collate(batch)
+
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 
+class MSMARCODataset(Dataset):
+    def __init__(self, tokenizer, split="train", max_length=512):
+        self.data = load_dataset("microsoft/ms_marco", "v1.1")[split]
+        print(f"Read MSMARCO {len(self.data)}")
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.indexes = range(len(self.data))
+        self.keys_to_remove = set()
+        for session_number in range(12):
+            _t = read_jsonl_as_dict(
+                f"../data/sub/ms_marco/train_session{session_number}_queries.jsonl",
+                "qid",
+            )
+            keys_to_remove = update(_t.keys())
+            _t = read_jsonl_as_dict(
+                f"../data/sub/ms_marco/test_session{session_number}_queries.jsonl",
+                "qid",
+            )
+            keys_to_remove = update(_t.keys())
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        query = item["query"]
+        if len(item["answers"]) == 0 or item["query_id"] in self.keys_to_remove:
+            return None
+
+        pos_passages = item["answers"][0]
+        random_indices = random.sample(self.indexes, 12)
+        negatives = []
+        for _id in random_indices:
+            if len(self.data[_id]["answers"]) > 0:
+                negatives.extend(self.data[_id]["answers"])
+            if len(negatives) > 6:
+                break
+
+        return {
+            "query_enc": query,
+            "pos_enc": pos_passages,
+            "neg_enc": negatives[:6],
+        }
+
+
 class CustomDataset(Dataset):
-    def __init__(self, dataset, tokenizer, negative_k=6, samples=2500, max_length=256):
+    def __init__(self, dataset, tokenizer, negative_k=6, samples=2000, max_length=256):
         if dataset is None:
-            dataset = self.read_jsonl("/mnt/DAIS_NAS/huijeong/pretrained.jsonl")
+            dataset = self.read_jsonl("../data/pretrained.jsonl")
             print(f"Read {len(dataset)} elements.")
         self.dataset = dataset[:samples]
         self.tokenizer = tokenizer
@@ -83,7 +188,10 @@ def encode_texts(model, texts, max_length=256):
 
 def train():
     dataset = CustomDataset(None, tokenizer)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
+    # dataset = MSMARCODataset(tokenizer)
+    dataloader = DataLoader(
+        dataset, batch_size=32, shuffle=True, drop_last=True, collate_fn=collate_fn
+    )
 
     device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
     model = BertModel.from_pretrained("bert-base-uncased").to(device)
@@ -100,10 +208,19 @@ def train():
         batch_cnt = 1
         # print(f"epoch {epoch}")
         for batch in dataloader:
+            if batch_cnt == 1800:
+                break
+
             # print(f"{i}th batch")
-            query_input = batch["query_input"]
-            pos_input = batch["pos_input"]
-            neg_inputs = batch["neg_inputs"]
+            # query_input = batch["query_input"]
+            # pos_input = batch["pos_input"]
+            # neg_inputs = batch["neg_inputs"]
+
+            query_input, pos_input, neg_inputs = (
+                batch["query_enc"],
+                batch["pos_enc"],
+                batch["neg_enc"],
+            )
 
             query_emb = encode_texts(model, query_input)
             # query_emb = query_emb.unsqueeze(1)
@@ -117,6 +234,7 @@ def train():
             # print(
             #     f"query_emb:{query_emb.shape}, pos_emb:{pos_emb.shape}, neg_embs:{neg_embs.shape}"
             # )
+
             loss = criterion(query_emb, pos_emb, neg_embs)
             # psg_embs= torch.cat((pos_emb, neg_embs), dim=1)
             # print(
@@ -131,25 +249,21 @@ def train():
             print(f"Batch {i}, Loss: {loss.item():.4f}, {total_loss/batch_cnt:.4f}")
             i += 1
             batch_cnt += 1
-    torch.save(model.state_dict(), "./base_model.pth")
+    torch.save(model.state_dict(), "./base_model_msmarco.pth")
 
 
 def evaluate(session_cnt=12):
     def model_builder(model_path):
-        device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model = BertModel.from_pretrained("bert-base-uncased").to(device)
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()
         return model
 
     for session_number in range(session_cnt):
-        method = "warmingup"
-        eval_query_path = (
-            f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_queries.jsonl"
-        )
-        eval_doc_path = (
-            f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_docs.jsonl"
-        )
+        method = "base_model_msmarco"
+        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -159,11 +273,14 @@ def evaluate(session_cnt=12):
         print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
         rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-        model_path = f"../data/model/{method}_session_{session_number}.pth"
+        model_path = "../data/base_model.pth"
 
         start_time = time.time()
         new_q_data, new_d_data = renew_data_mean_pooling(
-            model_builder, "./base_model.pth", eval_query_data, eval_doc_data
+            model_builder,
+            model_path,
+            eval_query_data,
+            eval_doc_data,  # "./base_model.pth"
         )
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for encoding.")

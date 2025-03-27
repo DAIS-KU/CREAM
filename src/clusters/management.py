@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from collections import defaultdict
 import torch
+import random
 
 from data import Stream
 from functions import (
@@ -19,12 +20,12 @@ from .tensor_clustering import kmeans_pp_use_tensor_key
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
 
-num_devices = 2  # torch.cuda.device_count()
+num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
 def initialize(
-    model, stream_docs, docs, k, nbits, max_iters, use_tensor_key=True
+    model, stream_docs, docs, k, nbits, lsh, max_iters, use_tensor_key=True
 ) -> List[Cluster]:
     _, enoded_stream_docs = renew_data(
         queries=None,
@@ -33,6 +34,7 @@ def initialize(
         renew_d=True,
         nbits=nbits,
         use_tensor_key=use_tensor_key,
+        model_path="../data/base_model.pth",
     )
     enoded_stream_docs = list(enoded_stream_docs.values())
     if use_tensor_key:
@@ -48,7 +50,9 @@ def initialize(
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
             clusters.append(
-                Cluster(model, centroid, cluster_instances[cid], docs, use_tensor_key)
+                Cluster(
+                    model, lsh, centroid, cluster_instances[cid], docs, use_tensor_key
+                )
             )
     return clusters
 
@@ -78,9 +82,7 @@ def find_k_closest_clusters(
             score = calculate_S_qd_regl_dict(token_embs, prototype, device)
             scores.append(score.unsqueeze(1))
     scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
-    topk_values, topk_indices = torch.topk(
-        scores_tensor, k, dim=1
-    )  # 각 샘플별 k개 선택
+    topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)  # 각 샘플별 k개 선택
     # print(
     #     f"find_k_closest_clusters scores: {scores_tensor.shape}, topk_indices:{topk_indices.shape}"
     # )
@@ -128,9 +130,7 @@ def find_k_closest_clusters_for_sampling(
             score = calculate_S_qd_regl_dict(token_embs, prototype, devices[1])
             scores.append(score.unsqueeze(1))
     scores_tensor = torch.cat(scores, dim=1)
-    topk_values, topk_indices = torch.topk(
-        scores_tensor, k, dim=1
-    )  # 각 샘플별 k개 선택
+    topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)  # 각 샘플별 k개 선택
     # print(
     #     f"find_k_closest_clusters_for_sampling scores: {scores_tensor.shape}, topk_indices:{topk_indices.shape}"
     # )
@@ -148,6 +148,7 @@ def assign_instance_or_add_cluster(
     cluster_min_size,
 ):
     print("assign_instance_or_add_cluster started.")
+
     # stride. 순서 보장 필요X
     batch_cnt = min(num_devices, len(stream_docs))
     batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
@@ -162,24 +163,31 @@ def assign_instance_or_add_cluster(
             temp_model, texts, clusters, 1, device, lsh.use_tensor_key
         )
         for i, doc in enumerate(batch):
-            closest_cluster_id = batch_closest_ids[i][0]
-            closest_cluster = clusters[closest_cluster_id]
             doc_embs = batch_embs[i]
-
-            s1, s2, n = closest_cluster.get_statistics()
             doc_hash = lsh.encode(doc_embs)
-            closest_distance = closest_cluster.get_distance(doc_embs)
-            closest_boundary = closest_cluster.get_boundary()
-            if n <= cluster_min_size or closest_distance <= closest_boundary:
-                closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
-            else:
-                print(f"closest_cluster: {s1}, {s2}, {n}")
-                print(
-                    f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
-                )
+            if len(clusters) == 0:
+                print(f"Empty Clusters")
                 clusters.append(
-                    Cluster(temp_model, doc_hash, [doc], docs, use_tensor_key, ts)
+                    Cluster(temp_model, lsh, doc_hash, [doc], docs, use_tensor_key, ts)
                 )
+            else:
+                closest_cluster_id = batch_closest_ids[i][0]
+                closest_cluster = clusters[closest_cluster_id]
+                s1, s2, n = closest_cluster.get_statistics()
+                closest_distance = closest_cluster.get_distance(doc_embs)
+                closest_boundary = closest_cluster.get_boundary()
+                if n <= cluster_min_size or closest_distance <= closest_boundary:
+                    closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
+                else:
+                    print(f"closest_cluster: {s1}, {s2}, {n}")
+                    print(
+                        f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
+                    )
+                    clusters.append(
+                        Cluster(
+                            temp_model, lsh, doc_hash, [doc], docs, use_tensor_key, ts
+                        )
+                    )
 
     with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
         futures = []
@@ -193,35 +201,45 @@ def assign_instance_or_add_cluster(
 
 
 def get_samples_and_weights(
-    model, query, docs: dict, clusters, positive_k, negative_k, ts, use_tensor_key
+    model,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    candidate_num=5,
 ):
     cluster_ids = find_k_closest_clusters_for_sampling(
         model=model,
         texts=[query["query"]],
         clusters=clusters,
-        k=positive_k + negative_k,
+        k=2,
         use_tensor_key=use_tensor_key,
+    )[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster = clusters[cluster_ids[0]], clusters[cluster_ids[1]]
+
+    first_samples = first_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
     )
-    positive_id = cluster_ids[0][0]
-    negative_ids = cluster_ids[0][1:]
-    print(f"positive_id:{positive_id} | negative_ids:{negative_ids}")
+    second_samples = second_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
+    )
+    combined_samples = sorted(
+        first_samples + second_samples, key=lambda x: x[1], reverse=True
+    )
+    top_k_doc_ids = [x[0] for x in combined_samples]
 
-    positive_cluster = clusters[positive_id]
-
-    positive_samples = positive_cluster.get_topk_docids(model, query, docs, 1)
-    positive_weights = [positive_cluster.get_weight(ts)]
-
-    negative_samples, negative_weights = [], []
-    for neg_id in negative_ids:
-        negative_cluster = clusters[neg_id]
-        neg_docs = negative_cluster.get_topk_docids(model, query, docs, 1)
-        negative_samples.extend(neg_docs)
-        negative_weights.append(negative_cluster.get_weight(ts))
-
+    positive_samples, negative_samples = (
+        top_k_doc_ids[:positive_k],
+        top_k_doc_ids[positive_k : positive_k + negative_k],
+    )
     print(
         f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
     )
-    return positive_samples, positive_weights, negative_samples, negative_weights
+    return positive_samples, negative_samples, []
 
 
 def evict_clusters(
@@ -235,12 +253,13 @@ def evict_clusters(
         local_model = copy.deepcopy(model).to(device)
         local_result = []
         for cluster in cluster_chunk:
-            is_alive = (
-                True
-                if cluster.timestamp >= ts
-                else cluster.evict(local_model, lsh, docs, required_doc_size)
-            )
+            if cluster.timestamp >= ts:
+                # cluster.refresh_prototype_with_cache()
+                is_alive = True
+            else:
+                is_alive = cluster.evict(local_model, lsh, docs, required_doc_size)
             if is_alive:
+                cluster.decay()
                 local_result.append(cluster)
         return local_result
 
@@ -300,7 +319,9 @@ def get_topk_docids(model, query, docs, doc_ids, k, batch_size=128) -> List[str]
     return top_k_regl_doc_ids
 
 
-def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_key, k):
+def retrieve_top_k_docs_from_cluster(
+    model, stream, clusters, random_vectors, use_tensor_key, k
+):
     print("retrieve_top_k_docs_from_cluster started.")
     # stride. 순서 보장 필요X
     doc_list = list(stream.docs.values())
@@ -347,7 +368,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, nbits, use_tensor_
         print(f"Retrieval {i}th query.")
         closest_cluster_id = batch_closest_ids[i][0]
         cand_docids = cluster_docids_dict[closest_cluster_id]
-        print(f"ㄴ cand_docids{len(cand_docids)}")
+        print(f"ㄴ cand_docids {len(cand_docids)}")
         ans_ids = get_topk_docids(
             model=model, query=query, docs=stream.docs, doc_ids=cand_docids, k=k
         )
@@ -363,5 +384,20 @@ def clear_invalid_clusters(clusters: List[Cluster], docs: dict, required_doc_siz
         if len(cluster.get_only_docids(docs)) >= required_doc_size:
             valid_clusters.append(cluster)
     after_n = len(valid_clusters)
-    print(f"Cleared invalid clusters #{before_n} -> #{after_n}")
+    print(f"Clear invalid clusters #{before_n} -> #{after_n}")
     return valid_clusters
+
+
+def make_query_psuedo_answers(model, queries, docs, clusters, use_tensor_key, k=1):
+    print("make_query_psuedo_answers started.")
+    result = {}
+    for i, query in enumerate(queries):
+        cluster_ids = find_k_closest_clusters_for_sampling(
+            model, [query["query"]], clusters, 1, use_tensor_key
+        )[0]
+        first_cluster = clusters[cluster_ids[0]]
+        first_id = first_cluster.get_topk_docids(model, query, docs, 1)[0]
+        result[query["qid"]] = first_id
+        print(f"{i}th query is done.")
+    print("make_query_psuedo_answers finished.")
+    return result

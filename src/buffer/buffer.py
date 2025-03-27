@@ -5,7 +5,6 @@ import pickle
 
 import torch
 from data import load_train_docs
-from functions import convert_str_id_to_number_id
 
 from .arguments import DataArguments, TevatronTrainingArguments
 from .gss_greedy_update import GSSGreedyUpdate
@@ -29,6 +28,14 @@ update_methods = {
 }
 
 
+def convert_str_id_to_number_id(str_id):
+    parts = str_id.split("-")
+    prefix_part, id_part = parts[0], parts[-1]
+    prefix = prefix_map[prefix_part]
+    number_id = int(f"{prefix}{id_part}")
+    return number_id
+
+
 class Buffer(torch.nn.Module):
     def __init__(
         self,
@@ -43,9 +50,7 @@ class Buffer(torch.nn.Module):
         self.model = model
         self.tokenizer = tokenizer
         self.buffer_size = params.mem_size
-        self.n_seen_so_far = collections.defaultdict(
-            int
-        )  # 目前已经过了多少个样本了, 只有er需要
+        self.n_seen_so_far = collections.defaultdict(int)  # 目前已经过了多少个样本了, 只有er需要
         self.buffer_qid2dids = collections.defaultdict(list)
         self.buffer_did2emb = collections.defaultdict(None)
         self.compatible = params.compatible

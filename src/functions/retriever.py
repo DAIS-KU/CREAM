@@ -100,7 +100,7 @@ def get_top_k_documents_gpu(new_q_data, docs, query_id, k, devices, batch_size=2
             )
             regl_scores.extend(
                 [
-                    (doc["ID"], regl_score[idx].item())
+                    (doc["doc_id"], regl_score[idx].item())
                     for idx, doc in enumerate(docs[start_idx:end_idx])
                 ]
             )

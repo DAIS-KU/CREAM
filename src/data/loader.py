@@ -18,14 +18,6 @@ prefix_map = {
 }
 
 
-def convert_str_id_to_number_id(str_id):
-    parts = str_id.split("-")
-    prefix_part, id_part = parts[0], parts[-1]
-    prefix = prefix_map[prefix_part]
-    number_id = int(f"{prefix}{id_part}")
-    return number_id
-
-
 def read_jsonl(file_path, is_query, as_number_id=False):
     data = []
     with open(file_path, "r", encoding="utf-8") as file:
@@ -58,15 +50,22 @@ def count_jsonl_elements(file_path):
 def read_jsonl_as_dict(file_path, id_field, as_number_id=False):
     data_dict = {}
     with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            record = json.loads(line.strip())
-            key = record.get(id_field)
-            if key is None:
-                raise ValueError("id field cannot be null")
-            if as_number_id:
-                key = convert_str_id_to_number_id(key)
-                record[id_field] = key
-            data_dict[key] = record
+        for i, line in enumerate(file):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line.strip())
+                key = record.get(id_field)
+                if key is None:
+                    raise ValueError("id field cannot be null")
+                if as_number_id:
+                    key = convert_str_id_to_number_id(key)
+                    record[id_field] = key
+                data_dict[key] = record
+            except json.JSONDecodeError as e:
+                print(f"❌ JSONDecodeError at line {i}: {e}")
+                print(f"👉 Problematic line: {line}")
+                raise  # 원본 에러 다시 발생
     return data_dict
 
 
@@ -74,13 +73,13 @@ def load_train_docs(session_number=None):
     train_docs = {}
     if session_number is not None:
         print(f"Read session_number {session_number}th docs")
-        doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{session_number}_docs.jsonl"
+        doc_path = f"../data/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl_as_dict(doc_path, "doc_id")
         train_docs.update(doc_data)
     else:
         for i in range(4):
             print(f"Read all {i}th docs")
-            doc_path = f"/mnt/DAIS_NAS/huijeong/train_session{i}_docs.jsonl"
+            doc_path = f"../data/train_session{i}_docs.jsonl"
             doc_data = read_jsonl_as_dict(doc_path, "doc_id")
             train_docs.update(doc_data)
     print(f"doc size {len(train_docs)}")

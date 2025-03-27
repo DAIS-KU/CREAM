@@ -28,8 +28,8 @@ class Stream:
         warmingup_rate=None,
         sampling_rate=None,
         sampling_size_per_query=None,
-        query_stream_batch_size=128,
-        doc_stream_batch_size=512,
+        query_stream_batch_size=256,
+        doc_stream_batch_size=1024,
     ):
         queries = read_jsonl(query_path, True)
         random.shuffle(queries)
@@ -59,19 +59,26 @@ class Stream:
             self.docs.update(prev_docs)
 
         if warming_up_method == "initial_cluster":
-            if session_number == 0 and warmingup_rate is not None:
-                print(f"Documents are sampled for warming up.")
-                warmingup_cnt = int(len(doc_list) * warmingup_rate)
-                self.initial_docs = doc_list[:warmingup_cnt]
-                doc_list = query_list + doc_list[warmingup_cnt:]
-                self.stream_queries = []
+            if session_number == 0:
+                if warmingup_rate is not None:
+                    print(f"Documents are sampled for warming up.")
+                    warmingup_cnt = int(len(doc_list) * warmingup_rate)
+                    self.initial_docs = doc_list[:warmingup_cnt]
+                    doc_list = query_list + doc_list[warmingup_cnt:]
+                    self.stream_queries = []
+                else:
+                    raise ValueError(
+                        "Invalid initial_cluster condition and parameters."
+                    )
             else:
-                raise ValueError("Invalid initial_cluster condition and parameters.")
+                self.initial_docs = []
+                self.stream_queries = []
+                doc_list = query_list + doc_list
         elif warming_up_method == "query_seed":
             self.initial_docs = []
             self.stream_queries = [query_list[:query_stream_batch_size]]
             doc_list = query_list[query_stream_batch_size:] + doc_list
-        elif warming_up_method == "stream_seed":
+        elif warming_up_method == "stream_seed" or warming_up_method == "none":
             self.initial_docs = []
             self.stream_queries = []
             doc_list = query_list + doc_list
@@ -96,9 +103,10 @@ class Stream:
             print(
                 f"#stream_queries {len(self.stream_queries)}, stream_queries size {min(map(len, self.stream_queries))}-{max(map(len, self.stream_queries))}"
             )
-        print(
-            f"#doc_stream {len(self.stream_docs)}, stream_docs size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
-        )
+        if len(self.stream_docs) > 0:
+            print(
+                f"#doc_stream {len(self.stream_docs)}, stream_docs size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
+            )
 
     def filter(self, queries, docs, sampling_rate=None, sampling_size_per_query=None):
         if sampling_rate is not None:

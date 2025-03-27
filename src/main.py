@@ -1,20 +1,51 @@
 import argparse
+import json
+import glob
+import os
 
 from pipeline import (
-    er_evaluate,
-    er_train,
-    find_best_k_experiment,
-    l2r_evaluate,
-    l2r_train,
-    mir_evaluate,
-    mir_train,
-    ocs_evaluate,
-    ocs_train,
     proposal_train,
-    test_buffer,
+    proposal_evaluate,
     waringup_train,
     waringup_evaluate,
 )
+
+
+def validate_json_files(file_paths):
+    for file_path in file_paths:
+        print(f"file_path: {file_path}")
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    try:
+                        json.loads(line)
+                    except json.JSONDecodeError as e:
+                        print(
+                            f"❌ JSONDecodeError in {file_path} at line {line_num}: {e}"
+                        )
+                        print(f"👉 Problematic line: {line.strip()}")
+                        break
+                else:
+                    print(f"✅ Valid JSON: {file_path}")
+        except Exception as e:
+            print(f"❌ Error opening file {file_path}: {e}")
+
+
+def validate_data():
+    base_path = "/home/work/retrieval/data/sub"
+    file_patterns = [
+        "train_session*_docs.jsonl",
+        "train_session*_queries.jsonl",
+        "test_session*_docs.jsonl",
+        "test_session*_queries.jsonl",
+    ]
+    file_list = []
+    for pattern in file_patterns:
+        matched_files = glob.glob(f"{base_path}/{pattern}")
+        print(f"🔍 Found {len(matched_files)} files for pattern: {pattern}")
+        file_list.extend(matched_files)
+    validate_json_files(file_list)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Example script with arguments")
@@ -114,6 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wr",
         default=None,
+        type=float,
         help="warming up rate",
     )
     parser.add_argument(
@@ -140,6 +172,12 @@ if __name__ == "__main__":
         default=None,
         help="Document stream candidates size for each query",
     )
+    parser.add_argument(
+        "--rdsz",
+        type=int,
+        default=None,
+        help="Valid cluster document size requirenebts",
+    )
     args = parser.parse_args()
 
     print(f"Running experiments: {args.exp}")
@@ -156,9 +194,10 @@ if __name__ == "__main__":
         print(f"Use warmingup_rate: {args.wr}")
         print(f"Use warmingup_k: {args.init_k}")
         print(f"Use cluster_min_size: {args.cmnsz}")
+        print(f"Use required_doc_size: {args.rdsz}")
         print(f"Use stream sampling rate: {args.sr}")
         print(f"Use sampling size per query: {args.sspq}")
-        # print(f"Number of Epochs: {args.num_epochs}")
+        print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             start_session_number=args.start,
             end_sesison_number=args.end,
@@ -177,62 +216,13 @@ if __name__ == "__main__":
             sampling_size_per_query=args.sspq,
             nbits=args.nbits,
             warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
         )
-    elif args.exp == "bm25":
-        bm25_evaluate()
-    elif args.exp == "find_k":
-        find_best_k_experiment(max_iters=args.mi, warmingup_rate=args.wr)
-    elif args.exp == "er":
-        # er_train(
-        #     num_epochs=args.num_epochs,
-        #     batch_size=args.batch_size,
-        #     compatible=args.comp,
-        #     new_batch_size=args.new_bz,
-        #     mem_batch_size=args.mem_bz,
-        # )
-        er_evaluate()
-    elif args.exp == "mir":
-        mir_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-        )
-        mir_evaluate()
-    elif args.exp == "ocs":
-        ocs_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-            mem_upsample=args.mem_upsample,
-        )
-        ocs_evaluate()
-    elif args.exp == "l2r":
-        l2r_train(
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            compatible=args.comp,
-            new_batch_size=args.new_bz,
-            mem_batch_size=args.mem_bz,
-            mem_upsample=args.mem_upsample,
-        )
-        l2r_evaluate()
-    elif args.exp == "gss":
-        # gss_train(
-        #     num_epochs=args.num_epochs,
-        #     batch_size=args.batch_size,
-        #     compatible=args.comp,  # 필요
-        #     new_batch_size=args.new_bz,
-        #     mem_batch_size=args.mem_bz,
-        #     mem_upsample=args.mem_upsample,
-        # )
-        # gss_evaluate()
-        pass
+        # proposal_evaluate(0)
     elif args.exp == "wu":
         waringup_train()
         waringup_evaluate()
+    elif args.exp == "val":
+        validate_data()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

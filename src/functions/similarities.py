@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 
 def calculate_S_qd_regl(E_q, E_d, device):
+    # E_q(qlen, 768), E_d(dlen, 768),
     if isinstance(E_q, list):
         E_q = torch.stack(E_q, dim=0)
     if isinstance(E_d, list):
@@ -15,10 +16,15 @@ def calculate_S_qd_regl(E_q, E_d, device):
     cosine_sim_matrix = torch.matmul(E_q_normalized, E_d_normalized.T)
     max_scores, _ = torch.max(cosine_sim_matrix, dim=1)
     S_qd_score = max_scores.sum()
+    # print(f"E_q:{E_q.shape}, E_d:{E_d.shape}, max_scores:{max_scores.shape}, S_qd_score: {S_qd_score}")
     return S_qd_score
 
 
 def calculate_S_qd_regl_batch(E_q, E_d, device):
+    if E_q.dim() != 3:
+        print(f"⚠️ Warning: E_q is not 3D! Current shape: {E_q.shape}")
+    if E_d.dim() != 3:
+        print(f"⚠️ Warning: E_d is not 3D! Current shape: {E_d.shape}")
     # E_q(batch_size, qlen, 768), E_d(batch_size, dlen, 768),
     E_q = E_q.to(device).float()
     E_d = E_d.to(device).float()
@@ -53,6 +59,7 @@ def calculate_S_qd_regl_batch_batch(E_q, E_d, device):
     max_scores, _ = torch.max(cosine_sim_matrix, dim=3)  # (a, b, 254)
     # 최대 코사인 유사도의 합
     S_qd_scores = max_scores.sum(dim=2)  # (a, b)
+    # print(f"E_q:{E_q.shape}, E_d:{E_d.shape}, max_scores:{max_scores.shape}, S_qd_score: {S_qd_score}")
     return S_qd_scores  # (a, b)
 
 

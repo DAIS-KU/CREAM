@@ -159,7 +159,7 @@ def renew_data(
     renew_q=True,
     renew_d=True,
 ):
-    num_gpus = 2  # torch.cuda.device_count()
+    num_gpus = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
     print(f"Using {num_gpus} GPUs: {devices}")
 
@@ -168,6 +168,7 @@ def renew_data(
     for device in devices:
         model = BertModel.from_pretrained("bert-base-uncased").to(device)
         if model_path is not None:
+            print("Load model in clusters.encoder.")
             model.load_state_dict(torch.load(model_path, weights_only=True))
             model.eval()
         models.append(model)

@@ -15,10 +15,10 @@ class InfoNCETermLoss(nn.Module):
         # print(f"q_embeddings:{q_embeddings.shape}, d_embeddings:{d_embeddings.shape}")
         logits = calculate_S_qd_regl_logits(q_embeddings, d_embeddings)
         labels = torch.zeros(
-            d_embeddings.size(0), d_embeddings.size(1), device=q_embeddings.device
+            q_embeddings.size(0), dtype=torch.long, device=q_embeddings.device
         )
-        labels[:, :1] = 1.0
-        labels = labels.long()
+        # labels[:, :1] = 1.0
+        # labels = labels.long()
         # print(f"logits:{logits.shape}/{logits}, labels:{labels.shape}")
         loss = F.cross_entropy(logits, labels)
         return loss
