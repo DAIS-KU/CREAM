@@ -6,12 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
-
-from functions.similarities import calculate_S_qd_regl_batch, calculate_S_qd_regl_dict
-
-from .prototype import RandomProjectionLSH
-
-MAX_SCORE = 256.0
+import torch.nn.functional as F
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -21,13 +16,14 @@ def compute_sse_for_partition(
     partition, centroids, cluster_instances, device, batch_size=512
 ):
     sse = 0
+    centroids_tensor = torch.stack([centroids[k] for k in partition]).to(
+        device
+    )  # (k, dim)
     for k in partition:
         print(
             f"{device} | compute_sse_for_partition {k}, #instance {len(cluster_instances[k])}"
         )
-        centroid = centroids[k]
         num_batches = (len(cluster_instances[k]) + batch_size - 1) // batch_size
-
         for batch_idx in range(num_batches):
             print(
                 f"{device} | compute_sse_for_partition {k}, ({batch_idx}/{num_batches})"
@@ -35,22 +31,20 @@ def compute_sse_for_partition(
             batch = cluster_instances[k][
                 batch_idx * batch_size : (batch_idx + 1) * batch_size
             ]
-            batch_embeddings = [x["TOKEN_EMBS"] for x in batch]
-            batch_embeddings_tensor = torch.stack(batch_embeddings).to(
+            batch_tensor = torch.stack([x["EMB"] for x in batch]).to(
                 device, dtype=torch.float16
             )
-            distances = MAX_SCORE - calculate_S_qd_regl_dict(
-                batch_embeddings_tensor, centroid, device
-            )
-            print(
-                f"compute_sse_for_partition | batch_embeddings_tensor: {batch_embeddings_tensor.shape}, distances:{distances.shape}"
-            )
-            distances = distances**2
+            distances = (
+                1
+                - F.cosine_similarity(
+                    batch_tensor.unsqueeze(1), centroids_tensor.unsqueeze(0), dim=2
+                )
+            ) ** 2
             sse += torch.sum(distances).item()
     return sse
 
 
-def compute_sse(centroids, cluster_instances):
+def compute_sse(centroids, cluster_instances, num_gpus, devices):
     keys = list(cluster_instances.keys())
     chunk_size = (len(keys) + num_gpus - 1) // num_gpus
     partitions = [keys[i : i + chunk_size] for i in range(0, len(keys), chunk_size)]
@@ -71,102 +65,85 @@ def compute_sse(centroids, cluster_instances):
     return sse
 
 
-def compute_distances_for_partition(args):
-    X_partition, centroids, device, batch_size = args
+def compute_distances_for_partition(X_partition, centroids, device, batch_size=512):
     print(
         f"{device} compute_distances_for_partition | #X {len(X_partition)}, #centroids {len(centroids)}"
     )
-
     distances = []
+    centroids_tensor = torch.stack(centroids).to(device)  # (k, dim)
     num_batches = (len(X_partition) + batch_size - 1) // batch_size
     for batch_idx in range(num_batches):
         batch = X_partition[batch_idx * batch_size : (batch_idx + 1) * batch_size]
-        batch_embeddings = [x["TOKEN_EMBS"] for x in batch]
-        batch_embeddings_tensor = torch.stack(batch_embeddings).to(
+        batch_tensor = torch.stack([x["EMB"] for x in batch]).to(
             device
         )  # (batch_size, 768)
-
-        batch_distances = []
-        for centroid in centroids:
-            distances_batch = MAX_SCORE - calculate_S_qd_regl_dict(
-                batch_embeddings_tensor, centroid, device
-            )  # (batch_size,)
-            print(
-                f"compute_distances_for_partition | batch_embeddings_tensor:{batch_embeddings_tensor.shape}, distances_batch:{distances_batch.shape}"
+        distances_tensor = (
+            1
+            - F.cosine_similarity(
+                batch_tensor.unsqueeze(1), centroids_tensor.unsqueeze(0), dim=2
             )
-            distances_batch = distances_batch**2
-            batch_distances.append(distances_batch)
-
-        for i in range(batch_embeddings_tensor.shape[0]):
-            min_distance = min(
-                [distances_batch[i] for distances_batch in batch_distances]
-            )
-            distances.append(min_distance.item())
-
+        ) ** 2
+        min_distances = torch.min(distances_tensor, dim=1)[0]
+        distances.extend(min_distances.tolist())
     return distances
 
 
-def initialize_centroids(X, k, lsh: RandomProjectionLSH):
+def initialize_centroids(X, k):
     print("Initialize centroid")
     n_samples = len(X)
     random_indices = np.random.randint(0, n_samples, size=k)
-    centroids = [lsh.encode(X[i]["TOKEN_EMBS"]) for i in random_indices]
+    centroids = [(X[i]["EMB"]) for i in random_indices]
+    # print(f"initialize_centroids centroids:{len(centroids)}/{centroids[0].shape}")
     return centroids
 
 
 def create_centroid(instances, instance_ids):
-    merged_hash = defaultdict(lambda: torch.zeros(768).cpu())
-    # 254 * #instance_ids
-    for _id in instance_ids:
-        for key, value in instances[_id]["LSH_MAPS"].items():
-            merged_hash[key] += value.cpu()
-    return merged_hash
+    mean_emb = torch.mean(
+        torch.stack([instances[_id]["EMB"] for _id in instance_ids], dim=0), dim=0
+    )
+    # print(f"create_centroid mean_emb:{mean_emb.shape}")
+    return mean_emb
 
 
 def get_closest_clusters(partition, centroids, device, batch_size=128):
     with torch.cuda.device(device):
         closest_clusters = []
+        # print(f"get_closest_clusters centroids:{len(centroids)}/{centroids[0].shape}")
+        centroids_tensor = torch.stack(centroids, dim=0).to(device)  # (k, dim)
         num_batches = (len(partition) + batch_size - 1) // batch_size
         for batch_idx in range(num_batches):
             print(f"{device} | get_closest_clusters batch ({batch_idx}/{num_batches})")
             batch = partition[batch_idx * batch_size : (batch_idx + 1) * batch_size]
-            batch_tensor = torch.stack([x["TOKEN_EMBS"] for x in batch]).to(device)
-            batch_clusters = []
-            for centroid in centroids:
-                distances = (
-                    MAX_SCORE - calculate_S_qd_regl_dict(batch_tensor, centroid, device)
-                ) ** 2
-                # print(f"get_closest_clusters | batch_tensor: {batch_tensor.shape}, distances:{distances.shape}")
-                batch_clusters.append(distances)  # (batch_size,)
-            distances_tensor = torch.stack(batch_clusters, dim=1)  # (batch, k)
+            batch_tensor = torch.stack([x["EMB"] for x in batch]).to(
+                device
+            )  # (batch_size, dim)
+            print(
+                f"get_closest_clusters batch_tensor:{batch_tensor.shape}, centroids_tensor:{centroids_tensor.shape}"
+            )
+            distances_tensor = 1 - F.cosine_similarity(
+                batch_tensor.unsqueeze(1), centroids_tensor.unsqueeze(0), dim=2
+            )  # (batch, k)
             closest_batch_clusters = torch.argmin(distances_tensor, dim=1)  # (batch,)
             closest_clusters.extend(closest_batch_clusters.tolist())
         return closest_clusters
 
 
-def kmeans_pp(X, k, max_iters):
+def kmeans_mean_pooling(X, k, max_iters):
     centroids = initialize_centroids(X, k)
 
     for iter_num in range(max_iters):
         print(f"Starting iteration {iter_num + 1} | centroids: #{len(centroids)}")
         start_time = time.time()
         batch_size = 256
-        centroid_batch_size = 32
         clusters = defaultdict(list)
 
         partitions = np.array_split(X, len(devices))
         with ThreadPoolExecutor(max_workers=len(devices)) as executor:
             results = list(
                 executor.map(
-                    get_closest_clusters,
+                    lambda args: get_closest_clusters(*args),
                     [
-                        (
-                            partition,
-                            centroids,
-                            devices[idx],
-                            batch_size,
-                            centroid_batch_size,
-                        )
+                        (partition, centroids, devices[idx], batch_size)
                         for idx, partition in enumerate(partitions)
                     ],
                 )

@@ -1,6 +1,7 @@
 import math
-import numpy as np
 from multiprocessing import Pool, cpu_count
+
+import numpy as np
 
 """
 All of these algorithms have been taken from the paper:

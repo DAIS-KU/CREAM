@@ -12,7 +12,9 @@ class MIR_retrieve(object):
         super().__init__()
         self.params = params
         self.train_params = train_params
-        self.subsample = params.subsample  # 先取一个big batch，再从中选择出eps_mem_batch个缓存数据返回
+        self.subsample = (
+            params.subsample
+        )  # 先取一个big batch，再从中选择出eps_mem_batch个缓存数据返回
         self.num_retrieve = params.mem_batch_size  # memory data要使用的 batch size
 
     def retrieve(self, buffer, qid_lst, docids_lst, **kwargs):

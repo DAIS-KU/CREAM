@@ -4,6 +4,7 @@ import os
 import pickle
 
 import torch
+
 from data import load_train_docs
 
 from .arguments import DataArguments, TevatronTrainingArguments
@@ -50,7 +51,9 @@ class Buffer(torch.nn.Module):
         self.model = model
         self.tokenizer = tokenizer
         self.buffer_size = params.mem_size
-        self.n_seen_so_far = collections.defaultdict(int)  # 目前已经过了多少个样本了, 只有er需要
+        self.n_seen_so_far = collections.defaultdict(
+            int
+        )  # 目前已经过了多少个样本了, 只有er需要
         self.buffer_qid2dids = collections.defaultdict(list)
         self.buffer_did2emb = collections.defaultdict(None)
         self.compatible = params.compatible

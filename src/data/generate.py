@@ -1,8 +1,10 @@
-import random
-from collections import defaultdict, Counter
 import json
-from .loader import read_jsonl, append_to_jsonl, read_jsonl_as_dict
+import random
+from collections import Counter, defaultdict
+
 from datasets import load_dataset
+
+from .loader import append_to_jsonl, read_jsonl, read_jsonl_as_dict
 
 
 def lotte_check_query_answer_docs(domains):

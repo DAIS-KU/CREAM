@@ -7,7 +7,7 @@ from nltk.tokenize import word_tokenize
 from rank_bm25 import BM25Okapi
 from transformers import BatchEncoding, BertTokenizer
 
-from .loader import read_jsonl, read_jsonl_as_dict, load_train_docs
+from .loader import load_train_docs, read_jsonl, read_jsonl_as_dict
 
 max_q_len: int = 32
 max_p_len: int = 128
@@ -539,7 +539,6 @@ def getitem(
     docs,
     train_n_passages=8,
     filtered=False,
-    bm25=None,
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
     qry_id = query["qid"]
     qry = query["query"]
@@ -556,6 +555,7 @@ def getitem(
     negative_size = train_n_passages - 1
     doc_ids = list(docs.keys())
     if filtered:
+        bm25 = build_bm25(list(docs.values())) if filtered else None
         neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
     else:
         valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
@@ -564,7 +564,7 @@ def getitem(
     for neg_id in neg_ids:
         psg_ids.append(neg_id)
         encoded_passages.append(create_one_example(docs[neg_id]["text"]))
-    init_neg_ids = random.sample(valid_neg_ids, 32) if session_number == 0 else []
+    init_neg_ids = random.sample(doc_ids, 32) if session_number == 0 else []
     return qry_id, psg_ids, encoded_query, encoded_passages, init_neg_ids
 
 
@@ -586,10 +586,10 @@ def load_inputs(
     answer_docs = {k: v for k, v in docs.items() if k in answer_doc_ids}
     session_docs.update(answer_docs)
 
-    bm25 = build_bm25(list(docs.values())) if filtered else None
     inputs = []
-    for query in queries:
-        features = getitem(session_number, query, session_docs, 8, filtered, bm25)
+    for qid, query in enumerate(queries):
+        print(f"{qid}th query")
+        features = getitem(session_number, query, session_docs, 8, filtered)
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")

@@ -1,30 +1,29 @@
+import pickle
 import random
 import time
 from typing import List
+
 import numpy as np
-
 import torch
-import pickle
-
 from transformers import BertModel, BertTokenizer
 
 from clusters import (
     Cluster,
     RandomProjectionLSH,
     assign_instance_or_add_cluster,
+    clear_invalid_clusters,
     evict_clusters,
     get_samples_and_weights,
     initialize,
-    retrieve_top_k_docs_from_cluster,
-    clear_invalid_clusters,
-    renew_data,
     make_query_psuedo_answers,
+    renew_data,
+    retrieve_top_k_docs_from_cluster,
 )
 from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
     InfoNCELoss,
-    evaluate_dataset,
     InfoNCETermLoss,
+    evaluate_dataset,
     get_top_k_documents,
 )
 

@@ -1,9 +1,10 @@
 import random
-from .bm25 import BM25Okapi
-import numpy as np
-
-from nltk.tokenize import word_tokenize
 import string
+
+import numpy as np
+from nltk.tokenize import word_tokenize
+
+from .bm25 import BM25Okapi
 from .loader import read_jsonl, read_jsonl_as_dict
 
 

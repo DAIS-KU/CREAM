@@ -6,12 +6,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
-from .prototype import RandomProjectionLSH
+
 from functions.similarities import (
-    calculate_S_qd_regl_dict,
-    calculate_S_qd_regl_batch_batch,
     calculate_S_qd_regl_batch,
+    calculate_S_qd_regl_batch_batch,
+    calculate_S_qd_regl_dict,
 )
+
+from .prototype import RandomProjectionLSH
 
 MAX_SCORE = 256.0
 

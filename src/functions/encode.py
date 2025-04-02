@@ -1,12 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 
 import torch
 from transformers import BertTokenizer
-from buffer import (
-    DataArguments,
-    ModelArguments,
-    TevatronTrainingArguments,
-)
+
+from buffer import DataArguments, ModelArguments, TevatronTrainingArguments
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
@@ -27,6 +25,20 @@ def get_passage_embeddings(model, passages, device, max_length=256):
     attention_mask = batch_inputs["attention_mask"][:, 1:-1]
     token_embeddings = token_embeddings * (attention_mask[:, :, None].to(device))
     return token_embeddings
+
+
+def encode_texts_mean_pooling(model, texts, max_length=256):
+    encoded_input = tokenizer(
+        texts,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=max_length,
+    )
+    encoded_input = {
+        key: value.to(model.device) for key, value in encoded_input.items()
+    }
+    return encode_mean_pooling(model, encoded_input, max_length)
 
 
 def encode_mean_pooling(model, encoded_input, max_length=256):
@@ -80,6 +92,8 @@ def process_batch(
             results[item_id] = {
                 "ID": item_id,
                 "EMB": emb.cpu(),
+                id_field: item_id,
+                "is_qurey": id_field == "qid",
             }
     return results
 
@@ -89,7 +103,6 @@ def renew_data_mean_pooling(model_builder, model_path, queries_data, documents_d
     models = [model_builder(model_path) for _ in range(num_gpus)]
     query_batches = []
     doc_batches = []
-
     for i in range(num_gpus):
         query_start = i * len(queries_data) // num_gpus
         query_end = (i + 1) * len(queries_data) // num_gpus

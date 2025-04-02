@@ -1,4 +1,12 @@
-from .proposal_train_ranking import train as proposal_train
+from .incremental_train_ranking import evaluate as inc_evalutate
+from .incremental_train_ranking import train as inc_train
+from .l2r_train_ranking import evaluate as l2r_evaluate
+from .l2r_train_ranking import train as l2r_train
 from .proposal_train_ranking import evaluate as proposal_evaluate
-from .warmingup import train as waringup_train
+from .proposal_train_ranking import train as proposal_train
+from .proposal_wo_cluster_train_ranking import evaluate as evaluate_wo_cluster
+from .proposal_wo_cluster_train_ranking import train as train_wo_cluster
+from .proposal_wo_term_train_ranking import evaluate as evaluate_wo_term
+from .proposal_wo_term_train_ranking import train as train_wo_term
 from .warmingup import evaluate as waringup_evaluate
+from .warmingup import train as waringup_train

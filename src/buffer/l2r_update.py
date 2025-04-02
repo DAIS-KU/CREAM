@@ -109,7 +109,9 @@ class L2RUpdate(object):
                 mem_sim = cosine_similarity(
                     mem_model_out, mem_eval_model_out
                 )  # [mem_upsample_num, mem_eval_size]
-                mem_sim = torch.sum(mem_sim, dim=-1) / mem_sim.size(-1)  # 选相似度最大的一些
+                mem_sim = torch.sum(mem_sim, dim=-1) / mem_sim.size(
+                    -1
+                )  # 选相似度最大的一些
                 indices = mem_sim.sort(dim=0, descending=True)[1]
 
                 new_sim = cosine_similarity(

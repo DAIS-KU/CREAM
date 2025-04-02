@@ -1,23 +1,23 @@
+import json
+import random
+import time
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from transformers import BertTokenizer, BertModel
-from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.dataloader import default_collate
+from transformers import BertModel, BertTokenizer
 
+from data import read_jsonl, read_jsonl_as_dict, write_file
 from functions import (
-    renew_data_mean_pooling,
-    get_top_k_documents_by_cosine,
-    evaluate_dataset,
     InfoNCELoss,
     SimpleContrastiveLoss,
+    evaluate_dataset,
+    get_top_k_documents_by_cosine,
+    renew_data_mean_pooling,
 )
-from data import read_jsonl, write_file
-import time
-import random
-import json
-from torch.utils.data.dataloader import default_collate
-from data import read_jsonl_as_dict
 
 
 class LOTTEDataset(Dataset):

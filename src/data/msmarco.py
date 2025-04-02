@@ -1,8 +1,8 @@
 import csv
 import json
+
+from datasets import concatenate_datasets, load_dataset
 from torch.utils.data import DataLoader, Dataset
-from datasets import load_dataset
-from datasets import concatenate_datasets
 
 
 def generate_docs():

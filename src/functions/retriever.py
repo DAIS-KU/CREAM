@@ -13,7 +13,10 @@ def get_top_k_documents_gpu_cosine(
 ):
     query_data_item = new_q_data[query_id]
     query_emb = query_data_item["EMB"]
+    return get_top_k_documents_cosine(query_emb, docs, k, devices)
 
+
+def get_top_k_documents_cosine(query_emb, docs, k, devices, batch_size=2048):
     docs_cnt = len(docs)
     num_gpus = len(devices)
     batch_indices = [

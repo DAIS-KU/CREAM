@@ -1,13 +1,21 @@
 import argparse
-import json
 import glob
+import json
 import os
 
 from pipeline import (
-    proposal_train,
+    evaluate_wo_cluster,
+    evaluate_wo_term,
+    inc_evalutate,
+    inc_train,
+    l2r_evaluate,
+    l2r_train,
     proposal_evaluate,
-    waringup_train,
+    proposal_train,
+    train_wo_cluster,
+    train_wo_term,
     waringup_evaluate,
+    waringup_train,
 )
 
 
@@ -224,5 +232,17 @@ if __name__ == "__main__":
         waringup_evaluate()
     elif args.exp == "val":
         validate_data()
+    elif args.exp == "l2r":
+        l2r_train()
+        l2r_evaluate()
+    elif args.exp == "inc":
+        inc_train()
+        inc_evalutate()
+    elif args.exp == "ablation_cluster":
+        train_wo_cluster()
+        evaluate_wo_cluster()
+    elif args.exp == "ablation_term":
+        train_wo_term()
+        evaluate_wo_term()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

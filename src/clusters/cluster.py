@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import List
 
 import torch
-import math
+
 from functions import (
     calculate_S_qd_regl,
     calculate_S_qd_regl_batch,
