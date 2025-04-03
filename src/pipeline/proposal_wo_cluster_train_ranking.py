@@ -7,7 +7,7 @@ from transformers import BertModel, BertTokenizer
 from ablation import make_query_psuedo_answers_wo_cluster
 from clusters import renew_data
 from data import load_eval_docs, read_jsonl, read_jsonl_as_dict, write_file
-from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents_by_cosine
+from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -113,15 +113,15 @@ def streaming_train(
 
 
 def train(
-    session_count=2,
+    session_count=12,
     num_epochs=1,
     batch_size=32,
 ):
-    for session_number in range(session_count):
+    for session_number in range(2, session_count):
         print(f"Train Session {session_number}")
         query_path = f"../data/sub/train_session{session_number}_queries.jsonl"
         doc_path = f"../data/sub/train_session{session_number}_docs.jsonl"
-        queries = read_jsonl(query_path, True)[:10]
+        queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, "doc_id")
         ts = session_number
 
@@ -133,7 +133,7 @@ def train(
             )
         else:
             print("Load Warming up model.")
-            model_path = f"../data/model/base_model_msmarco.pth"
+            model_path = f"../data/model/base_model_lotte.pth"
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = (
@@ -144,9 +144,9 @@ def train(
         torch.save(model.state_dict(), new_model_path)
 
 
-def evaluate(session_count=2):
+def evaluate(session_count=12):
     method = "proposal_wo_cluster"
-    for session_number in range(session_count):
+    for session_number in range(2, session_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
         eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"

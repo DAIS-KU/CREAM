@@ -126,14 +126,16 @@ class Cluster:
 
         combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
         top_k_regl_docs = combined_regl_scores[:k]
-        return top_k_regl_docs  # [(id, score), ]
+        bottom_k_regl_docs = combined_regl_scores[-k:]
+        return top_k_regl_docs, bottom_k_regl_docs  # [(id, score), ]
 
     def get_topk_docids(self, model, query, docs: dict, k, batch_size=128) -> List[str]:
-        top_k_regl_docs = self.get_topk_docids_and_scores(
+        top_k_regl_docs, bottom_k_regl_docs = self.get_topk_docids_and_scores(
             model, query, docs, k, batch_size
         )
         top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
-        return top_k_regl_doc_ids
+        bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
+        return top_k_regl_doc_ids, bottom_k_regl_doc_ids
 
     def calculate_mean(self):
         mean = self.S1 / self.N

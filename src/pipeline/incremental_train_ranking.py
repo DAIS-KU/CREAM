@@ -131,7 +131,7 @@ def train(
             model_path = f"../data/model/incremental_session_{session_number-1}.pth"
         else:
             print("Load Warming up model.")
-            model_path = f"../data/model/base_model_msmarco.pth"
+            model_path = f"../data/model/base_model_lotte.pth"
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = f"../data/model/incremental_session_{session_number}.pth"

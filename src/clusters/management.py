@@ -226,10 +226,10 @@ def get_samples_and_weights(
     print(f"cluster_ids:{cluster_ids} ")
     first_cluster, second_cluster = clusters[cluster_ids[0]], clusters[cluster_ids[1]]
 
-    first_samples = first_cluster.get_topk_docids_and_scores(
+    first_samples, _ = first_cluster.get_topk_docids_and_scores(
         model, query, docs, candidate_num
     )
-    second_samples = second_cluster.get_topk_docids_and_scores(
+    second_samples, _ = second_cluster.get_topk_docids_and_scores(
         model, query, docs, candidate_num
     )
     combined_samples = sorted(
@@ -240,6 +240,50 @@ def get_samples_and_weights(
     positive_samples, negative_samples = (
         top_k_doc_ids[:positive_k],
         top_k_doc_ids[positive_k : positive_k + negative_k],
+    )
+    print(
+        f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
+    )
+    return positive_samples, negative_samples, []
+
+
+def get_samples_ance(
+    model,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    candidate_num=3,
+):
+    cluster_ids = find_k_closest_clusters_for_sampling(
+        model=model,
+        texts=[query["query"]],
+        clusters=clusters,
+        k=2,
+        use_tensor_key=use_tensor_key,
+    )[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster = clusters[cluster_ids[0]], clusters[cluster_ids[1]]
+
+    first_positive_samples, first_bottom_samples = (
+        first_cluster.get_topk_docids_and_scores(model, query, docs, candidate_num)
+    )
+    second_positive_samples, _ = second_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
+    )
+    combined_samples = sorted(
+        first_positive_samples + first_bottom_samples + second_positive_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    top_k_doc_ids = [x[0] for x in combined_samples]
+
+    positive_samples, negative_samples = (
+        top_k_doc_ids[:positive_k],
+        top_k_doc_ids[-negative_k:],
     )
     print(
         f" query: {query['qid']} | positive: {positive_samples} | negative:{negative_samples}"
@@ -401,7 +445,8 @@ def make_query_psuedo_answers(model, queries, docs, clusters, use_tensor_key, k=
             model, [query["query"]], clusters, 1, use_tensor_key
         )[0]
         first_cluster = clusters[cluster_ids[0]]
-        first_id = first_cluster.get_topk_docids(model, query, docs, 1)[0]
+        tops, _ = first_cluster.get_topk_docids(model, query, docs, 1)
+        first_id = tops[0]
         result[query["qid"]] = first_id
         print(f"{i}th query is done.")
     print("make_query_psuedo_answers finished.")
