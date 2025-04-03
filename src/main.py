@@ -10,7 +10,11 @@ from pipeline import (
     inc_train,
     l2r_evaluate,
     l2r_train,
+    proposal_ance_evaluate,
+    proposal_ance_train,
     proposal_evaluate,
+    proposal_rerank_evaluate,
+    proposal_rerank_train,
     proposal_train,
     train_wo_cluster,
     train_wo_term,
@@ -244,5 +248,79 @@ if __name__ == "__main__":
     elif args.exp == "ablation_term":
         train_wo_term()
         evaluate_wo_term()
+    elif args.exp == "proposal_rerank":
+        print(f"Start session: {args.start}")
+        print(f"End session: {args.end}")
+        print(f"Load cluster: {args.load_cluster}")
+        print(f"Use cluster warming up: {args.warming_up_method}")
+        print(f"Use label: {args.use_label}")
+        print(f"Use weight: {args.use_weight}")
+        print(f"Use tensor key: {args.use_tensor_key}")
+        print(f"Use nbits: {args.nbits}")
+        print(f"Use max_iters: {args.mi}")
+        print(f"Use warmingup_rate: {args.wr}")
+        print(f"Use warmingup_k: {args.init_k}")
+        print(f"Use cluster_min_size: {args.cmnsz}")
+        print(f"Use required_doc_size: {args.rdsz}")
+        print(f"Use stream sampling rate: {args.sr}")
+        print(f"Use sampling size per query: {args.sspq}")
+        print(f"Number of Epochs: {args.num_epochs}")
+        proposal_rerank_train(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+        )
+    elif args.exp == "proposal_ance":
+        print(f"Start session: {args.start}")
+        print(f"End session: {args.end}")
+        print(f"Load cluster: {args.load_cluster}")
+        print(f"Use cluster warming up: {args.warming_up_method}")
+        print(f"Use label: {args.use_label}")
+        print(f"Use weight: {args.use_weight}")
+        print(f"Use tensor key: {args.use_tensor_key}")
+        print(f"Use nbits: {args.nbits}")
+        print(f"Use max_iters: {args.mi}")
+        print(f"Use warmingup_rate: {args.wr}")
+        print(f"Use warmingup_k: {args.init_k}")
+        print(f"Use cluster_min_size: {args.cmnsz}")
+        print(f"Use required_doc_size: {args.rdsz}")
+        print(f"Use stream sampling rate: {args.sr}")
+        print(f"Use sampling size per query: {args.sspq}")
+        print(f"Number of Epochs: {args.num_epochs}")
+        proposal_ance_train(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+        )
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

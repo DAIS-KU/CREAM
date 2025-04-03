@@ -4,6 +4,10 @@ from .l2r_train_ranking import evaluate as l2r_evaluate
 from .l2r_train_ranking import train as l2r_train
 from .proposal_train_ranking import evaluate as proposal_evaluate
 from .proposal_train_ranking import train as proposal_train
+from .proposal_train_ranking_ance import evaluate as proposal_ance_evaluate
+from .proposal_train_ranking_ance import train as proposal_ance_train
+from .proposal_train_ranking_rerank import evaluate as proposal_rerank_evaluate
+from .proposal_train_ranking_rerank import train as proposal_rerank_train
 from .proposal_wo_cluster_train_ranking import evaluate as evaluate_wo_cluster
 from .proposal_wo_cluster_train_ranking import train as train_wo_cluster
 from .proposal_wo_term_train_ranking import evaluate as evaluate_wo_term
