@@ -200,29 +200,30 @@ def streaming_train(
 
 def train(
     start_session_number=0,
-    end_sesison_number=3,
-    load_cluster=False,
+    end_sesison_number=12,
+    load_cluster=True,
     sampling_rate=None,
-    sampling_size_per_query=30,
+    sampling_size_per_query=100,
     num_epochs=1,
     batch_size=32,
     warmingup_rate=0.2,
     positive_k=1,
     negative_k=6,
-    cluster_min_size=10,
+    cluster_min_size=50,
     nbits=12,
     max_iters=3,
-    init_k=None,
+    init_k=12,
     use_label=False,
     use_weight=False,
-    use_tensor_key=False,
-    warming_up_method=None,
+    use_tensor_key=True,
+    warming_up_method="stream_seed",
+    required_doc_size=20,
 ):
     total_loss_values = []
     loss_values_path = "../data/loss/total_loss_values_proposal_term.txt"
     required_doc_size = (
-        positive_k + negative_k
-    )  # 임의 설정하면(최대, 최소 갯수 생기면) 배치 안 됨
+        required_doc_size if required_doc_size is not None else positive_k + negative_k
+    )
 
     random_vectors = torch.randn(nbits, 768)
     lsh = RandomProjectionLSH(
@@ -434,8 +435,8 @@ def evaluate_with_cluster(
     return clusters, stream.docs
 
 
-def evaluate(session_number):
-    method = "proposal"
+def evaluate(session_number=12):
+    method = "proposal_wo_term"
     print(f"Evaluate Session {session_number}")
     eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
     eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"

@@ -56,9 +56,9 @@ def find_k_closest_clusters(
     prototypes = [cluster.prototype for cluster in clusters]  # (num_clusters, dim)
     scores = []
     for i in range(0, len(prototypes), batch_size):
-        batch_prototypes = torch.stack(prototypes[i : i + batch_size]).to(
-            device
-        )  # (batch_size, dim)
+        batch = prototypes[i : i + batch_size]
+        batch = [t.to(device) for t in batch]
+        batch_prototypes = torch.stack(batch)  # (batch_size, dim)
         batch_scores = F.cosine_similarity(
             token_embs.unsqueeze(1),  # (num_samples, 1, dim)
             batch_prototypes.unsqueeze(0).to(token_embs),  # (1, batch_size, dim)
@@ -80,10 +80,11 @@ def find_k_closest_clusters_for_sampling(
     token_embs = encode_texts_mean_pooling(model, texts)  # (num_samples, dim)
     prototypes = [cluster.prototype for cluster in clusters]  # (num_clusters, dim)
     scores = []
+    prototypes_cpu = [p.cpu() for p in prototypes]
     prototype_batches = list(
         map(
             lambda batch: [torch.tensor(proto) for proto in batch],
-            np.array_split(prototypes, num_devices),
+            np.array_split(prototypes_cpu, num_devices),
         )
     )
 

@@ -31,10 +31,11 @@ def encode_texts(model, texts, max_length=256):
 
 
 def streaming_train(
+    model,
     queries,
     docs,
     ts,
-    model,
+    model_path,
     num_epochs,
     positive_k=1,
     negative_k=6,
@@ -47,7 +48,7 @@ def streaming_train(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_values = []
 
-    query_answers = make_query_psuedo_answers_wo_cluster(model, queries, docs)
+    query_answers = make_query_psuedo_answers_wo_cluster(model_path, queries, docs)
     all_answer_ids = set(query_answers.values())
 
     for epoch in range(num_epochs):
@@ -117,7 +118,7 @@ def train(
     num_epochs=1,
     batch_size=32,
 ):
-    for session_number in range(2, session_count):
+    for session_number in range(session_count):
         print(f"Train Session {session_number}")
         query_path = f"../data/sub/train_session{session_number}_queries.jsonl"
         doc_path = f"../data/sub/train_session{session_number}_docs.jsonl"
@@ -140,13 +141,13 @@ def train(
             f"../data/model/proposal_wo_cluster_session_{session_number}.pth"
         )
 
-        loss_values = streaming_train(queries, docs, ts, model, num_epochs)
+        loss_values = streaming_train(model, queries, docs, ts, model_path, num_epochs)
         torch.save(model.state_dict(), new_model_path)
 
 
 def evaluate(session_count=12):
     method = "proposal_wo_cluster"
-    for session_number in range(2, session_count):
+    for session_number in range(session_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
         eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"

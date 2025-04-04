@@ -1,12 +1,13 @@
 import concurrent
 import copy
+import math
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 import torch
 import torch.nn.functional as F
 
-from functions import encode_texts_mean_pooling
+from functions import calculate_S_qd_regl, encode_texts_mean_pooling
 
 MAX_SCORE = 1.0
 num_devices = torch.cuda.device_count()
@@ -116,14 +117,10 @@ class Cluster:
 
     def get_distance(self, doc_embs):
         # E_q (batch_size, qlen, 768)
-        if self.use_tensor_key:
-            x_dist = MAX_SCORE - calculate_S_qd_regl(
-                doc_embs, self.prototype, doc_embs.device
-            )
-        else:
-            x_dist = MAX_SCORE - calculate_S_qd_regl_dict(
-                doc_embs, self.prototype, doc_embs.device
-            )
+        # print(f"doc_embs:{doc_embs.shape}, self.prototype:{self.prototype.shape}")
+        x_dist = MAX_SCORE - F.cosine_similarity(
+            doc_embs, self.prototype.to(doc_embs.device), dim=-1
+        )
         return x_dist.item()
 
     def assign(self, doc_id, doc_embs, ts):
@@ -133,17 +130,13 @@ class Cluster:
         self.S1 += distance
         self.S2 += distance**2
         self.N += 1
-        self.prototype += doc_embs
+        self.prototype += doc_embs.to(self.prototype.device)
         self.timestamp = ts
 
     def evict(self, model, docs: dict, required_doc_size) -> bool:
         before_n = len(self.doc_ids)
         temp_docids = []
-        temp_prototype = (
-            torch.zeros_like(self.prototype)
-            if self.use_tensor_key
-            else defaultdict(lambda: torch.zeros(768))
-        )
+        temp_prototype = torch.zeros_like(self.prototype)
 
         BOUNDARY = self.calculate_mean()
         print(f"BOUNDARY: {BOUNDARY}")
