@@ -8,20 +8,19 @@ import torch
 from transformers import BertModel, BertTokenizer
 
 from clusters import (
-    Stream,
     Cluster,
     RandomProjectionLSH,
     assign_instance_or_add_cluster,
     clear_invalid_clusters,
     evict_clusters,
-    get_samples_top_and_farthest3,
     get_samples_top_bottom_3,
     initialize,
     make_query_psuedo_answers,
     renew_data,
     retrieve_top_k_docs_from_cluster,
+    get_samples_rerank,
+    Stream,
     clear_unused_documents,
-    visualize_clusters,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -84,7 +83,8 @@ def streaming_train(
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
-                _, neg_ids = get_samples_top_bottom_3(  # get_samples_top_and_farthest3(
+                # pos_ids, neg_ids = get_samples_top_bottom_3(
+                pos_ids, neg_ids = get_samples_rerank(
                     query=query,
                     docs=docs,
                     clusters=clusters,
@@ -93,7 +93,6 @@ def streaming_train(
                     ts=ts,
                     use_tensor_key=use_tensor_key,
                 )
-                pos_ids = random.sample(query["answer_pids"], 1)
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
@@ -160,10 +159,9 @@ def train(
     use_tensor_key=False,
     warming_up_method=None,
     required_doc_size=None,
-    include_answer=False,
 ):
     total_loss_values = []
-    loss_values_path = "../data/loss/total_loss_values_proposal_datasetC.txt"
+    loss_values_path = "../data/loss/total_loss_values_proposal_rerank_top1.txt"
     required_doc_size = (
         required_doc_size if required_doc_size is not None else positive_k + negative_k
     )
@@ -178,46 +176,47 @@ def train(
         print(f"Training Session {session_number}/{load_cluster}")
         stream = Stream(
             session_number=session_number,
-            query_path=f"../data/datasetC/train_session{session_number}_queries.jsonl",
-            doc_path=f"../data/datasetC/train_session{session_number}_docs.jsonl",
+            query_path=f"../data/sub/test_session{session_number}_queries.jsonl",
+            doc_path=f"../data/sub/test_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
             sampling_size_per_query=sampling_size_per_query,
             warming_up_method=warming_up_method,
-            include_answer=include_answer,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
 
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[1])
+        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+            devices[-1]
+        )
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/proposal_datasetC_session_{session_number-1}.pth"
+                f"../data/model/proposal_rerank_top1_session_pre_{session_number-1}.pth"
             )
-            model.load_state_dict(torch.load(model_path, map_location="cuda:1"))
         else:
             print("Load Warming up model.")
-            # model_path = f"../data/base_model_lotte.pth"
+            model_path = f"../data/base_model_lotte.pth"
+        model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
         model.train()
-        new_model_path = f"../data/model/proposal_datasetC_session_{session_number}.pth"
+        new_model_path = (
+            f"../data/model/proposal_rerank_top1_session_pre_{session_number}.pth"
+        )
 
         # Initial : 매번 로드 or 첫 세션만 로드
-        if (
-            (load_cluster)
-            or (not load_cluster and session_number == start_session_number)
-            and session_number > 0
+        if (load_cluster or session_number == start_session_number) and (
+            session_number > 0
         ):
             print(f"Load last sesion clusters, docs and random vectors.")
-            with open(f"../data/clusters_datasetC_{session_number-1}.pkl", "rb") as f:
+            with open(f"../data/clusters_top1_pre_{session_number-1}.pkl", "rb") as f:
                 clusters = pickle.load(f)
-            with open(f"../data/prev_docs_datasetC_{session_number-1}.pkl", "rb") as f:
+            with open(f"../data/prev_docs_top1_pre_{session_number-1}.pkl", "rb") as f:
                 prev_docs = pickle.load(f)
-                stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetC_{session_number-1}.pkl", "rb"
+                f"../data/random_vectors_top1_pre_{session_number-1}.pkl", "rb"
             ) as f:
                 random_vectors = pickle.load(f)
+            stream.docs.update(prev_docs)
             batch_start = 0
         else:
             if session_number == 0:
@@ -283,6 +282,16 @@ def train(
             else:
                 batch_start = 0
 
+        # Evaluate
+        clusters, eval_stream_docs = evaluate_with_cluster(
+            session_number=session_number,
+            ts=ts,
+            random_vectors=random_vectors,
+            clusters=clusters,
+            model_path=model_path,
+            use_tensor_key=use_tensor_key,
+        )
+        evaluate(session_number=session_number, model_path=model_path)
         # Assign stream batch
         for i in range(batch_start, len(stream.stream_docs)):
             print(f"Assign {i}th stream starts.")
@@ -299,8 +308,8 @@ def train(
             if i % 50 == 0:
                 for j, cluster in enumerate(clusters):
                     print(f"{j}th size: {len(cluster.doc_ids)}")
-            end_time = time.time()
-            print(f"Assign {i}th stream ended({end_time - start_time}sec).")
+        end_time = time.time()
+        print(f"Assign {i}th stream ended({end_time - start_time}sec).")
 
         # Remain only trainable clusters
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
@@ -323,29 +332,18 @@ def train(
             loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
         )
         torch.save(model.state_dict(), new_model_path)
-        # Evaluate
-        # clusters, eval_stream_docs = evaluate_with_cluster(
-        #     session_number=session_number,
-        #     ts=ts,
-        #     random_vectors=random_vectors,
-        #     clusters=clusters,
-        #     model_path=new_model_path,
-        #     use_tensor_key=use_tensor_key,
-        # )
-        _evaluate(session_number)
-        # # Evict
-        # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}.png")
-        evict_clusters(model, lsh, stream.docs, clusters, ts, required_doc_size)
-        # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}_right_after_eviction.png")
+        # Evict
+        clusters = evict_clusters(
+            model, lsh, stream.docs, clusters, ts, required_doc_size
+        )
         stream.docs = clear_unused_documents(clusters, stream.docs)
         # Accumulate
         prev_docs = stream.docs  # {**stream.docs, **eval_stream_docs}
-
-        with open(f"../data/clusters_datasetC_{session_number}.pkl", "wb") as f:
+        with open(f"../data/clusters_top1_pre_{session_number}.pkl", "wb") as f:
             pickle.dump(clusters, f)
-        with open(f"../data/prev_docs_datasetC_{session_number}.pkl", "wb") as f:
+        with open(f"../data/prev_docs_top1_pre_{session_number}.pkl", "wb") as f:
             pickle.dump(prev_docs, f)
-        with open(f"../data/random_vectors_datasetC_{session_number}.pkl", "wb") as f:
+        with open(f"../data/random_vectors_top1_pre_{session_number}.pkl", "wb") as f:
             pickle.dump(random_vectors, f)
 
 
@@ -357,8 +355,8 @@ def evaluate_with_cluster(
     model_path,
     clusters: List[Cluster],
 ) -> List[Cluster]:
-    eval_query_path = f"../data/datasetC/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetC/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,
@@ -371,35 +369,29 @@ def evaluate_with_cluster(
         f"Evaluate session {session_number} | #Query:{eval_query_count}, #Document:{eval_doc_count}"
     )
     # Assign and Retrieve
-    # start_time = time.time()
-    # model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
-    #     devices[-1]
-    # )
-    # model.load_state_dict(torch.load(model_path, weights_only=True))
-    # model.eval()
-    # result = retrieve_top_k_docs_from_cluster(
-    #     model, stream, clusters, random_vectors, use_tensor_key, 10
-    # )
-    # end_time = time.time()
-    # print(f"Spend {end_time-start_time} seconds for retrieval.")
+    start_time = time.time()
+    model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+        devices[-1]
+    )
+    model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
+    model.eval()
+    result = retrieve_top_k_docs_from_cluster(
+        stream, clusters, random_vectors, use_tensor_key, 10
+    )
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/proposal_datasetC_{session_number}_with_cluster.txt"
-    # write_file(rankings_path, result)
-    # eval_log_path = f"../data/evals/proposa_datasetC_{session_number}_with_cluster.txt"
-    # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    rankings_path = f"../data/rankings/proposal_rerank_top1_session_pre_{session_number}_with_cluster.txt"
+    write_file(rankings_path, result)
+    eval_log_path = f"../data/evals/proposal_rerank_top1_session_pre_{session_number}_with_cluster.txt"
+    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
 
-def evaluate(session_count=10):
-    for session_number in range(session_count):
-        _evaluate(session_number)
-
-
-def _evaluate(session_number):
-    method = "proposal_datasetC"
+def evaluate(session_number, model_path):
     print(f"Evaluate Session {session_number}")
-    eval_query_path = f"../data/datasetC/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetC/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -407,9 +399,6 @@ def _evaluate(session_number):
     eval_query_count = len(eval_query_data)
     eval_doc_count = len(eval_doc_data)
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
-
-    rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-    model_path = f"../data/model/{method}_session_{session_number}.pth"
 
     start_time = time.time()
     new_q_data, new_d_data = renew_data(
@@ -429,16 +418,20 @@ def _evaluate(session_number):
     end_time = time.time()
     print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+    rankings_path = (
+        f"../data/rankings/proposal_rerank_top1_session_pre_{session_number}.txt"
+    )
     write_file(rankings_path, result)
-    eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+    eval_log_path = (
+        f"../data/evals/proposal_rerank_top1_session_pre_{session_number}.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     del new_q_data, new_d_data
 
 
 def eval_rankings(session_number):
-    eval_query_path = f"../data/datasetC/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetC/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -448,9 +441,11 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/proposal_datasetC_{session_number}_with_cluster.txt"
+        f"../data/rankings/proposal_rerank_top1_{session_number}_with_cluster.txt"
     )
-    eval_log_path = f"../data/evals/proposa_datasetC_{session_number}_with_cluster.txt"
+    eval_log_path = f"../data/evals/proposa_top1_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = f"../data/rankings/proposal_datasetC_session_{session_number}.txt"
+    rankings_path = (
+        f"../data/rankings/proposal_rerank_top1_session_pre_{session_number}.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

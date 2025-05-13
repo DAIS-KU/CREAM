@@ -2,7 +2,11 @@ import numpy as np
 
 from clusters import renew_data
 from data import BM25Okapi
-from functions import calculate_S_qd_regl_batch, get_passage_embeddings
+from functions import (
+    calculate_S_qd_regl_batch,
+    get_passage_embeddings,
+    get_top_k_documents,
+)
 
 
 def preprocess(corpus, max_length=256):
@@ -16,19 +20,19 @@ def preprocess(corpus, max_length=256):
 
 
 def make_query_psuedo_answers_wo_cluster(
-    model_path, queries, docs, sampling_size_per_query=100
+    model_path, queries, doc_list, k=1, sampling_size_per_query=100
 ):
     print("make_query_psuedo_answers_wo_cluster started.")
     new_q_data, new_d_data = renew_data(
         queries=queries,
-        documents=list(docs.values()),
+        documents=doc_list,
         model_path=model_path,
         nbits=12,
         renew_q=True,
         renew_d=True,
         use_tensor_key=True,
     )
-    result = get_top_k_documents(new_q_data, new_d_data, 1)
+    result = get_top_k_documents(new_q_data, new_d_data, k)
     result = {key: value[0] for key, value in result.items()}
     # doc_list = list(docs.values())
     # corpus = [doc["text"] for doc in doc_list]

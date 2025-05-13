@@ -1,7 +1,7 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from typing import List
+from typing import List, Any
 
 import numpy as np
 import torch
@@ -45,23 +45,27 @@ def initialize(
 
 def find_k_closest_clusters(
     model,
-    texts: List[str],
+    embs: List[Any],
     clusters: List[Cluster],
     k,
     device,
     use_tensor_key,
     batch_size=8,
 ) -> List[int]:
-    token_embs = encode_texts_mean_pooling(model, texts)  # (num_samples, dim)
     prototypes = [cluster.prototype for cluster in clusters]  # (num_clusters, dim)
+    # print(f"find_k_closest_clusters | len(prototypes): {len(prototypes)}")
     scores = []
     for i in range(0, len(prototypes), batch_size):
         batch = prototypes[i : i + batch_size]
         batch = [t.to(device) for t in batch]
-        batch_prototypes = torch.stack(batch)  # (batch_size, dim)
+        batch_prototypes = torch.stack(batch, dim=0)  # (batch_size, dim)
+
+        embs = torch.nn.functional.normalize(embs, p=2, dim=1)
+        batch_prototypes = torch.nn.functional.normalize(batch_prototypes, p=2, dim=-1)
+        # print(f"find_k_closest_clusters | embs:{embs.shape}, batch_prototypes:{batch_prototypes.shape}")
         batch_scores = F.cosine_similarity(
-            token_embs.unsqueeze(1),  # (num_samples, 1, dim)
-            batch_prototypes.unsqueeze(0).to(token_embs),  # (1, batch_size, dim)
+            embs.unsqueeze(1),  # (num_samples, 1, dim)
+            batch_prototypes.unsqueeze(0).to(embs.device),  # (1, batch_size, dim)
             dim=2,
         )  # (num_samples, batch_size)
         scores.append(batch_scores)
@@ -72,31 +76,35 @@ def find_k_closest_clusters(
 
 def find_k_closest_clusters_for_sampling(
     model,
-    texts: List[str],
+    embs: List[Any],
     clusters: List[Cluster],
     k,
     batch_size=8,
 ) -> List[int]:
-    token_embs = encode_texts_mean_pooling(model, texts)  # (num_samples, dim)
-    prototypes = [cluster.prototype for cluster in clusters]  # (num_clusters, dim)
+    prototypes = [
+        cluster.prototype.cpu() for cluster in clusters
+    ]  # (num_clusters, dim)
+    num_workers = min(len(prototypes), num_devices)
+    q, r = divmod(len(prototypes), num_workers)
+    prototype_batches = [
+        prototypes[i * q : (i + 1) * q] for i in range(num_workers - 1)
+    ] + [prototypes[(num_workers - 1) * q :]]
     scores = []
-    prototypes_cpu = [p.cpu() for p in prototypes]
-    prototype_batches = list(
-        map(
-            lambda batch: [torch.tensor(proto) for proto in batch],
-            np.array_split(prototypes_cpu, num_devices),
-        )
-    )
 
     def process_on_device(device, batch_prototypes):
         device_scores = []
-        temp_token_embs = token_embs.clone().to(device)
+        temp_token_embs = embs.clone().to(device)
         for i in range(0, len(batch_prototypes), batch_size):
-            batch_tensor = torch.stack(batch_prototypes[i : i + batch_size]).to(
-                device
+            batch_tensor = torch.stack(
+                batch_prototypes[i : i + batch_size], dim=0
             )  # (batch_size, dim)
+            temp_token_embs = torch.nn.functional.normalize(
+                temp_token_embs, p=2, dim=-1
+            )
+            batch_tensor = torch.nn.functional.normalize(batch_tensor, p=2, dim=-1)
+            # print(f"find_k_closest_clusters_for_sampling | temp_token_embs;{temp_token_embs.shape}, batch_tensor:{batch_tensor.shape}")
             batch_scores = F.cosine_similarity(
-                temp_token_embs, batch_tensor, dim=1
+                temp_token_embs.to(device), batch_tensor.to(device), dim=1
             ).cpu()  # (batch_size, num_clusters)
             if batch_scores.dim() == 1:
                 batch_scores = batch_scores.unsqueeze(0)
@@ -105,12 +113,124 @@ def find_k_closest_clusters_for_sampling(
         res = torch.cat(device_scores, dim=1)
         return res
 
-    with ThreadPoolExecutor(num_devices) as executor:
+    with ThreadPoolExecutor(num_workers) as executor:
         scores = list(executor.map(process_on_device, devices, prototype_batches))
 
     scores_tensor = torch.cat(scores, dim=1)  # (num_samples, num_clusters)
     topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)
     return topk_indices.tolist()
+
+
+def get_samples_rerank(
+    model,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    use_tensor_key=True,
+    candidate_num=6,
+):
+    cluster_ids = find_k_closest_clusters_for_sampling(
+        model=model, embs=torch.stack([query["EMB"]], dim=0), clusters=clusters, k=3
+    )[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster, third_cluster = (
+        clusters[cluster_ids[0]],
+        clusters[cluster_ids[1]],
+        clusters[cluster_ids[2]],
+    )
+
+    first_samples, _ = first_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
+    )
+    second_samples, _ = second_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
+    )
+    third_samples, _ = third_cluster.get_topk_docids_and_scores(
+        model, query, docs, candidate_num
+    )
+    combined_samples = sorted(
+        first_samples + second_samples + third_samples, key=lambda x: x[1], reverse=True
+    )
+    top_k_doc_ids = [x[0] for x in combined_samples]
+
+    positive_samples, negative_samples = (
+        top_k_doc_ids[:positive_k],
+        top_k_doc_ids[positive_k : positive_k + negative_k],
+    )
+    print(
+        f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+    )
+    return positive_samples, negative_samples
+
+
+def get_samples_top_bottom(
+    model,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+):
+    # cluster_ids = find_k_closest_clusters_for_sampling(
+    #     model=model,
+    #     embs=torch.stack([query["EMB"]], dim=0),
+    #     clusters=clusters,
+    #     k=1,
+    # )[0]
+    # print(f"cluster_ids:{cluster_ids}")
+    # first_cluster = clusters[cluster_ids[0]]
+    # (
+    #     first_positive_samples,
+    #     first_bottom_samples,
+    # ) = first_cluster.get_topk_docids_and_scores(model, query, docs, negative_k)
+    # positive_samples = [first_positive_samples[0][0]]
+    # negative_samples = [x[0] for x in first_bottom_samples]
+    cluster_ids = find_k_closest_clusters_for_sampling(
+        model=model,
+        embs=torch.stack([query["EMB"]], dim=0),
+        clusters=clusters,
+        k=3,
+    )[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster, third_cluster = (
+        clusters[cluster_ids[0]],
+        clusters[cluster_ids[1]],
+        clusters[cluster_ids[2]],
+    )
+    (
+        first_positive_samples,
+        first_bottom_samples,
+    ) = first_cluster.get_topk_docids_and_scores(model, query, docs, negative_k)
+    (
+        second_positive_samples,
+        second_bottom_samples,
+    ) = second_cluster.get_topk_docids_and_scores(model, query, docs, negative_k)
+    (
+        third_positive_samples,
+        third_bottom_samples,
+    ) = third_cluster.get_topk_docids_and_scores(model, query, docs, negative_k)
+    combined_samples = sorted(
+        first_positive_samples
+        + first_bottom_samples
+        + second_positive_samples
+        + second_bottom_samples
+        + third_positive_samples
+        + third_bottom_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    top_k_doc_ids = [x[0] for x in combined_samples]
+    positive_samples, negative_samples = (
+        top_k_doc_ids[:1],
+        top_k_doc_ids[-6:],
+    )
+
+    print(
+        f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+    )
+    return positive_samples, negative_samples
 
 
 def assign_instance_or_add_cluster(
@@ -130,11 +250,11 @@ def assign_instance_or_add_cluster(
     def process_batch(batch, device):
         print(f"ㄴ Batch {len(batch)} starts on {device}.")
         temp_model = deepcopy(model).to(device)
-        texts = [doc["text"] for doc in batch]
         doc_ids = [doc["doc_id"] for doc in batch]
-        batch_embs = encode_texts_mean_pooling(temp_model, texts).squeeze()
+        batch_embs = torch.stack([doc["EMB"] for doc in batch], dim=0)
+        # print(f"assign_instance_or_add_cluster | batch_embs: {batch_embs.shape}")
         batch_closest_ids = find_k_closest_clusters(
-            temp_model, texts, clusters, 1, device, use_tensor_key
+            temp_model, batch_embs, clusters, 1, device, use_tensor_key
         )
         for i, doc in enumerate(batch):
             doc_embs = batch_embs[i]
@@ -182,11 +302,8 @@ def evict_clusters(
         local_model = deepcopy(model).to(device)
         local_result = []
         for cluster in cluster_chunk:
-            if cluster.timestamp >= ts:
-                # cluster.refresh_prototype_with_cache()
-                is_alive = True
-            else:
-                is_alive = cluster.evict(local_model, docs, required_doc_size)
+            is_updated = 1 if cluster.timestamp >= ts else 0
+            is_alive = cluster.evict(local_model, docs, required_doc_size, is_updated)
             if is_alive:
                 local_result.append(cluster)
         return local_result
@@ -206,7 +323,7 @@ def evict_clusters(
 
 
 def get_topk_docids(model, query, docs, doc_ids, k, batch_size=128) -> List[str]:
-    query_token_embs = encode_texts_mean_pooling(model, query["query"])
+    query_token_embs = query["EMB"]
 
     def process_batch(device, batch_doc_ids):
         regl_scores = []
@@ -214,12 +331,16 @@ def get_topk_docids(model, query, docs, doc_ids, k, batch_size=128) -> List[str]
         temp_query_token_embs = query_token_embs.clone().to(device)
         for i in range(0, len(batch_doc_ids), batch_size):
             batch_ids = batch_doc_ids[i : i + batch_size]
-            batch_texts = [docs[doc_id]["text"] for doc_id in batch_ids]
-            batch_emb = encode_texts_mean_pooling(temp_model, batch_texts)
+            batch_emb = torch.stack(
+                [docs[doc_id]["EMB"] for doc_id in batch_ids], dim=1
+            )
 
             if batch_emb.dim() > 3:
                 batch_emb = batch_emb.squeeze()
-
+            batch_emb = torch.nn.functional.normalize(batch_emb, p=2, dim=-1)
+            temp_query_token_embs = torch.nn.functional.normalize(
+                temp_query_token_embs, p=2, dim=-1
+            )
             cosine_sim = F.cosine_similarity(
                 batch_emb, temp_query_token_embs.unsqueeze(0), dim=-1
             ).squeeze(0)
@@ -264,9 +385,9 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, use_tensor_key, k)
         ]
         for i, mini_batch in enumerate(mini_batches):
             print(f" ㄴ {i}th minibatch({(i+1)*batch_size}/{len(batch)})")
-            mini_batch_texts = [doc["text"] for doc in mini_batch]
+            mini_batch_embs = torch.stack([doc["EMB"] for doc in mini_batch], dim=1)
             mini_batch_closest_ids = find_k_closest_clusters(
-                temp_model, mini_batch_texts, clusters, 1, device, use_tensor_key
+                temp_model, mini_batch_embs, clusters, 1, device, use_tensor_key
             )
             for j in range(len(mini_batch_closest_ids)):
                 closest_cluster_id = mini_batch_closest_ids[j][0]
@@ -286,9 +407,9 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, use_tensor_key, k)
         for cluster_id, doc_ids in batch_result.items():
             cluster_docids_dict[cluster_id].extend(doc_ids)
     result = {}
-    texts = [q["query"] for q in stream.queries]
+    embs = torch.stack([q["EMB"] for q in stream.queries], dim=1)
     batch_closest_ids = find_k_closest_clusters(
-        model, texts, clusters, 1, devices[1], use_tensor_key
+        model, embs, clusters, 1, devices[-1], use_tensor_key
     )
     for i, query in enumerate(stream.queries):
         print(f"Retrieval {i}th query.")
@@ -298,7 +419,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, use_tensor_key, k)
         ans_ids = get_topk_docids(
             model=model, query=query, docs=stream.docs, doc_ids=cand_docids, k=k
         )
-        result[query["qid"]] = ans_ids
+        result[query["doc_id"]] = ans_ids
     print("retrieve_top_k_docs_from_cluster finished.")
     return result
 
@@ -386,10 +507,22 @@ def make_cos_query_psuedo_answers(model, queries, docs, clusters, k=1):
     result = {}
     for i, query in enumerate(queries):
         cluster_ids = find_k_closest_clusters_for_sampling(
-            model, [query["query"]], clusters, 1
+            model, torch.stack([query["EMB"]], dim=0), clusters, 1
         )[0]
         first_cluster = clusters[cluster_ids[0]]
-        result[query["qid"]] = first_cluster.get_topk_docids(model, query, docs, k)[0]
+        result[query["doc_id"]] = first_cluster.get_topk_docids(model, query, docs, k)[
+            0
+        ]
         print(f"{i}th query is done.")
     print("make_query_psuedo_answers finished.")
     return result
+
+
+def clear_unused_documents(clusters: List[Cluster], docs: dict):
+    print(f"clear_unused_documents | before total #{len(docs)}")
+    all_used_doc_ids = set()
+    for cluster in clusters:
+        all_used_doc_ids.update(cluster.doc_ids)
+    used_dict = {k: v for k, v in docs.items() if k in all_used_doc_ids}
+    print(f"clear_unused_documents | after total #{len(used_dict)}")
+    return used_dict

@@ -1,20 +1,21 @@
 import random
 import time
+from data import BM25Okapi, preprocess
+import numpy as np
 
 import torch
 from transformers import BertModel, BertTokenizer
 
-from ablation import make_query_psuedo_answers_wo_cluster
+from ablation import get_samples_rerank, make_query_psuedo_answers_wo_cluster
 from clusters import renew_data
 from data import load_eval_docs, read_jsonl, read_jsonl_as_dict, write_file
 from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
-print(devices)
 
 
 def encode_texts(model, texts, max_length=256):
@@ -33,6 +34,7 @@ def encode_texts(model, texts, max_length=256):
 def streaming_train(
     model,
     queries,
+    doc_list,
     docs,
     ts,
     model_path,
@@ -48,9 +50,6 @@ def streaming_train(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_values = []
 
-    query_answers = make_query_psuedo_answers_wo_cluster(model_path, queries, docs)
-    all_answer_ids = set(query_answers.values())
-
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
@@ -62,10 +61,13 @@ def streaming_train(
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
-                pos_ids = [query_answers[query["qid"]]]
-                candidate_neg_ids = list(all_answer_ids - set(pos_ids))
-                neg_ids = random.sample(
-                    candidate_neg_ids, min(6, len(candidate_neg_ids))
+                pos_ids, neg_ids = get_samples_top_bottom(
+                    query=query,
+                    docs=docs,
+                    clusters=clusters,
+                    positive_k=positive_k,
+                    negative_k=negative_k,
+                    ts=ts,
                 )
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
@@ -113,6 +115,23 @@ def streaming_train(
     return loss_values, ts
 
 
+def filter_bm25(queries, docs, sampling_size_per_query=100):
+    print(f"Documents are passing through BM25.")
+    doc_list = list(docs.values())
+    corpus = [doc["text"] for doc in doc_list]
+    bm25 = BM25Okapi(corpus=corpus, tokenizer=preprocess)
+    doc_ids = [doc["doc_id"] for doc in doc_list]
+    candidate_ids = set()
+    for i, query in enumerate(queries):
+        print(f"{i}th query * {sampling_size_per_query}")
+        query_tokens = preprocess(query["query"])
+        scores = bm25.get_scores(query_tokens)
+        top_k_indices = np.argsort(scores)[::-1][:sampling_size_per_query]
+        candidate_ids.update([doc_ids[i] for i in top_k_indices])
+    doc_list = [docs[doc_id] for doc_id in candidate_ids]
+    return doc_list
+
+
 def train(
     session_count=12,
     num_epochs=1,
@@ -126,7 +145,9 @@ def train(
         docs = read_jsonl_as_dict(doc_path, "doc_id")
         ts = session_number
 
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[1])
+        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+            devices[1]
+        )
         if session_number != 0:
             print("Load last session model.")
             model_path = (
@@ -134,14 +155,16 @@ def train(
             )
         else:
             print("Load Warming up model.")
-            model_path = f"../data/model/base_model_lotte.pth"
+            model_path = f"../data/base_model_lotte.pth"
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = (
             f"../data/model/proposal_wo_cluster_session_{session_number}.pth"
         )
-
-        loss_values = streaming_train(model, queries, docs, ts, model_path, num_epochs)
+        doc_list = filter_bm25(queries, docs)
+        loss_values = streaming_train(
+            model, queries, doc_list, docs, ts, model_path, num_epochs
+        )
         torch.save(model.state_dict(), new_model_path)
 
 

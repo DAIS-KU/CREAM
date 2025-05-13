@@ -26,183 +26,314 @@ def lotte_check_query_answer_docs(domains):
         )
 
 
+# def sessioning(
+#     dataset,
+#     domains,
+#     domain_answer_rate,
+#     need_train_query_counts,
+#     need_test_query_counts,
+# ):
+#     for domain, ans_rate in zip(domains, domain_answer_rate):
+#         queries = read_jsonl(f"/home/work/retrieval/data/raw/{dataset}/{domain}_queries.jsonl", True)
+#         random.shuffle(queries)
+#         answer_train_doc_ids, answer_test_doc_ids = defaultdict(set), defaultdict(set)
+
+#         print(
+#             f"need_train_query_counts: {need_train_query_counts}, need_test_query_counts: {need_test_query_counts}"
+#         )
+#         train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
+#         test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
+#         for query in queries:
+#             # TRAIN
+#             if train_cnt0 < need_train_query_counts[0]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session0_queries.jsonl"
+#                 train_cnt0 += 1
+#                 answer_train_doc_ids[0].update(query["answer_pids"])
+#             elif train_cnt1 < need_train_query_counts[1]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session1_queries.jsonl"
+#                 train_cnt1 += 1
+#                 answer_train_doc_ids[1].update(query["answer_pids"])
+#             elif train_cnt2 < need_train_query_counts[2]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session2_queries.jsonl"
+#                 train_cnt2 += 1
+#                 answer_train_doc_ids[2].update(query["answer_pids"])
+#             elif train_cnt3 < need_train_query_counts[3]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session3_queries.jsonl"
+#                 train_cnt3 += 1
+#                 answer_train_doc_ids[3].update(query["answer_pids"])
+#             # TEST
+#             elif test_cnt0 < need_test_query_counts[0]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session0_queries.jsonl"
+#                 test_cnt0 += 1
+#                 answer_test_doc_ids[0].update(query["answer_pids"])
+#             elif test_cnt1 < need_test_query_counts[1]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session1_queries.jsonl"
+#                 test_cnt1 += 1
+#                 answer_test_doc_ids[1].update(query["answer_pids"])
+#             elif test_cnt2 < need_test_query_counts[2]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session2_queries.jsonl"
+#                 test_cnt2 += 1
+#                 answer_test_doc_ids[2].update(query["answer_pids"])
+#             elif test_cnt3 < need_test_query_counts[3]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session3_queries.jsonl"
+#                 test_cnt3 += 1
+#                 answer_test_doc_ids[3].update(query["answer_pids"])
+#             else:
+#                 break
+#             append_to_jsonl(dest_path, query)
+#         print(
+#             f"[DONE] Train Query {domain} | {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
+#         )
+#         print(
+#             f"[DONE] Test Query {domain} | {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
+#         )
+#         doc_path = f"/home/work/retrieval/data/raw/{dataset}/{domain}_docs.jsonl"
+#         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+#         train_need_doc_counts = [
+#             len(answer_train_doc_ids[0]) / ans_rate * 100,
+#             len(answer_train_doc_ids[1]) / ans_rate * 100,
+#             len(answer_train_doc_ids[2]) / ans_rate * 100,
+#             len(answer_train_doc_ids[3]) / ans_rate * 100,
+#         ]
+#         test_need_doc_counts = [
+#             len(answer_test_doc_ids[0]) / ans_rate * 100,
+#             len(answer_test_doc_ids[1]) / ans_rate * 100,
+#             len(answer_test_doc_ids[2]) / ans_rate * 100,
+#             len(answer_test_doc_ids[3]) / ans_rate * 100,
+#         ]
+#         print(
+#             f"train_need_doc_counts: {train_need_doc_counts}, test_need_doc_counts: {test_need_doc_counts}"
+#         )
+
+#         # TRAIN
+#         train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
+#         for doc_id in answer_train_doc_ids[0]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session0_docs.jsonl"
+#             train_cnt0 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_train_doc_ids[1]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session1_docs.jsonl"
+#             train_cnt1 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_train_doc_ids[2]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session2_docs.jsonl"
+#             train_cnt2 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_train_doc_ids[3]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session3_docs.jsonl"
+#             train_cnt3 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         print(
+#             f"[DONE] Train Document {domain} answer  {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
+#         )
+#         # TEST
+#         test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
+#         for doc_id in answer_test_doc_ids[0]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session0_docs.jsonl"
+#             test_cnt0 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_test_doc_ids[1]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session1_docs.jsonl"
+#             test_cnt1 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_test_doc_ids[2]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session2_docs.jsonl"
+#             test_cnt2 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         for doc_id in answer_test_doc_ids[3]:
+#             dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session3_docs.jsonl"
+#             test_cnt3 += 1
+#             append_to_jsonl(dest_path, docs[doc_id])
+#         print(
+#             f"[DONE] Test Document {domain} answer  {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
+#         )
+
+#         left_doc_ids = (
+#             set(docs.keys())
+#             - answer_train_doc_ids[0]
+#             - answer_train_doc_ids[1]
+#             - answer_train_doc_ids[2]
+#             - answer_train_doc_ids[3]
+#             - answer_test_doc_ids[0]
+#             - answer_test_doc_ids[1]
+#             - answer_test_doc_ids[2]
+#             - answer_test_doc_ids[3]
+#         )
+#         left_doc_ids = list(left_doc_ids)
+#         random.shuffle(left_doc_ids)
+#         for doc_cnt, doc_id in enumerate(left_doc_ids):
+#             # TRAIN
+#             if train_cnt0 < train_need_doc_counts[0]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session0_docs.jsonl"
+#                 train_cnt0 += 1
+#             elif train_cnt1 < train_need_doc_counts[1]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session1_docs.jsonl"
+#                 train_cnt1 += 1
+#             elif train_cnt2 < train_need_doc_counts[2]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session2_docs.jsonl"
+#                 train_cnt2 += 1
+#             elif train_cnt3 < train_need_doc_counts[3]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/train_session3_docs.jsonl"
+#                 train_cnt3 += 1
+#             # TEST
+#             elif test_cnt0 < test_need_doc_counts[0]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session0_docs.jsonl"
+#                 test_cnt0 += 1
+#             elif test_cnt1 < test_need_doc_counts[1]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session1_docs.jsonl"
+#                 test_cnt1 += 1
+#             elif test_cnt2 < test_need_doc_counts[2]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session2_docs.jsonl"
+#                 test_cnt2 += 1
+#             elif test_cnt3 < test_need_doc_counts[3]:
+#                 dest_path = f"/home/work/retrieval/data/raw/{dataset}/test_session3_docs.jsonl"
+#                 test_cnt3 += 1
+#             else:
+#                 break
+#             append_to_jsonl(dest_path, docs[doc_id])
+#             if doc_cnt % 1000 == 0:
+#                 print(
+#                     f"Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+#                 )
+#                 print(
+#                     f"Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+#                 )
+#         print(
+#             f"[DONE] Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+#         )
+#         print(
+#             f"[DONE] Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+#         )
+
+
 def sessioning(
-    dataset,
     domains,
     domain_answer_rate,
     need_train_query_counts,
     need_test_query_counts,
+    dataset="lotte",
 ):
+    session_count = len(need_train_query_counts)
+    print(f"Session count {session_count}")
+
     for domain, ans_rate in zip(domains, domain_answer_rate):
-        queries = read_jsonl(f"../data/raw/{dataset}/{domain}_queries.jsonl", True)
+        queries = read_jsonl(
+            f"/home/work/retrieval/data/raw/{dataset}/{domain}_queries.jsonl", True
+        )
         random.shuffle(queries)
-        answer_train_doc_ids, answer_test_doc_ids = defaultdict(set), defaultdict(set)
+
+        answer_train_doc_ids = defaultdict(set)
+        answer_test_doc_ids = defaultdict(set)
 
         print(
             f"need_train_query_counts: {need_train_query_counts}, need_test_query_counts: {need_test_query_counts}"
         )
-        train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
-        test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
+
+        train_cnts = [0] * session_count
+        test_cnts = [0] * session_count
+
         for query in queries:
-            # TRAIN
-            if train_cnt0 < need_train_query_counts[0]:
-                dest_path = f"../data/raw/{dataset}/train_session0_queries.jsonl"
-                train_cnt0 += 1
-                answer_train_doc_ids[0].update(query["answer_pids"])
-            elif train_cnt1 < need_train_query_counts[1]:
-                dest_path = f"../data/raw/{dataset}/train_session1_queries.jsonl"
-                train_cnt1 += 1
-                answer_train_doc_ids[1].update(query["answer_pids"])
-            elif train_cnt2 < need_train_query_counts[2]:
-                dest_path = f"../data/raw/{dataset}/train_session2_queries.jsonl"
-                train_cnt2 += 1
-                answer_train_doc_ids[2].update(query["answer_pids"])
-            elif train_cnt3 < need_train_query_counts[3]:
-                dest_path = f"../data/raw/{dataset}/train_session3_queries.jsonl"
-                train_cnt3 += 1
-                answer_train_doc_ids[3].update(query["answer_pids"])
-            # TEST
-            elif test_cnt0 < need_test_query_counts[0]:
-                dest_path = f"../data/raw/{dataset}/test_session0_queries.jsonl"
-                test_cnt0 += 1
-                answer_test_doc_ids[0].update(query["answer_pids"])
-            elif test_cnt1 < need_test_query_counts[1]:
-                dest_path = f"../data/raw/{dataset}/test_session1_queries.jsonl"
-                test_cnt1 += 1
-                answer_test_doc_ids[1].update(query["answer_pids"])
-            elif test_cnt2 < need_test_query_counts[2]:
-                dest_path = f"../data/raw/{dataset}/test_session2_queries.jsonl"
-                test_cnt2 += 1
-                answer_test_doc_ids[2].update(query["answer_pids"])
-            elif test_cnt3 < need_test_query_counts[3]:
-                dest_path = f"../data/raw/{dataset}/test_session3_queries.jsonl"
-                test_cnt3 += 1
-                answer_test_doc_ids[3].update(query["answer_pids"])
-            else:
-                break
-            append_to_jsonl(dest_path, query)
-        print(
-            f"[DONE] Train Query {domain} | {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
-        )
-        print(
-            f"[DONE] Test Query {domain} | {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
-        )
-        doc_path = f"../data/raw/{dataset}/{domain}_docs.jsonl"
+            assigned = False
+            for i in range(session_count):
+                if train_cnts[i] < need_train_query_counts[i]:
+                    dest_path = f"/home/work/retrieval/data/sub2/{dataset}/train_session{i}_queries.jsonl"
+                    train_cnts[i] += 1
+                    answer_train_doc_ids[i].update(query["answer_pids"])
+                    append_to_jsonl(dest_path, query)
+                    assigned = True
+                    break
+            if not assigned:
+                for i in range(session_count):
+                    if test_cnts[i] < need_test_query_counts[i]:
+                        dest_path = f"/home/work/retrieval/data/sub2/{dataset}/test_session{i}_queries.jsonl"
+                        test_cnts[i] += 1
+                        answer_test_doc_ids[i].update(query["answer_pids"])
+                        append_to_jsonl(dest_path, query)
+                        assigned = True
+                        break
+            if not assigned:
+                break  # 모든 쿼리 세션이 채워졌으면 종료
+
+        print(f"[DONE] Train Query {domain} | {' / '.join(map(str, train_cnts))}")
+        print(f"[DONE] Test Query {domain} | {' / '.join(map(str, test_cnts))}")
+
+        # 문서 세션화
+        doc_path = f"/home/work/retrieval/data/raw/{dataset}/{domain}_docs.jsonl"
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
+
         train_need_doc_counts = [
-            len(answer_train_doc_ids[0]) / ans_rate * 100,
-            len(answer_train_doc_ids[1]) / ans_rate * 100,
-            len(answer_train_doc_ids[2]) / ans_rate * 100,
-            len(answer_train_doc_ids[3]) / ans_rate * 100,
+            len(answer_train_doc_ids[i]) / ans_rate * 100 for i in range(session_count)
         ]
         test_need_doc_counts = [
-            len(answer_test_doc_ids[0]) / ans_rate * 100,
-            len(answer_test_doc_ids[1]) / ans_rate * 100,
-            len(answer_test_doc_ids[2]) / ans_rate * 100,
-            len(answer_test_doc_ids[3]) / ans_rate * 100,
+            len(answer_test_doc_ids[i]) / ans_rate * 100 for i in range(session_count)
         ]
+
         print(
             f"train_need_doc_counts: {train_need_doc_counts}, test_need_doc_counts: {test_need_doc_counts}"
         )
 
-        # TRAIN
-        train_cnt0, train_cnt1, train_cnt2, train_cnt3 = 0, 0, 0, 0
-        for doc_id in answer_train_doc_ids[0]:
-            dest_path = f"../data/raw/{dataset}/train_session0_docs.jsonl"
-            train_cnt0 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_train_doc_ids[1]:
-            dest_path = f"../data/raw/{dataset}/train_session1_docs.jsonl"
-            train_cnt1 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_train_doc_ids[2]:
-            dest_path = f"../data/raw/{dataset}/train_session2_docs.jsonl"
-            train_cnt2 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_train_doc_ids[3]:
-            dest_path = f"../data/raw/{dataset}/train_session3_docs.jsonl"
-            train_cnt3 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
+        train_cnts = [0] * session_count
+        test_cnts = [0] * session_count
+
+        # 답변 문서 우선 저장
+        for i in range(session_count):
+            for doc_id in answer_train_doc_ids[i]:
+                dest_path = f"/home/work/retrieval/data/sub2/{dataset}/train_session{i}_docs.jsonl"
+                train_cnts[i] += 1
+                append_to_jsonl(dest_path, docs[doc_id])
+            for doc_id in answer_test_doc_ids[i]:
+                dest_path = f"/home/work/retrieval/data/sub2/{dataset}/test_session{i}_docs.jsonl"
+                test_cnts[i] += 1
+                append_to_jsonl(dest_path, docs[doc_id])
+
         print(
-            f"[DONE] Train Document {domain} answer  {train_cnt0} / {train_cnt1} / {train_cnt2} / {train_cnt3}"
+            f"[DONE] Train Document {domain} answer  {' / '.join(map(str, train_cnts))}"
         )
-        # TEST
-        test_cnt0, test_cnt1, test_cnt2, test_cnt3 = 0, 0, 0, 0
-        for doc_id in answer_test_doc_ids[0]:
-            dest_path = f"../data/raw/{dataset}/test_session0_docs.jsonl"
-            test_cnt0 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_test_doc_ids[1]:
-            dest_path = f"../data/raw/{dataset}/test_session1_docs.jsonl"
-            test_cnt1 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_test_doc_ids[2]:
-            dest_path = f"../data/raw/{dataset}/test_session2_docs.jsonl"
-            test_cnt2 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
-        for doc_id in answer_test_doc_ids[3]:
-            dest_path = f"../data/raw/{dataset}/test_session3_docs.jsonl"
-            test_cnt3 += 1
-            append_to_jsonl(dest_path, docs[doc_id])
         print(
-            f"[DONE] Test Document {domain} answer  {test_cnt0} / {test_cnt1} / {test_cnt2} / {test_cnt3}"
+            f"[DONE] Test Document {domain} answer  {' / '.join(map(str, test_cnts))}"
         )
 
-        left_doc_ids = (
-            set(docs.keys())
-            - answer_train_doc_ids[0]
-            - answer_train_doc_ids[1]
-            - answer_train_doc_ids[2]
-            - answer_train_doc_ids[3]
-            - answer_test_doc_ids[0]
-            - answer_test_doc_ids[1]
-            - answer_test_doc_ids[2]
-            - answer_test_doc_ids[3]
-        )
-        left_doc_ids = list(left_doc_ids)
+        # 남은 문서들 계산 (겹치지 않도록)
+        used_doc_ids = set()
+        for i in range(session_count):
+            used_doc_ids.update(answer_train_doc_ids[i])
+            used_doc_ids.update(answer_test_doc_ids[i])
+
+        left_doc_ids = list(set(docs.keys()) - used_doc_ids)
         random.shuffle(left_doc_ids)
+
         for doc_cnt, doc_id in enumerate(left_doc_ids):
-            # TRAIN
-            if train_cnt0 < train_need_doc_counts[0]:
-                dest_path = f"../data/raw/{dataset}/train_session0_docs.jsonl"
-                train_cnt0 += 1
-            elif train_cnt1 < train_need_doc_counts[1]:
-                dest_path = f"../data/raw/{dataset}/train_session1_docs.jsonl"
-                train_cnt1 += 1
-            elif train_cnt2 < train_need_doc_counts[2]:
-                dest_path = f"../data/raw/{dataset}/train_session2_docs.jsonl"
-                train_cnt2 += 1
-            elif train_cnt3 < train_need_doc_counts[3]:
-                dest_path = f"../data/raw/{dataset}/train_session3_docs.jsonl"
-                train_cnt3 += 1
-            # TEST
-            elif test_cnt0 < test_need_doc_counts[0]:
-                dest_path = f"../data/raw/{dataset}/test_session0_docs.jsonl"
-                test_cnt0 += 1
-            elif test_cnt1 < test_need_doc_counts[1]:
-                dest_path = f"../data/raw/{dataset}/test_session1_docs.jsonl"
-                test_cnt1 += 1
-            elif test_cnt2 < test_need_doc_counts[2]:
-                dest_path = f"../data/raw/{dataset}/test_session2_docs.jsonl"
-                test_cnt2 += 1
-            elif test_cnt3 < test_need_doc_counts[3]:
-                dest_path = f"../data/raw/{dataset}/test_session3_docs.jsonl"
-                test_cnt3 += 1
-            else:
+            assigned = False
+            for i in range(session_count):
+                if train_cnts[i] < train_need_doc_counts[i]:
+                    dest_path = f"/home/work/retrieval/data/sub2/{dataset}/train_session{i}_docs.jsonl"
+                    train_cnts[i] += 1
+                    append_to_jsonl(dest_path, docs[doc_id])
+                    assigned = True
+                    break
+            if not assigned:
+                for i in range(session_count):
+                    if test_cnts[i] < test_need_doc_counts[i]:
+                        dest_path = f"/home/work/retrieval/data/sub2/{dataset}/test_session{i}_docs.jsonl"
+                        test_cnts[i] += 1
+                        append_to_jsonl(dest_path, docs[doc_id])
+                        assigned = True
+                        break
+            if not assigned:
                 break
-            append_to_jsonl(dest_path, docs[doc_id])
             if doc_cnt % 1000 == 0:
                 print(
-                    f"Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+                    f"Document Train {domain} no-answer | {' / '.join(map(str, train_cnts))}"
                 )
                 print(
-                    f"Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+                    f"Document Test {domain} no-answer | {' / '.join(map(str, test_cnts))}"
                 )
+
         print(
-            f"[DONE] Document Train {domain} no-answer | {train_cnt0}/{train_cnt1}/{train_cnt2}/{train_cnt3}"
+            f"[DONE] Document Train {domain} no-answer | {' / '.join(map(str, train_cnts))}"
         )
         print(
-            f"[DONE] Document Test {domain} no-answer | {test_cnt0}/{test_cnt1}/{test_cnt2}/{test_cnt3}"
+            f"[DONE] Document Test {domain} no-answer | {' / '.join(map(str, test_cnts))}"
         )
 
 
@@ -309,22 +440,116 @@ def process_hotpot_qa(path="../data/hotpot_dev_distractor_v1.json"):
             print(f"{i}th query and answer: {qna}")
         if i == 15000:
             break
-    save_jsonl(processed, "../data/raw/lotte/pretrained,jsonl")
+    save_jsonl(processed, "/home/work/retrieval/data/raw/lotte/pretrained,jsonl")
+
+
+def check_duplicate(session_count=12):
+    doc_id_to_files = defaultdict(set)
+    for i in range(session_count):
+        src_docs_path = (
+            f"/home/work/retrieval/data/raw/lotte/train_session{i}_docs.jsonl"
+        )
+        with open(src_docs_path, "r", encoding="utf-8") as f:
+            for line in f:
+                obj = json.loads(line)
+                doc_id = obj.get("doc_id")
+                if doc_id is not None:
+                    doc_id_to_files[doc_id].add(src_docs_path)
+    duplicateds = {
+        doc_id: sorted(list(files))
+        for doc_id, files in doc_id_to_files.items()
+        if len(files) > 1
+    }
+    for doc_id, files in list(duplicateds.items()):
+        print(f"{doc_id} | {files}")
 
 
 if __name__ == "__main__":
-    process_hotpot_qa()
+    sessioning(
+        dataset="lotte",
+        domains=[
+            "technology",
+        ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
+        domain_answer_rate=[1.82],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        need_train_query_counts=[
+            0,
+            300,
+            0,
+            0,
+            0,
+            0,
+            300,
+            0,
+            0,
+            0,
+        ],  # [150, 150, 0, 0, 0, 0, 150, 150, 0]
+        need_test_query_counts=[
+            0,
+            50,
+            50,
+            0,
+            0,
+            0,
+            50,
+            50,
+            0,
+            0,
+        ],  # [50, 50, 0, 0, 0, 0, 50, 50, 0], #
+    )
+    sessioning(
+        dataset="lotte",
+        domains=[
+            "writing",
+        ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
+        domain_answer_rate=[6.47],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        need_train_query_counts=[300, 0, 0, 0, 0, 0, 0, 0, 300, 0],
+        need_test_query_counts=[
+            50,
+            50,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            50,
+            50,
+        ],  # [50, 0, 0, 0, 50, 50, 0, 0, 50],#
+    )
 
     # sessioning(
-    # .    dataset= 'lotte',
-    #     domains=['lifestyle'], # , 'writing', 'science', 'recreation', 'lifestyle'
-    #     domain_answer_rate=[ 6.43], # 1.82, 6.47, 1.47, 5.17, 6.43
-    #     need_train_query_counts=[360,300,300,300],
-    #     need_test_query_counts=[40,33, 33, 33])
+    #     dataset="lotte",
+    #     domains=[
+    #         "recreation",
+    #     ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
+    #     domain_answer_rate=[6.43],  # 1.82, 6.47, 1.47, 5.17, 6.43
+    #     need_train_query_counts=[0,0,300, 0,0,300, 0,0,0, 0], #[0, 150, 150, 0, 0, 150, 150,  0, 0], #
+    #     need_test_query_counts=[0,0,50, 50,0,50, 50,0,0, 0] #[0, 50, 50, 0,  0, 50, 50, 0, 0], #
+    # )
+
+    # sessioning(
+    #     dataset="lotte",
+    #     domains=[
+    #         "lifestyle",
+    #     ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
+    #     domain_answer_rate=[6.43],  # 1.82, 6.47, 1.47, 5.17, 6.43
+    #     need_train_query_counts=[0,0,0, 300,0,0, 0,0,0, 300], #[0, 0, 150, 150, 0, 0, 0, 0, 0],
+    #     need_test_query_counts=[0,0,0, 50,50,0, 0,0,0, 50] #[0, 0, 50, 50, 0, 0, 0, 0, 0],
+    # )
+    sessioning(
+        dataset="lotte",
+        domains=[
+            "science",
+        ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
+        domain_answer_rate=[1.47],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        need_train_query_counts=[0, 0, 0, 0, 300, 0, 0, 300, 0, 0],
+        need_test_query_counts=[0, 0, 0, 0, 50, 50, 0, 50, 50, 0],
+    )
+
     # cnt = 3
     # for i in range(1, 4):
-    #     src_queries_path = f"../data/raw/lotte/test_session{i}_queries.jsonl"
-    #     src_docs_path = f"../data/raw/lotte/test_session{i}_docs.jsonl"
+    #     src_queries_path = f"/home/work/retrieval/data/raw/lotte/test_session{i}_queries.jsonl"
+    #     src_docs_path = f"/home/work/retrieval/data/raw/lotte/test_session{i}_docs.jsonl"
     #     with open(src_queries_path, "r", encoding="utf-8") as f:
     #         queries = [json.loads(line) for line in f]
     #     with open(src_docs_path, "r", encoding="utf-8") as f:
@@ -333,10 +558,10 @@ if __name__ == "__main__":
     #     for query_subset, doc_subset in zip(query_subsets, doc_subsets):
     #         save_jsonl(
     #             query_subset,
-    #             f"../data/sub/lotte/test_session{cnt}_queries.jsonl",
+    #             f"../data/sub2/lotte/test_session{cnt}_queries.jsonl",
     #         )
     #         save_jsonl(
     #             doc_subset,
-    #             f"../data/sub/lotte/test_session{cnt}_docs.jsonl",
+    #             f"../data/sub2/lotte/test_session{cnt}_docs.jsonl",
     #         )
     #         cnt += 1

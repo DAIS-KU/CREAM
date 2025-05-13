@@ -17,31 +17,33 @@ from functions import (
     evaluate_dataset,
     get_top_k_documents_by_cosine,
     renew_data_mean_pooling,
+    get_top_k_documents,
 )
+from clusters import renew_data
 
 
 class LOTTEDataset(Dataset):
-    def __init__(self, tokenizer, max_samples=2000, split="train", max_length=512):
+    def __init__(self, tokenizer, max_samples=200, split="train", max_length=512):
         self.queries = {}
         self.passages = {}
-        for domain in ["technology", "science", "lifestyle", "writing", "recreation"]:
+        for domain in ["technology", "writing"]:  # "science", "lifestyle", "recreation"
             _q = read_jsonl_as_dict(
-                f"../data/lotte/{domain}/{domain}_queries.jsonl", "qid"
+                f"../data/raw/lotte/{domain}/{domain}_queries.jsonl", "qid"
             )
             self.queries.update(_q)
             _d = read_jsonl_as_dict(
-                f"../data/lotte/{domain}/{domain}_docs.jsonl", "doc_id"
+                f"../data/raw/lotte/{domain}/{domain}_docs.jsonl", "doc_id"
             )
             self.passages.update(_d)
 
-        for session_number in range(12):
+        for session_number in range(9):
             _t = read_jsonl_as_dict(
-                f"../data/sub/lotte/train_session{session_number}_queries.jsonl", "qid"
+                f"../data/datasetD/train_session{session_number}_queries.jsonl", "qid"
             )
             keys_to_remove = list(_t.keys())
             [self.queries.pop(key, None) for key in keys_to_remove]
             _t = read_jsonl_as_dict(
-                f"../data/sub/lotte/test_session{session_number}_queries.jsonl", "qid"
+                f"../data/datasetD/test_session{session_number}_queries.jsonl", "qid"
             )
             keys_to_remove = list(_t.keys())
             [self.queries.pop(key, None) for key in keys_to_remove]
@@ -53,7 +55,7 @@ class LOTTEDataset(Dataset):
         self.max_samples = min(max_samples, len(self.queries))
 
     def __len__(self):
-        return len(self.max_samples)
+        return self.max_samples
 
     def __getitem__(self, idx):
         item = self.queries[idx]
@@ -90,12 +92,12 @@ class MSMARCODataset(Dataset):
         self.keys_to_remove = set()
         for session_number in range(12):
             _t = read_jsonl_as_dict(
-                f"../data/sub/ms_marco/train_session{session_number}_queries.jsonl",
+                f"../data/datasetD/ms_marco/train_session{session_number}_queries.jsonl",
                 "qid",
             )
             keys_to_remove = update(_t.keys())
             _t = read_jsonl_as_dict(
-                f"../data/sub/ms_marco/test_session{session_number}_queries.jsonl",
+                f"../data/datasetD/ms_marco/test_session{session_number}_queries.jsonl",
                 "qid",
             )
             keys_to_remove = update(_t.keys())
@@ -187,13 +189,13 @@ def encode_texts(model, texts, max_length=256):
 
 
 def train():
-    dataset = CustomDataset(None, tokenizer)
-    # dataset = MSMARCODataset(tokenizer)
+    dataset = LOTTEDataset(tokenizer)
+    # # dataset = MSMARCODataset(tokenizer)
     dataloader = DataLoader(
         dataset, batch_size=32, shuffle=True, drop_last=True, collate_fn=collate_fn
     )
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = BertModel.from_pretrained("bert-base-uncased").to(device)
     model.train()
 
@@ -249,21 +251,24 @@ def train():
             print(f"Batch {i}, Loss: {loss.item():.4f}, {total_loss/batch_cnt:.4f}")
             i += 1
             batch_cnt += 1
-    torch.save(model.state_dict(), "./base_model_msmarco.pth")
+    torch.save(model.state_dict(), "../data/base_model_lotte.pth")
 
 
-def evaluate(session_cnt=12):
+def evaluate_cosine(session_cnt=9):
     def model_builder(model_path):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        model = BertModel.from_pretrained("bert-base-uncased").to(device)
+        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+            device
+        )
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()
         return model
 
+    method = "pretrained_cosine"
+    model_path = f"../data/base_model_lotte.pth"
     for session_number in range(session_cnt):
-        method = "base_model_msmarco"
-        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"../data/datasetD/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetD/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -273,7 +278,6 @@ def evaluate(session_cnt=12):
         print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
         rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-        model_path = "../data/base_model.pth"
 
         start_time = time.time()
         new_q_data, new_d_data = renew_data_mean_pooling(
@@ -287,6 +291,47 @@ def evaluate(session_cnt=12):
 
         start_time = time.time()
         result = get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10)
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for retrieval.")
+
+        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+        write_file(rankings_path, result)
+        eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+        del new_q_data, new_d_data
+
+
+def evaluate_term(sesison_count=10):
+    method = "pretrained_term"
+    model_path = None  # f"../data/base_model_lotte.pth"
+    for session_number in range(sesison_count):
+        eval_query_path = f"../data/datasetD/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetD/test_session{session_number}_docs.jsonl"
+
+        eval_query_data = read_jsonl(eval_query_path, True)
+        eval_doc_data = read_jsonl(eval_doc_path, False)
+
+        eval_query_count = len(eval_query_data)
+        eval_doc_count = len(eval_doc_data)
+        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+
+        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+
+        start_time = time.time()
+        new_q_data, new_d_data = renew_data(
+            queries=eval_query_data,
+            documents=eval_doc_data,
+            model_path=model_path,
+            nbits=12,
+            renew_q=True,
+            renew_d=True,
+            use_tensor_key=True,
+        )
+        end_time = time.time()
+        print(f"Spend {end_time-start_time} seconds for encoding.")
+
+        start_time = time.time()
+        result = get_top_k_documents(new_q_data, new_d_data)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 

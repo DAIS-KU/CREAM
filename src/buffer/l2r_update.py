@@ -23,8 +23,8 @@ class L2RUpdate(object):
         self.candidate_neg_docids = collections.defaultdict(set)
 
     def update(self, buffer, qid_lst, docids_lst, **kwargs):
-        candidate_neg_docids = kwargs["candidate_neg_docids"]
-        for qid, docids in candidate_neg_docids.items():
+        res_did_lst = kwargs["res_did_lst"]
+        for qid, docids in res_did_lst.items():
             self.candidate_neg_docids[qid].update(docids)
 
     def replace(self, buffer):
@@ -109,9 +109,7 @@ class L2RUpdate(object):
                 mem_sim = cosine_similarity(
                     mem_model_out, mem_eval_model_out
                 )  # [mem_upsample_num, mem_eval_size]
-                mem_sim = torch.sum(mem_sim, dim=-1) / mem_sim.size(
-                    -1
-                )  # 选相似度最大的一些
+                mem_sim = torch.sum(mem_sim, dim=-1) / mem_sim.size(-1)  # 选相似度最大的一些
                 indices = mem_sim.sort(dim=0, descending=True)[1]
 
                 new_sim = cosine_similarity(

@@ -34,6 +34,10 @@ def compute_sse_for_partition(
             batch_tensor = torch.stack([x["EMB"] for x in batch]).to(
                 device, dtype=torch.float16
             )
+            batch = torch.nn.functional.normalize(batch, p=2, dim=-1)
+            centroids_tensor = torch.nn.functional.normalize(
+                centroids_tensor, p=2, dim=-1
+            )
             distances = (
                 1
                 - F.cosine_similarity(
@@ -77,6 +81,8 @@ def compute_distances_for_partition(X_partition, centroids, device, batch_size=5
         batch_tensor = torch.stack([x["EMB"] for x in batch]).to(
             device
         )  # (batch_size, 768)
+        batch = torch.nn.functional.normalize(batch, p=2, dim=-1)
+        batch_tensor = torch.nn.functional.normalize(batch_tensor, p=2, dim=-1)
         distances_tensor = (
             1
             - F.cosine_similarity(
@@ -102,6 +108,8 @@ def create_centroid(instances, instance_ids):
         torch.stack([instances[_id]["EMB"] for _id in instance_ids], dim=0), dim=0
     )
     # print(f"create_centroid mean_emb:{mean_emb.shape}")
+    if torch.isnan(mean_emb).all():
+        print("create_centroid mean_emb is zero vector")
     return mean_emb
 
 
@@ -120,7 +128,12 @@ def get_closest_clusters(partition, centroids, device, batch_size=128):
             print(
                 f"get_closest_clusters batch_tensor:{batch_tensor.shape}, centroids_tensor:{centroids_tensor.shape}"
             )
-            distances_tensor = 1 - F.cosine_similarity(
+
+            batch_tensor = torch.nn.functional.normalize(batch_tensor, p=2, dim=-1)
+            centroids_tensor = torch.nn.functional.normalize(
+                centroids_tensor, p=2, dim=-1
+            )
+            distances_tensor = 1.0 - F.cosine_similarity(
                 batch_tensor.unsqueeze(1), centroids_tensor.unsqueeze(0), dim=2
             )  # (batch, k)
             closest_batch_clusters = torch.argmin(distances_tensor, dim=1)  # (batch,)

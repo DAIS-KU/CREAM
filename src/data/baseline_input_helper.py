@@ -3,17 +3,21 @@ from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
-from nltk.tokenize import word_tokenize
-from rank_bm25 import BM25Okapi
+
+from .bm25 import BM25Okapi
 from transformers import BatchEncoding, BertTokenizer
 
 from .loader import load_train_docs, read_jsonl, read_jsonl_as_dict
 
 max_q_len: int = 32
 max_p_len: int = 128
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
+
+
+def word_tokenize(text):
+    return text.split(" ")
 
 
 def _prepare_inputs(
@@ -328,12 +332,7 @@ def _prepare_inputs(
         if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # mem_passage: training(data selection)    candidate_neg_docids: candidate for updating (난 res_did_lst로)
-            (
-                mem_passage,
-                pos_docids,
-                candidate_neg_docids,
-                res_did_lst,
-            ) = buffer.retrieve(
+            (mem_passage, pos_docids, res_did_lst,) = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],
@@ -344,6 +343,7 @@ def _prepare_inputs(
                 docids_lst=res_did_lst,
                 q_lst=prepared[0],
                 d_lst=prepared[1],
+                res_did_lst=res_did_lst,
             )
 
             if mem_passage is not None:
@@ -525,7 +525,7 @@ def build_bm25(docs):
 
 
 def get_candidates(session_number, bm25, query, doc_ids):
-    k = 500 if session_number == 0 else 200
+    k = 50 if session_number < 3 else 20
     tokenized_query = word_tokenize(query.lower())
     scores = bm25.get_scores(tokenized_query)
     top_k_indices = np.argsort(scores)[-k:]
@@ -539,6 +539,7 @@ def getitem(
     docs,
     train_n_passages=8,
     filtered=False,
+    bm25=None,
 ) -> Tuple[BatchEncoding, List[BatchEncoding]]:
     qry_id = query["qid"]
     qry = query["query"]
@@ -555,7 +556,6 @@ def getitem(
     negative_size = train_n_passages - 1
     doc_ids = list(docs.keys())
     if filtered:
-        bm25 = build_bm25(list(docs.values())) if filtered else None
         neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
     else:
         valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
@@ -585,11 +585,12 @@ def load_inputs(
         answer_doc_ids.update(q["cos_ans_pids"])
     answer_docs = {k: v for k, v in docs.items() if k in answer_doc_ids}
     session_docs.update(answer_docs)
+    bm25 = build_bm25(list(session_docs.values())) if filtered else None
 
     inputs = []
     for qid, query in enumerate(queries):
         print(f"{qid}th query")
-        features = getitem(session_number, query, session_docs, 8, filtered)
+        features = getitem(session_number, query, session_docs, 8, filtered, bm25)
         _input = collate(features)
         inputs.append(_input)
     # print(f"load_inputs {type(inputs)}, {type(inputs[0])}, {len(inputs)}, {len(inputs[0])}")

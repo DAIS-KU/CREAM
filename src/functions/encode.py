@@ -6,10 +6,11 @@ from transformers import BertTokenizer
 
 from buffer import DataArguments, ModelArguments, TevatronTrainingArguments
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
 
 
-def get_passage_embeddings(model, passages, device, max_length=256):
+def get_passage_embeddings(model, passages, device=None, max_length=256):
+    device = model.device if device is None else device
     model.to(device)
     batch_inputs = tokenizer(
         passages,
@@ -63,7 +64,7 @@ def process_batch(
     device_id,
     id_field="qid",
     text_field="query",
-    batch_size=512,
+    batch_size=2048,
 ):
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -82,18 +83,18 @@ def process_batch(
         encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
 
         with torch.no_grad():
-            model_output = (
-                encode_mean_pooling(  # DenseModel의 경우 model.encode_mean_pooling
-                    model, encoded_input
-                )
+            model_output = encode_mean_pooling(  # DenseModel의 경우 raw/
+                model,
+                encoded_input
+                # encoded_input
             )  # [batch_size, emb_dim]
 
-        for item_id, emb in zip(item_ids, model_output.cpu()):
+        for item_id, text, emb in zip(item_ids, texts, model_output.cpu()):
             results[item_id] = {
-                "ID": item_id,
+                "doc_id": item_id,
+                "text": text,
                 "EMB": emb.cpu(),
-                id_field: item_id,
-                "is_qurey": id_field == "qid",
+                "is_query": id_field == "qid",
             }
     return results
 

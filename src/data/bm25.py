@@ -11,6 +11,16 @@ Here we implement all the BM25 variations mentioned.
 """
 
 
+def preprocess(corpus, max_length=256):
+    # corpus = corpus.lower()
+    # corpus = "".join([char for char in corpus if char not in string.punctuation])
+    # tokens = word_tokenize(corpus)
+    # max_len = min(max_length, len(tokens))
+    # tokens = tokens[:max_len]
+    tokens = corpus.split(" ")
+    return tokens
+
+
 class BM25:
     def __init__(self, corpus, tokenizer=None):
         self.corpus_size = 0

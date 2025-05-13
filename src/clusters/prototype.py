@@ -24,6 +24,8 @@ class RandomProjectionLSH:
 
     def _hash(self, embeddings, device):
         # print(f'embeddings :{embeddings.shape}')
+        if embeddings.dim() == 3:
+            embeddings = embeddings.squeeze(0)
         valid_mask = ~torch.all(embeddings == 0, dim=1)
         valid_embeddings = embeddings[valid_mask]
         hash_keys = self._get_key(valid_embeddings, device)

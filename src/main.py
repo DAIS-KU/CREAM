@@ -2,24 +2,31 @@ import argparse
 import glob
 import json
 import os
-
 from pipeline import (
-    evaluate_wo_cluster,
+    train_wo_term,
     evaluate_wo_term,
-    inc_evalutate,
     inc_train,
+    inc_evaluate_cosine,
+    inc_evaluate_term,
     l2r_evaluate,
     l2r_train,
-    proposal_ance_evaluate,
-    proposal_ance_train,
     proposal_evaluate,
-    proposal_rerank_evaluate,
-    proposal_rerank_train,
     proposal_train,
+    train_wo_cluster_rerank,
+    evaluate_wo_cluster_rerank,
     train_wo_cluster,
-    train_wo_term,
-    waringup_evaluate,
+    evaluate_wo_cluster,
     waringup_train,
+    warmingup_evaluate_cosine,
+    warmingup_evaluate_term,
+    proposal_evaluate_rankings,
+    train_wo_term_rerank,
+    evaluate_wo_term_rerank,
+    dodp_train,
+    df_train,
+    qq_low_train,
+    qq_low_evaluate,
+    qq_low_train2,
 )
 
 
@@ -119,8 +126,13 @@ if __name__ == "__main__":
         help="start with loading previous session cluster",
     )
     parser.add_argument(
+        "--include_answer",
+        action="store_true",
+        help="Have to include answer docs when filtering by bm25",
+    )
+    parser.add_argument(
         "--warming_up_method",
-        default=None,
+        default="none",
         type=str,
         help="use cluster warming up for the first session.(doc only/query only/mixed)",
     )
@@ -190,26 +202,44 @@ if __name__ == "__main__":
         default=None,
         help="Valid cluster document size requirenebts",
     )
+    parser.add_argument(
+        "--is_term",
+        default=False,
+        help="Incremental cosine or term",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="domain forgetting dataset",
+    )
+    parser.add_argument(
+        "--start_domain",
+        type=str,
+        default=None,
+        help="domain forgetting base domain",
+    )
     args = parser.parse_args()
 
     print(f"Running experiments: {args.exp}")
+    print(f"Start session: {args.start}")
+    print(f"End session: {args.end}")
+    print(f"Load cluster: {args.load_cluster}")
+    print(f"Use cluster warming up: {args.warming_up_method}")
+    print(f"Use label: {args.use_label}")
+    print(f"Use weight: {args.use_weight}")
+    print(f"Use tensor key: {args.use_tensor_key}")
+    print(f"Use nbits: {args.nbits}")
+    print(f"Use max_iters: {args.mi}")
+    print(f"Use warmingup_rate: {args.wr}")
+    print(f"Use warmingup_k: {args.init_k}")
+    print(f"Use cluster_min_size: {args.cmnsz}")
+    print(f"Use required_doc_size: {args.rdsz}")
+    print(f"Use stream sampling rate: {args.sr}")
+    print(f"Use sampling size per query: {args.sspq}")
+    print(f"Number of Epochs: {args.num_epochs}")
+    print(f"Include answer: {args.include_answer}")
     if args.exp == "proposal":
-        print(f"Start session: {args.start}")
-        print(f"End session: {args.end}")
-        print(f"Load cluster: {args.load_cluster}")
-        print(f"Use cluster warming up: {args.warming_up_method}")
-        print(f"Use label: {args.use_label}")
-        print(f"Use weight: {args.use_weight}")
-        print(f"Use tensor key: {args.use_tensor_key}")
-        print(f"Use nbits: {args.nbits}")
-        print(f"Use max_iters: {args.mi}")
-        print(f"Use warmingup_rate: {args.wr}")
-        print(f"Use warmingup_k: {args.init_k}")
-        print(f"Use cluster_min_size: {args.cmnsz}")
-        print(f"Use required_doc_size: {args.rdsz}")
-        print(f"Use stream sampling rate: {args.sr}")
-        print(f"Use sampling size per query: {args.sspq}")
-        print(f"Number of Epochs: {args.num_epochs}")
         proposal_train(
             start_session_number=args.start,
             end_sesison_number=args.end,
@@ -229,28 +259,125 @@ if __name__ == "__main__":
             nbits=args.nbits,
             warming_up_method=args.warming_up_method,
             required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
         )
-        # proposal_evaluate(0)
+    elif args.exp == "proposal_qq_low":
+        qq_low_train(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
+        )
+        # qq_low_evaluate()
+    elif args.exp == "proposal_qq_low2":
+        qq_low_train2(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
+        )
     elif args.exp == "wu":
-        waringup_train()
-        waringup_evaluate()
+        # waringup_train()
+        # warmingup_evaluate_cosine()
+        warmingup_evaluate_term()
     elif args.exp == "val":
         validate_data()
     elif args.exp == "l2r":
-        l2r_train()
+        # l2r_train()
         l2r_evaluate()
-    elif args.exp == "inc":
-        inc_train()
-        inc_evalutate()
+    elif args.exp == "inc_cosine":
+        inc_train(is_term=False)
+        inc_evaluate_cosine()
+    elif args.exp == "inc_term":
+        inc_train(is_term=True)
+        inc_evaluate_term()
+    elif args.exp == "inc_uni_term":
+        inc_uni_train(is_term=True)
+    elif args.exp == "ablation_cluster_rerank":
+        train_wo_cluster_rerank()
+        evaluate_wo_cluster_rerank()
     elif args.exp == "ablation_cluster":
         train_wo_cluster()
         evaluate_wo_cluster()
     elif args.exp == "ablation_term":
-        train_wo_term()
+        train_wo_term(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+        )
         evaluate_wo_term()
-    elif args.exp == "proposal_rerank":
-        proposal_rerank_train()
-    elif args.exp == "proposal_ance":
-        proposal_ance_train()
+    elif args.exp == "ablation_term_rerank":
+        train_wo_term_rerank(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+        )
+        evaluate_wo_term_rerank()
+    elif args.exp == "dodp_train_lotte":
+        dodp_train(dataset="lotte")
+    elif args.exp == "dodp_train_msmarco":
+        dodp_train(dataset="msmarco")
+    elif args.exp == "doamin_forget":
+        df_train(dataset=args.dataset, start_domain=args.start_domain)
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

@@ -5,9 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-from functions import calculate_S_qd_regl, encode_texts_mean_pooling
+from functions import calculate_S_qd_regl
 
 MAX_SCORE = 1.0
 num_devices = torch.cuda.device_count()
@@ -24,16 +25,18 @@ class Cluster:
         use_tensor_key,
         timestamp=0,
         batch_size=384,
-        z=2.27,  # 99%
+        z1=8.0,
+        z2=1.0,
         a=1.0,
         u=0.2,
     ):
-        self.prototype = centroid
+        self.prototype = centroid.cpu()
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
         self.use_tensor_key = use_tensor_key
         self.timestamp = timestamp
         self.batch_size = batch_size
-        self.z = z
+        self.z1 = z1
+        self.z2 = z2
         self.u = u
         self.a = a
         # self.cache = {}
@@ -52,7 +55,7 @@ class Cluster:
         return only_doc_ids
 
     def get_topk_docids_and_scores(self, model, query, docs: dict, k, batch_size=128):
-        query_token_embs = encode_texts_mean_pooling(model, query["query"])
+        query_token_embs = query["EMB"]
 
         def process_batch(device, batch_doc_ids):
             scores = []
@@ -60,12 +63,16 @@ class Cluster:
             temp_query_token_embs = query_token_embs.clone().to(device)
             for i in range(0, len(batch_doc_ids), batch_size):
                 batch_ids = batch_doc_ids[i : i + batch_size]
-                batch_texts = [docs[doc_id]["text"] for doc_id in batch_ids]
-                batch_embs = encode_texts_mean_pooling(temp_model, batch_texts)
-
+                batch_embs = torch.stack(
+                    [docs[doc_id]["EMB"] for doc_id in batch_ids], dim=0
+                )
                 if batch_embs.dim() > 3:
                     batch_embs = batch_embs.squeeze()
-
+                temp_query_token_embs = torch.nn.functional.normalize(
+                    temp_query_token_embs, p=2, dim=-1
+                )
+                batch_embs = torch.nn.functional.normalize(batch_embs, p=2, dim=-1)
+                # print(f"get_topk_docids_and_scores | temp_query_token_embs:{temp_query_token_embs.shape}, batch_embs:{batch_embs.shape}")
                 batch_scores = F.cosine_similarity(
                     temp_query_token_embs, batch_embs.to(temp_query_token_embs), dim=-1
                 )
@@ -92,14 +99,16 @@ class Cluster:
 
         combined_scores = sorted(scores, key=lambda x: x[1], reverse=True)
         top_k_docs = combined_scores[:k]
-        return top_k_docs  # [(doc_id, score), ...]
+        bottom_k_docs = combined_scores[-k:]
+        return top_k_docs, bottom_k_docs  # [(doc_id, score), ...]
 
     def get_topk_docids(self, model, query, docs: dict, k, batch_size=128) -> List[str]:
-        top_k_regl_docs = self.get_topk_docids_and_scores(
+        top_k_docs, bottom_k_docs = self.get_topk_docids_and_scores(
             model, query, docs, k, batch_size
         )
-        top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
-        return top_k_regl_doc_ids
+        top_k_doc_ids = [x[0] for x in top_k_docs]
+        bottom_k_doc_ids = [x[0] for x in bottom_k_docs]
+        return top_k_doc_ids, bottom_k_doc_ids
 
     def calculate_mean(self):
         mean = self.S1 / self.N
@@ -108,20 +117,33 @@ class Cluster:
     def calculate_rms(self):
         mean_S1 = self.S1 / self.N
         mean_S2 = self.S2 / self.N
-        # print(f"mean_S1: {mean_S1}, mean_S2:{mean_S2}")
+        # print(f"mean_S1: {mean_S1}, mean_S2:{mean_S2}, S1:{self.S1}, S2:{self.S2}, N:{self.N}")
         rms = math.sqrt(mean_S2 - mean_S1**2)
         return rms
 
     def get_boundary(self):
-        return self.calculate_mean() + self.z * self.calculate_rms()
+        mean, std, z1, z2, n = (
+            self.calculate_mean(),
+            self.calculate_rms(),
+            self.z1,
+            self.z2,
+            self.N,
+        )
+        BOUNDARY = mean + z1 * std
+        # print(f"get_boundary | BOUNDARY:{BOUNDARY} mean:{mean}, std:{std}, z1:{z1}, z2:{z2}, n:{n}")
+        return BOUNDARY
 
     def get_distance(self, doc_embs):
         # E_q (batch_size, qlen, 768)
-        # print(f"doc_embs:{doc_embs.shape}, self.prototype:{self.prototype.shape}")
-        x_dist = MAX_SCORE - F.cosine_similarity(
-            doc_embs, self.prototype.to(doc_embs.device), dim=-1
-        )
-        return x_dist.item()
+        doc_embs = torch.nn.functional.normalize(doc_embs, p=2, dim=-1)
+        prototype = torch.nn.functional.normalize(self.prototype, p=2, dim=-1)
+        cos_sim = F.cosine_similarity(doc_embs, prototype.to(doc_embs.device), dim=-1)
+        x_dist = MAX_SCORE - cos_sim
+        distance = x_dist.item()
+        # print(
+        #     f"distance: {distance} | cos_sim: {cos_sim}, doc_embs:{doc_embs.shape}, prototype:{self.prototype.shape}"
+        # )
+        return distance
 
     def assign(self, doc_id, doc_embs, ts):
         # E_q (batch_size, qlen, 768)
@@ -129,52 +151,71 @@ class Cluster:
         distance = self.get_distance(doc_embs)
         self.S1 += distance
         self.S2 += distance**2
-        self.N += 1
-        self.prototype += doc_embs.to(self.prototype.device)
+        self.prototype = (self.N * self.prototype + doc_embs.to(self.prototype)) / (
+            self.N + 1
+        )
+        self.N = len(self.doc_ids)
         self.timestamp = ts
+        # print(
+        #     f"self.prototype:{self.prototype.device}, doc_embs:{doc_embs.device}, S1:{self.S1}, S2:{self.S2}, N:{self.N}"
+        # )
+        # print(f"assign | {self.get_statistics()} | prototype is nan {torch.isnan(self.prototype).any()}")
 
-    def evict(self, model, docs: dict, required_doc_size) -> bool:
+    def evict(self, model, docs: dict, required_doc_size, is_updated) -> bool:
         before_n = len(self.doc_ids)
         temp_docids = []
         temp_prototype = torch.zeros_like(self.prototype)
+        num_selected = 0
 
-        BOUNDARY = self.calculate_mean()
-        print(f"BOUNDARY: {BOUNDARY}")
+        mean, std, z1, z2, n = (
+            self.calculate_mean(),
+            self.calculate_rms(),
+            self.z1,
+            self.z2,
+            self.N,
+        )
+        BOUNDARY = mean + z2 * std * is_updated
+        print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}, n:{n}")
 
         for batch_start in range(0, len(self.doc_ids), self.batch_size):
             batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
-            batch_doc_texts = [docs[doc_id]["text"] for doc_id in batch_doc_ids]
-            batch_doc_embs = encode_texts_mean_pooling(model, batch_doc_texts)
-            print(f"batch_doc_embs: {batch_doc_embs.shape}")
+            batch_doc_embs = torch.stack(
+                [docs[doc_id]["EMB"] for doc_id in batch_doc_ids], dim=0
+            )
+            # print(f"batch_doc_embs: {batch_doc_embs.shape}")
 
             if batch_doc_embs.dim() == 3:  # (batch, 1, embedding_dim)
                 batch_doc_embs = batch_doc_embs.squeeze(dim=1)
 
-            cos_sim = F.cosine_similarity(
+            batch_doc_embs = torch.nn.functional.normalize(batch_doc_embs, p=2, dim=-1)
+            print(
+                f"BOUNDARY: {BOUNDARY}| batch_doc_embs min/max:{batch_doc_embs.norm(dim=-1).min()}, {batch_doc_embs.norm(dim=-1).max()}"
+            )
+            self.prototype = torch.nn.functional.normalize(self.prototype, p=2, dim=-1)
+            cos_distance = 1.0 - F.cosine_similarity(
                 batch_doc_embs,
                 self.prototype.unsqueeze(0).to(batch_doc_embs.device),
                 dim=-1,
             )
-            mask = cos_sim >= BOUNDARY
-
-            for i in range(len(batch_doc_ids)):
-                if mask[i].item():
-                    temp_docids.append(batch_doc_ids[i])
-                    doc_hash = batch_doc_embs[i]
-                    temp_prototype += doc_hash
-
+            mask = cos_distance <= BOUNDARY
+            for i, keep in enumerate(mask):
+                if keep.item():
+                    doc_id = batch_doc_ids[i]
+                    temp_docids.append(doc_id)
+                    temp_prototype += batch_doc_embs[i].to(temp_prototype.device)
+                    num_selected += 1
         self.doc_ids = temp_docids
-        self.prototype = temp_prototype / len(self.doc_ids)
         after_n = len(self.doc_ids)
-
-        print(f"doc_ids# {before_n} -> {after_n}")
-
+        if num_selected > 0:  # nan 방지
+            self.prototype = temp_prototype / len(temp_docids)
+        else:
+            return False
         if len(self.doc_ids) < required_doc_size:
             return False
-
-        if before_n != after_n:
-            self.update_statistics(model, docs)
-
+        print(
+            f"doc_ids# {before_n} -> {after_n} | prototype is nan {torch.isnan(self.prototype).any()}"
+        )
+        self.update_statistics(model, docs)
         return True
 
     def get_statistics(self):
@@ -183,27 +224,41 @@ class Cluster:
     def update_statistics(self, model, docs: dict):
         partition = min(len(self.doc_ids), num_devices)
         id_batches = [self.doc_ids[i::partition] for i in range(partition)]
+        temp_prototype = torch.zeros_like(self.prototype)
+        total_count = 0
 
         def process_batch(id_batch, device):
             temp_model = copy.deepcopy(model).to(device)
             S1, S2 = 0.0, 0.0
-            for i in range(0, len(id_batch), self.batch_size):
-                batch_doc_texts = [
-                    docs[doc_id]["text"] for doc_id in id_batch[i : i + self.batch_size]
-                ]
-                batch_token_embs = encode_texts_mean_pooling(
-                    temp_model, batch_doc_texts
-                )
-                # print(f"update_statistics-process_batch {batch_token_embs.shape}")
+            # print(f"temp_prototype:{temp_prototype.shape}, local_sum:{local_sum.shape}")
 
-                if batch_token_embs.dim() == 2:
+            for i in range(0, len(id_batch), self.batch_size):
+                batch_token_embs = torch.stack(
+                    [
+                        docs[doc_id]["EMB"]
+                        for doc_id in id_batch[i : i + self.batch_size]
+                    ],
+                    dim=0,
+                )
+                if batch_token_embs.dim() == 1:
                     batch_token_embs = batch_token_embs.unsqueeze(0)
+
+                batch_token_embs = torch.nn.functional.normalize(
+                    batch_token_embs, p=2, dim=-1
+                )
+                batch_token_embs = torch.nn.functional.normalize(
+                    batch_token_embs, p=2, dim=-1
+                )
+                self.prototype = torch.nn.functional.normalize(
+                    self.prototype, p=2, dim=-1
+                )
+                # print(f"update_statistics | batch_token_embs: {batch_token_embs.shape}, self.prototype:{self.prototype.shape}")
+
                 score = F.cosine_similarity(
                     batch_token_embs,
-                    self.prototype.unsqueeze(0).to(batch_token_embs.device),
+                    self.prototype.to(batch_token_embs.device),
                     dim=-1,
                 )
-
                 x_dist = MAX_SCORE - score
                 S1 += torch.sum(x_dist).item()
                 S2 += torch.sum(x_dist**2).item()
@@ -221,6 +276,9 @@ class Cluster:
         self.S1 = sum(r[0] for r in results)
         self.S2 = sum(r[1] for r in results)
         self.N = len(self.doc_ids)
+        # print(
+        #     f"update_statistics | {self.get_statistics()} | prototype is nan {torch.isnan(self.prototype).any()}"
+        # )
 
     def get_weight(self, T):
         exponent = -(T - self.timestamp) / self.u

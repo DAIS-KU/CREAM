@@ -1,1 +1,1 @@
-from .sampling import make_query_cos_samples
+from .sampling import *

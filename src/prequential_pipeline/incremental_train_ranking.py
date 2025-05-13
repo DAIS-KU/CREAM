@@ -118,88 +118,55 @@ def session_train(
 
 
 def train(
-    session_count=10,
+    session_count=12,
     num_epochs=1,
     batch_size=32,
     is_term=False,
 ):
-    for session_number in range(6, session_count):
+    for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        doc_path = f"../data/datasetG/train_session{session_number}_docs.jsonl"
-        query_path = f"../data/datasetG/train_session{session_number}_queries.jsonl"
+        doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+        query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
         queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, "doc_id")
         ts = session_number
 
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
+        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+            devices[1]
+        )
         if session_number != 0:
             print("Load last session model.")
-            model_path = (
-                f"../data/model/incremental_nt_datasetG_session_{session_number-1}.pth"
-            )
-            model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
+            model_path = f"../data/model/incremental_session_pre_{session_number-1}.pth"
         else:
             print("Load Warming up model.")
-            # model_path = f"../data/base_model_lotte.pth"
+            model_path = f"../data/base_model_lotte.pth"
+        model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
-        new_model_path = (
-            f"../data/model/incremental_nt_datasetG_session_{session_number}.pth"
-        )
+        new_model_path = f"../data/model/incremental_session_pre_{session_number}.pth"
+
+        if is_term:
+            evaluate_term(session_number, model_path)
+        else:
+            evaluate_cosine(session_number, model_path)
 
         loss_values = session_train(queries, docs, ts, model, num_epochs, is_term)
         torch.save(model.state_dict(), new_model_path)
-        _evaluate_term(session_number)
 
 
 def model_builder(model_path):
     model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
-        devices[-1]
+        devices[1]
     )
-    model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
+    model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
 
 
-def evaluate_cosine(sesison_count=10):
-    method = "incremental_nt_datasetG"
-    for session_number in range(sesison_count):
-        print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
-
-        eval_query_data = read_jsonl(eval_query_path, True)
-        eval_doc_data = read_jsonl(eval_doc_path, False)
-
-        eval_query_count = len(eval_query_data)
-        eval_doc_count = len(eval_doc_data)
-        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
-
-        model_path = f"../data/model/{method}_session_{session_number}.pth"
-        start_time = time.time()
-        eval_query_data, eval_doc_data = renew_data_mean_pooling(
-            model_builder, model_path, eval_query_data, eval_doc_data
-        )
-        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for retrieval.")
-
-        rankings_path = f"../data/rankings/{method}_cosine_session_{session_number}.txt"
-        write_file(rankings_path, result)
-        eval_log_path = f"../data/evals/{method}_cosine_{session_number}.txt"
-        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del eval_query_data, eval_doc_data
-
-
-def evaluate_term(sesison_count=10):
-    for session_number in range(sesison_count):
-        _evaluate_term(session_number)
-
-
-def _evaluate_term(session_number):
-    method = "incremental_nt_datasetG"
-    print(f"Evaluate session {session_number}")
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+def evaluate_cosine(session_number, model_path):
+    method = "incremental"
+    print(f"Evaluate Session {session_number}")
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -208,7 +175,35 @@ def _evaluate_term(session_number):
     eval_doc_count = len(eval_doc_data)
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-    model_path = f"../data/model/{method}_session_{session_number}.pth"
+    start_time = time.time()
+    eval_query_data, eval_doc_data = renew_data_mean_pooling(
+        model_builder, model_path, eval_query_data, eval_doc_data
+    )
+    result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
+
+    rankings_path = (
+        f"../data/rankings/incremental_session_pre_cosine_{session_number}.txt"
+    )
+    write_file(rankings_path, result)
+    eval_log_path = f"../data/evals/incremental_session_pre_cosine_{session_number}.txt"
+    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    del eval_query_data, eval_doc_data
+
+
+def evaluate_term(session_number, model_path):
+    method = "incremental"
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+
+    eval_query_data = read_jsonl(eval_query_path, True)
+    eval_doc_data = read_jsonl(eval_doc_path, False)
+
+    eval_query_count = len(eval_query_data)
+    eval_doc_count = len(eval_doc_data)
+    print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+
     start_time = time.time()
     new_q_data, new_d_data = renew_data(
         queries=eval_query_data,
@@ -227,8 +222,10 @@ def _evaluate_term(session_number):
     end_time = time.time()
     print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    rankings_path = f"../data/rankings/{method}_term_session_{session_number}.txt"
+    rankings_path = (
+        f"../data/rankings/incremental_session_pre_term_{session_number}.txt"
+    )
     write_file(rankings_path, result)
-    eval_log_path = f"../data/evals/{method}_term_{session_number}.txt"
+    eval_log_path = f"../data/evals/incremental_session_pre_term_{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     del new_q_data, new_d_data

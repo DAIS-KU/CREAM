@@ -1,27 +1,31 @@
 import random
 import string
 
+import torch
 import numpy as np
-from nltk.tokenize import word_tokenize
+from functions import renew_data_mean_pooling
 
-from .bm25 import BM25Okapi
-from .loader import read_jsonl, read_jsonl_as_dict
+from data import BM25Okapi, read_jsonl, read_jsonl_as_dict, preprocess
+from transformers import BertModel, BertTokenizer
+
+num_gpus = torch.cuda.device_count()
+devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
-def preprocess(corpus, max_length=256):
-    # corpus = corpus.lower()
-    # corpus = "".join([char for char in corpus if char not in string.punctuation])
-    # tokens = word_tokenize(corpus)
-    # max_len = min(max_length, len(tokens))
-    # tokens = tokens[:max_len]
-    tokens = corpus.split(" ")
-    return tokens
+def model_builder(model_path):
+    model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+        devices[-1]
+    )
+    model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
+    model.eval()
+    return model
 
 
 class Stream:
     def __init__(
         self,
         session_number,
+        model_path,
         query_path,
         doc_path,
         warming_up_method,
@@ -32,29 +36,30 @@ class Stream:
         query_stream_batch_size=256,
         doc_stream_batch_size=1024,
     ):
+        # Read raw data
         queries = read_jsonl(query_path, True)
-        random.shuffle(queries)
-        self.queries = queries
-        query_docs = {
-            query["qid"]: {
-                "doc_id": query["qid"],
-                "text": query["query"],
-                "is_query": True,
-            }
-            for query in queries
-        }
-        query_list = list(query_docs.values())
-
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
-        doc_list = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
-        self.docs = {
-            doc["doc_id"]: {
-                "doc_id": doc["doc_id"],
-                "text": doc["text"],
-                "is_query": False,
-            }
-            for doc in doc_list
-        }
+        print(f"queries:{len(queries)}, docs:{len(docs)}")
+
+        # Filter document(doc_id, text)
+        documents = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
+        print(f"queries:{len(queries)}, documents:{len(documents)}")
+        # Encode (doc_id, text, token_embs, is_query)
+        query_docs, doc_docs = renew_data_mean_pooling(
+            model_builder=model_builder,
+            model_path=model_path,
+            queries_data=queries,
+            documents_data=documents,
+        )
+        # Export list to make streams
+        query_list = list(query_docs.values())
+        doc_list = list(doc_docs.values())
+        print(f"query_list:{len(query_list)}, doc_list:{len(doc_list)}")
+
+        # Prepare training
+        random.shuffle(query_list)
+        self.queries = query_list
+        self.docs = doc_docs
         self.docs.update(query_docs)
         if prev_docs is not None:
             self.docs.update(prev_docs)

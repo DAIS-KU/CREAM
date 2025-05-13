@@ -29,27 +29,26 @@ class InfoNCELoss(nn.Module):
         super(InfoNCELoss, self).__init__()
 
     def forward(self, query_emb, positive_emb, negative_emb):
+        device = query_emb.device
         if query_emb.dim() == 3:
             query_emb = query_emb.squeeze(1)
         # query_emb: (batch_size, embedding_dim)
         # positive_emb: (batch_size, positive_k, embedding_dim)
         # negative_emb: (batch_size, negative_k, embedding_dim)
         pos_sim = torch.matmul(
-            query_emb.unsqueeze(1), positive_emb.transpose(-1, -2)
+            query_emb.unsqueeze(1), positive_emb.transpose(-1, -2).to(device)
         ).squeeze(
             1
         )  # (batch_size, positive_k)
         neg_sim = torch.matmul(
-            query_emb.unsqueeze(1), negative_emb.transpose(-1, -2)
+            query_emb.unsqueeze(1), negative_emb.transpose(-1, -2).to(device)
         ).squeeze(
             1
         )  # (batch_size, negative_k)
         logits = torch.cat(
             (pos_sim, neg_sim), dim=1
         )  # (batch_size, positive_k + negative_k)
-        labels = torch.zeros(
-            query_emb.size(0), dtype=torch.long, device=query_emb.device
-        )
+        labels = torch.zeros(query_emb.size(0), dtype=torch.long, device=device)
         loss = F.cross_entropy(logits, labels)
         return loss
 

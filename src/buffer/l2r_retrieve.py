@@ -92,6 +92,7 @@ class L2R_retrieve(object):
                 mem_upsample_docids_lst.extend(
                     docids_pos_lst[i].tolist() + mem_upsample_docids
                 )  # 把正例也加进去
+            print(f"mem_upsample_docids_lst: {mem_upsample_docids_lst}")
             mem_doc_lst = [buffer.did2doc[did] for did in mem_upsample_docids_lst]
             mem_doc_lst = buffer.tokenizer.batch_encode_plus(
                 mem_doc_lst,
@@ -110,19 +111,19 @@ class L2R_retrieve(object):
                     doc_oldemb.append(buffer.buffer_did2emb[int(docid)])
                 doc_oldemb = torch.tensor(np.array(doc_oldemb)).to(
                     self.train_params.device
-                )  # .to('cuda:1')  # [num_q*(1+mem_upsample), 768]
+                )  # .to('cuda:0')  # [num_q*(1+mem_upsample), 768]
                 index_mem = self.get_mem_data(
                     new_model_out, index_new, doc_oldemb, mem_bz
                 )  # [batch_size, mem_bz]
             else:
                 for key, value in mem_doc_lst.items():
                     mem_doc_lst[key] = value.to(
-                        "cuda:1"
+                        "cuda:0"
                     )  # mem_doc_lst = [batch_size*(1+mem_upsample), 128]
                 mem_q_lst = {}
                 for key, value in q_lst.items():
-                    mem_q_lst[key] = q_lst[key].clone().to("cuda:1")
-                model_temp = model_temp.to("cuda:1")
+                    mem_q_lst[key] = q_lst[key].clone().to("cuda:0")
+                model_temp = model_temp.to("cuda:0")
                 mem_model_out = model_temp(mem_q_lst, mem_doc_lst)
                 mem_p_reps = mem_model_out.p_reps  # [bz*n, 768]
                 index_mem = self.get_mem_data(
@@ -179,7 +180,7 @@ class L2R_retrieve(object):
             :, 1:, :
         ]  # [batch_size, new_bz, 768]
         if not self.params.compatible:
-            choiced_new_reps = choiced_new_reps.to("cuda:1")
+            choiced_new_reps = choiced_new_reps.to("cuda:0")
 
         p_reps = mem_p_reps  # mem_model_out.p_reps  # [bz*n, 768]
         p_reps = p_reps.reshape(new_q_reps.size(0), -1, p_reps.size(1))  # [bz, n, 768]
@@ -189,9 +190,7 @@ class L2R_retrieve(object):
             neg_p_reps, choiced_new_reps
         )  # [bz, n-1, new_bz]
         inter_sim_sum = torch.sum(inter_sim, dim=-1)  # [bz, n-1]
-        inter_sim = (
-            inter_sim_sum * (-1.0) / inter_sim.size(-1)
-        )  # [bz, n-1], 相似度尽可能小
+        inter_sim = inter_sim_sum * (-1.0) / inter_sim.size(-1)  # [bz, n-1], 相似度尽可能小
 
         indexs = inter_sim.sort(dim=1, descending=True)[1][:, :mem_bz]
         return indexs

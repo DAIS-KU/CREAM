@@ -73,15 +73,13 @@ def load_train_docs(session_number=None):
     train_docs = {}
     if session_number is not None:
         print(f"Read session_number {session_number}th docs")
-        doc_path = (
-            f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
-        )
+        doc_path = f"../data/sub/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl_as_dict(doc_path, "doc_id")
         train_docs.update(doc_data)
     else:
-        for i in range(4):
+        for i in range(12):
             print(f"Read all {i}th docs")
-            doc_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{i}_docs.jsonl"
+            doc_path = f"../data/sub/train_session{i}_docs.jsonl"
             doc_data = read_jsonl_as_dict(doc_path, "doc_id")
             train_docs.update(doc_data)
     print(f"doc size {len(train_docs)}")
@@ -92,10 +90,10 @@ def load_eval_docs(session_number):
     eval_docs = []
     for i in range(session_number + 1):
         print(f"Read {i}th docs")
-        doc_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{i}_docs.jsonl"
+        doc_path = f"../data/sub/train_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
-        doc_path = f"/mnt/DAIS_NAS/huijeong/sub/test_session{i}_docs.jsonl"
+        doc_path = f"../data/sub/test_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
     return eval_docs
@@ -113,24 +111,24 @@ def save_jsonl(data, file_name, mode="w"):
 
 
 def append_to_jsonl(file_path, data):
-    with open(file_path, "a") as f:
+    with open(file_path, "a", encoding="utf-8") as f:
         json_line = json.dumps(data)
         f.write(json_line + "\n")
 
 
 def write_file(rank_file_path, result):
-    with open(rank_file_path, "w") as f:
+    with open(rank_file_path, "w", encoding="utf-8") as f:
         for key, values in result.items():
             line = f"{key} " + " ".join(map(str, values)) + "\n"
             f.write(line)
 
 
 def write_lines(filename, result_list):
-    with open(filename, "w") as file:
+    with open(filename, "w", encoding="utf-8") as file:
         for result in result_list:
             file.write(result + "\n")
 
 
 def write_line(filename, result):
-    with open(filename, "w") as file:
+    with open(filename, "w", encoding="utf-8") as file:
         file.write(result)

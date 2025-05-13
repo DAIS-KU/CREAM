@@ -15,22 +15,25 @@ from ablation import (
     initialize,
     make_cos_query_psuedo_answers,
     retrieve_top_k_docs_from_cluster,
+    get_samples_top_bottom,
+    clear_unused_documents,
+    Stream,
 )
-from clusters import renew_data
-from data import Stream, read_jsonl, read_jsonl_as_dict, write_file, write_line
+from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
     InfoNCELoss,
     InfoNCETermLoss,
     evaluate_dataset,
     get_top_k_documents,
+    renew_data_mean_pooling,
+    get_top_k_documents_by_cosine,
 )
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
-print(devices)
 
 
 def encode_texts(model, texts, max_length=256):
@@ -67,10 +70,6 @@ def streaming_train(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_values = []
 
-    query_answers = make_cos_query_psuedo_answers(model, queries, docs, clusters)
-    # print(f"query_answers:{type(query_answers)}")
-    all_answer_ids = set(query_answers.values())
-
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
@@ -81,26 +80,19 @@ def streaming_train(
             query_batch, pos_docs_batch, neg_docs_batch = [], [], []
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
-                # pos_ids, neg_ids, weight = get_samples_and_weights(
-                #     model=model,
-                #     query=query,
-                #     docs=docs,
-                #     clusters=clusters,
-                #     positive_k=positive_k,
-                #     negative_k=negative_k,
-                #     ts=ts,
-                #     use_tensor_key=use_tensor_key,
-                # )
-                pos_ids = [query_answers[query["qid"]]]
-                candidate_neg_ids = list(all_answer_ids - set(pos_ids))
-                neg_ids = random.sample(
-                    candidate_neg_ids, min(6, len(candidate_neg_ids))
+                pos_ids, neg_ids = get_samples_top_bottom(
+                    model=model,
+                    query=query,
+                    docs=docs,
+                    clusters=clusters,
+                    positive_k=positive_k,
+                    negative_k=negative_k,
                 )
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
-                query_batch.append(query["query"])
-                query_embeddings = encode_texts(model=model, texts=query["query"])
+                query_batch.append(query["text"])
+                query_embeddings = encode_texts(model=model, texts=query["text"])
                 pos_embeddings = encode_texts(
                     model=model, texts=pos_docs
                 )  # (positive_k, embedding_dim)
@@ -144,13 +136,13 @@ def streaming_train(
 
 def train(
     start_session_number=0,
-    end_sesison_number=2,
+    end_sesison_number=12,
     load_cluster=True,
     sampling_rate=None,
     sampling_size_per_query=100,
     num_epochs=1,
     batch_size=32,
-    warmingup_rate=0.2,
+    warmingup_rate="none",
     positive_k=1,
     negative_k=6,
     cluster_min_size=50,
@@ -172,9 +164,25 @@ def train(
     prev_docs, clusters = None, []
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
+        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+            devices[-1]
+        )
+        if session_number != 0:
+            print("Load last session model.")
+            model_path = (
+                f"../data/model/proposal_wo_term_session_{session_number-1}.pth"
+            )
+        else:
+            print("Load Warming up model.")
+            model_path = f"../data/base_model_lotte.pth"
+        model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
+        model.train()
+        new_model_path = f"../data/model/proposal_wo_term_session_{session_number}.pth"
+
         print(f"Training Session {session_number}/{load_cluster}")
         stream = Stream(
             session_number=session_number,
+            model_path=model_path,
             query_path=f"../data/sub/train_session{session_number}_queries.jsonl",
             doc_path=f"../data/sub/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
@@ -184,25 +192,17 @@ def train(
             warming_up_method=warming_up_method,
         )
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
-
-        model = BertModel.from_pretrained("bert-base-uncased").to(devices[1])
-        if session_number != 0:
-            print("Load last session model.")
-            model_path = f"../data/model/proposal_session_{session_number-1}_cls.pth"
-        else:
-            print("Load Warming up model.")
-            model_path = f"../data/model/base_model_lotte.pth"
-        model.load_state_dict(torch.load(model_path, weights_only=True))
-        model.train()
-        new_model_path = f"../data/model/proposal_session_{session_number}_cls.pth"
-
-        # Initial
-        if load_cluster and session_number > 0:
+        # Initial : 매번 로드 or 첫 세션만 로드
+        if (load_cluster or session_number == start_session_number) and (
+            session_number > 0
+        ):
             print(f"Load last sesion clusters, docs.")
             with open(f"../data/clusters_wo_term_{session_number-1}.pkl", "rb") as f:
                 clusters = pickle.load(f)
+                print("Cluster loaded.")
             with open(f"../data/prev_docs_wo_term_{session_number-1}.pkl", "rb") as f:
                 prev_docs = pickle.load(f)
+                print("Prev_docs loaded.")
             stream.docs.update(prev_docs)
             batch_start = 0
         else:
@@ -233,7 +233,7 @@ def train(
                     f"Spend {end_time-start_time} seconds for clustering({len(clusters)}, {initial_size}) warming up."
                 )
             else:
-                raise ValueError("Loading or initialization is required.")
+                batch_start = 0
 
         # Assign stream batch
         for i in range(batch_start, len(stream.stream_docs)):
@@ -248,15 +248,14 @@ def train(
                 ts=ts,
                 use_tensor_key=use_tensor_key,
             )
-            if i % 50 == 0:
-                for j, cluster in enumerate(clusters):
-                    print(f"{j}th size: {len(cluster.doc_ids)}")
+            # if i % 50 == 0:
+            #     for j, cluster in enumerate(clusters):
+            #         print(f"{j}th size: {len(cluster.doc_ids)}")
             end_time = time.time()
             print(f"Assign {i}th stream ended({end_time - start_time}sec).")
 
         # Remain only trainable clusters
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
-
         # Train
         loss_values, ts = streaming_train(
             queries=stream.queries,
@@ -275,23 +274,26 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         # Evaluate
-        clusters, eval_stream_docs = evaluate_with_cluster(
-            session_number=session_number,
-            ts=ts,
-            clusters=clusters,
-            model_path=new_model_path,
-            use_tensor_key=use_tensor_key,
-        )
-        evaluate(session_number)
+        # clusters, eval_stream_docs = evaluate_with_cluster(
+        #     session_number=session_number,
+        #     ts=ts,
+        #     clusters=clusters,
+        #     model_path=new_model_path,
+        #     use_tensor_key=use_tensor_key,
+        # )
+        evaluate(session_number=session_number, model_path=new_model_path)
         # Evict
-        evict_clusters(model, stream.docs, clusters, ts, required_doc_size)
-        # Accumulate
-        prev_docs = {**stream.docs, **eval_stream_docs}
-        if load_cluster:
-            with open(f"../data/clusters_wo_term_{session_number}.pkl", "wb") as f:
-                pickle.dump(clusters, f)
-            with open(f"../data/prev_docs_wo_term_{session_number}.pkl", "wb") as f:
-                pickle.dump(prev_docs, f)
+        clusters = evict_clusters(model, stream.docs, clusters, ts, required_doc_size)
+        stream.docs = clear_unused_documents(clusters, stream.docs)
+        # Accumulate **eval_stream_docs
+        prev_docs = stream.docs
+
+        # with open(f"../data/clusters_wo_term_{session_number}.pkl", "wb") as f:
+        #     pickle.dump(clusters, f)
+        #     print("Cluster dumped.")
+        # with open(f"../data/prev_docs_wo_term_{session_number}.pkl", "wb") as f:
+        #     pickle.dump(prev_docs, f)
+        #     print("Prev_docs dumped.")
 
 
 def evaluate_with_cluster(
@@ -306,6 +308,7 @@ def evaluate_with_cluster(
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,
+        model_path=model_path,
         doc_path=eval_doc_path,
         warming_up_method="eval",
     )
@@ -314,53 +317,60 @@ def evaluate_with_cluster(
     print(
         f"Evaluate session {session_number} | #Query:{eval_query_count}, #Document:{eval_doc_count}"
     )
-    # Assign and Retrieve
-    start_time = time.time()
-    model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
-    model.load_state_dict(torch.load(model_path, weights_only=True))
-    model.eval()
-    result = retrieve_top_k_docs_from_cluster(
-        model, stream, clusters, use_tensor_key, 10
-    )
-    end_time = time.time()
-    print(f"Spend {end_time-start_time} seconds for retrieval.")
+    # # Assign and Retrieve
+    # start_time = time.time()
+    # model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+    #     devices[-1]
+    # )
+    # model.load_state_dict(torch.load(model_path, weights_only=True))
+    # model.eval()
+    # result = retrieve_top_k_docs_from_cluster(
+    #     model, stream, clusters, use_tensor_key, 10
+    # )
+    # end_time = time.time()
+    # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    rankings_path = (
-        f"../data/rankings/proposal_wo_term_{session_number}_with_cluster.txt"
-    )
-    write_file(rankings_path, result)
-    eval_log_path = f"../data/evals/proposal_wo_term_{session_number}_with_cluster.txt"
-    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    # rankings_path = (
+    #     f"../data/rankings/proposal_wo_term_{session_number}_with_cluster.txt"
+    # )
+    # write_file(rankings_path, result)
+    # eval_log_path = f"../data/evals/proposal_wo_term_{session_number}_with_cluster.txt"
+    # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
 
-def evaluate(sesison_count=2):
+def model_builder(model_path):
+    model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
+        devices[-1]
+    )
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model.eval()
+    return model
+
+
+def evaluate(session_number, model_path):
     method = "proposal_wo_term"
-    for session_number in range(sesison_count):
-        print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+    print(f"Evaluate Session {session_number}")
+    eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
 
-        eval_query_data = read_jsonl(eval_query_path, True)
-        eval_doc_data = read_jsonl(eval_doc_path, False)
+    eval_query_data = read_jsonl(eval_query_path, True)
+    eval_doc_data = read_jsonl(eval_doc_path, False)
 
-        eval_query_count = len(eval_query_data)
-        eval_doc_count = len(eval_doc_data)
-        print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
+    eval_query_count = len(eval_query_data)
+    eval_doc_count = len(eval_doc_data)
+    print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-        model_path = f"../data/model/{method}_session_{session_number}.pth"
+    start_time = time.time()
+    eval_query_data, eval_doc_data = renew_data_mean_pooling(
+        model_builder, model_path, eval_query_data, eval_doc_data
+    )
+    result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
+    end_time = time.time()
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-        start_time = time.time()
-        eval_query_data, eval_doc_data = renew_data_mean_pooling(
-            model_builder, model_path, eval_query_data, eval_doc_data
-        )
-        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
-        end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for retrieval.")
-
-        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-        write_file(rankings_path, result)
-        eval_log_path = f"../data/evals/{method}_{session_number}.txt"
-        evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del eval_query_data, eval_doc_data
+    rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
+    write_file(rankings_path, result)
+    eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+    evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
+    del eval_query_data, eval_doc_data
