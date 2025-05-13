@@ -4,6 +4,7 @@ import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import bisect
 import copy
+import random
 
 MAX_SCORE = 254
 
@@ -66,36 +67,53 @@ class DiversityBufferManager(BufferManager):
 
     def get_samples(self, docs, clusters, sample_size):
         cluster_qids = {}
-        total_doc_size = 0
+        total_doc_size, total_query_size = 0, 0
         for cid, cluster in enumerate(clusters):
             qids = cluster.get_only_qids(docs)
             if len(qids):
                 cluster_qids[cid] = qids
                 total_doc_size += len(cluster.doc_ids)
+                total_query_size += len(qids)
+        print(f"Total documents {total_doc_size} query {total_query_size}")
 
-        diverse_qids = set()
-        for cid in cluster_qids.keys():
-            sample_sz = int((len(clusters[cid].doc_ids) / total_doc_size) * sample_size)
-            total_qsz = len(cluster_qids[cid])
-            print(f"clusters[{cid}] sampling #{sample_sz} in total #{total_qsz}")
-            dqids = self.get_samples_in_clsuter(
-                docs=docs,
-                cluster=clusters[cid],
-                qids=cluster_qids[cid],
-                sample_size=sample_sz,
-            )
-            diverse_qids.update(dqids)
+        if total_query_size <= sample_size:
+            all_qids = []
+            for v in cluster_qids.values():
+                all_qids.extend(v)
+            diverse_qids = copy.deepcopy(all_qids)
+            while len(diverse_qids) < sample_size:
+                remains = sample_size - len(diverse_qids)
+                sample_sz = min(len(all_qids), remains)
+                rand_qids = random.sample(all_qids, sample_sz)
+                diverse_qids.extend(rand_qids)
+        else:
+            diverse_qids = set()
+            for cid in cluster_qids.keys():
+                sample_sz = int(
+                    (len(clusters[cid].doc_ids) / total_doc_size) * sample_size
+                )
+                total_qsz = len(cluster_qids[cid])
+                print(f"clusters[{cid}] sampling #{sample_sz} in total #{total_qsz}")
+                dqids = self.get_samples_in_clsuter(
+                    docs=docs,
+                    cluster=clusters[cid],
+                    qids=cluster_qids[cid],
+                    sample_size=sample_sz,
+                )
+                diverse_qids.update(dqids)
 
-        while len(diverse_qids) < sample_size:
-            remains = sample_size - len(diverse_qids)
-            rand_cid = random.sample(cluster_qids.keys(), 1)[0]
-            rand_qids = random.sample(cluster_qids[rand_cid], remains)
-            print(
-                f"#diverse_qids:{len(diverse_qids)}, remians: {remians}, rand_cid:{rand_cid}, #rand_qids:{len(rand_qids)}"
-            )
-            diverse_qids.update(rand_qids)
-
-        return diverse_qids
+            while len(diverse_qids) < sample_size:
+                remains = sample_size - len(diverse_qids)
+                rand_cid = random.sample(cluster_qids.keys(), 1)[0]
+                sample_sz = min(len(cluster_qids[rand_cid]), remains)
+                rand_qids = random.sample(cluster_qids[rand_cid], sample_sz)
+                diverse_qids.update(rand_qids)
+                print(
+                    f"#diverse_qids:{len(diverse_qids)}, remains: {remains}, rand_cid:{rand_cid}, #rand_qids:{len(rand_qids)}"
+                )
+        trian_queries = [docs[qid] for qid in diverse_qids]
+        random.shuffle(trian_queries)
+        return trian_queries
 
 
 class GreedyDiversityBufferManager(BufferManager):

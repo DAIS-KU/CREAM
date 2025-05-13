@@ -324,13 +324,9 @@ def train(
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
 
         # Train
-        train_queries = None
-        if session_number == 0:
-            train_queries = stream.queries
-        else:
-            train_queries = diversity_buffer_manager.get_samples(
-                docs=stream.docs, clusters=clusters, sample_size=len(stream.queries)
-            )
+        train_queries = diversity_buffer_manager.get_samples(
+            docs=stream.docs, clusters=clusters, sample_size=len(stream.queries)
+        )
         loss_values, ts = streaming_train(
             queries=train_queries,
             docs=stream.docs,

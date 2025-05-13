@@ -52,12 +52,13 @@ class Cluster:
             self.update_statistics(docs)
         # print(f"init | S1:{self.S1}, S2:{self.S2}, N:{self.N}, z1:{self.z1}, z2:{self.z2}")
 
-    def get_only_docids(self, docs):
+    def get_only_docids(self, docs, verbose=True):
         # self.doc_ids= self.doc_ids.intersection(docs.keys())
         only_doc_ids = [
             doc_id for doc_id in self.doc_ids if not docs[doc_id]["is_query"]
         ]
-        print(f"Document only #{len(only_doc_ids)}/{len(self.doc_ids)}")
+        if verbose:
+            print(f"Document only #{len(only_doc_ids)}/{len(self.doc_ids)}")
         return only_doc_ids
 
     def get_only_qids(self, docs):
@@ -220,9 +221,11 @@ class Cluster:
         max_q_n=150,
         max_q_positive_n=50,
     ) -> bool:
-        before_n = len(self.doc_ids)
-        temp_docids = []
+        # temp_docids, temp_qids = [], self.get_only_qids(docs)
+        temp_docids, temp_qids = [], []
         temp_prototype = torch.zeros_like(self.prototype)
+        doc_ids = self.get_only_docids(docs)
+        before_d_n, before_q_n = len(doc_ids), len(temp_qids)
         mean, std, z1, z2 = (
             self.calculate_mean(),
             self.calculate_rms(),
@@ -231,144 +234,51 @@ class Cluster:
         )
         BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
+
+        # for batch_start in range(0, len(doc_ids), self.batch_size):
         for batch_start in range(0, len(self.doc_ids), self.batch_size):
+            # batch_doc_ids = doc_ids[batch_start : batch_start + self.batch_size]
             batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
             batch_doc_embs = torch.stack(
                 [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
                 dim=0,
             ).squeeze(dim=1)
-            # print(f"evict batch_doc_embs:{batch_doc_embs.shape}")
             x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
                 batch_doc_embs, self.prototype.unsqueeze(0), batch_doc_embs.device
             )
             mask = x_dists <= BOUNDARY
-            # print(f"evict x_dists:{x_dists.shape}, mask: {mask.shape}")
             for i in range(len(batch_doc_ids)):
                 doc_id = batch_doc_ids[i]
-                if mask[i].item():  # or doc_id in qids:
-                    # doc_embs = get_passage_embeddings(model, docs[doc_id]['text'])
+                if mask[i].item():
                     doc_embs = get_passage_embeddings(model, [docs[doc_id]["text"]])[0]
-                    # print(f"evict: {doc_embs.shape}")
                     docs[doc_id]["TOKEN_EMBS"] = doc_embs.cpu()
                     doc_hash = lsh.encode(doc_embs)
                     temp_docids.append(doc_id)
                     temp_prototype += doc_hash
+        after_d_n = len(temp_docids)
+        if after_d_n <= required_doc_size:
+            return False
+
+        # qsz=int(len(temp_qids)*after_d_n/before_d_n)
+        # temp_qids = random.sample(temp_qids, qsz)
+        after_q_n = len(temp_qids)
+        # for qid in temp_qids:
+        #     doc_embs = get_passage_embeddings(model, [docs[qid]["text"]])[0]
+        #     docs[qid]["TOKEN_EMBS"] = doc_embs.cpu()
+        #     doc_hash = lsh.encode(doc_embs)
+        #     temp_prototype += doc_hash
+
+        # self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
         self.doc_ids = list(set(temp_docids))
         self.prototype = temp_prototype
-        after_n = len(self.doc_ids)
-        if len(self.doc_ids) < required_doc_size:
-            return False
-        self.update_statistics(docs)
-        print(f"doc_ids# {before_n} -> {after_n}, new std:{self.calculate_rms()}")
-        # self.clear_cache()
-        return True
-
-    def evict2(
-        self,
-        model,
-        lsh: RandomProjectionLSH,
-        docs: dict,
-        required_doc_size,
-        is_updated,
-        max_q_n=300,
-        max_q_positive_n=50,
-    ) -> bool:
-        print(f"Called Evict2 | max_q_n:{max_q_n}, max_q_positive_n:{max_q_positive_n}")
-        # Query 선정, 쿼리별 top-n 문서 남기기
-        before_n = len(self.doc_ids)
-        left_qids = self.get_only_qids(docs)
-        left_qids = random.sample(left_qids, min(max_q_n, len(left_qids)))
-        left_docids = []
-        for i, qid in enumerate(left_qids):
-            query = docs[qid]
-            keep_closest, _ = self.get_topk_docids(query, docs, max_q_positive_n)
-            left_docids.extend(keep_closest)
-            print(f"{i}th query keep closet positive")
-        left_docids = list(set(left_docids))
-        # 문서 임베딩 갱신, 프로토타입 갱신
-        temp_prototype = torch.zeros_like(self.prototype)
-        for doc_id in left_docids:
-            doc_embs = get_passage_embeddings(model, [docs[doc_id]["text"]])[0]
-            docs[doc_id]["TOKEN_EMBS"] = doc_embs.cpu()
-            doc_hash = lsh.encode(doc_embs)
-            temp_prototype += doc_hash
-        self.doc_ids = left_docids + left_qids
-        self.prototype = temp_prototype
-
-        # 문서 미달 처리, 통계 갱신
-        if len(left_docids) < required_doc_size:
-            return False
-        self.update_statistics(docs)
-        after_n = len(self.doc_ids)
-        print(f"doc_ids# {before_n} -> {after_n}, new std:{self.calculate_rms()}")
-        return True
-
-    def evict3(
-        self,
-        model,
-        lsh: RandomProjectionLSH,
-        docs: dict,
-        required_doc_size,
-        is_updated,
-        kept_doc_ids,
-    ) -> bool:
         print(
-            f"Called Evict3 | kept_doc_ids:{len(kept_doc_ids)}, doc_ids:{len(self.doc_ids)}"
+            f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
         )
-        # 쿼리별 top-n 문서 남기기
-        before_n = len(self.doc_ids)
-        left_docids = list(set(self.doc_ids) & set(kept_doc_ids))
 
-        # 문서 임베딩 갱신, 프로토타입 갱신, TODO 배치 처리
-        temp_prototype = torch.zeros_like(self.prototype)
-        for doc_id in left_docids:
-            doc_embs = get_passage_embeddings(model, [docs[doc_id]["text"]])[0]
-            docs[doc_id]["TOKEN_EMBS"] = doc_embs.cpu()
-            doc_hash = lsh.encode(doc_embs)
-            temp_prototype += doc_hash
-        self.doc_ids = left_docids
-        self.prototype = temp_prototype
-
-        # 문서 미달 처리, 통계 갱신
-        if len(left_docids) < required_doc_size:
-            return False
         self.update_statistics(docs)
-        after_n = len(self.doc_ids)
         print(
-            f"doc_ids# {before_n} -> {after_n}, new mean:{self.calculate_mean()}, new std:{self.calculate_rms()}"
+            f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
         )
-        return True
-
-    def evict_random(
-        self,
-        model,
-        lsh: RandomProjectionLSH,
-        docs: dict,
-        required_doc_size,
-        is_updated,
-    ) -> bool:
-        print(f"Called evict_random | doc_ids:{len(self.doc_ids)}")
-        # 랜덤 절반 문서 남기기
-        before_n = len(self.doc_ids)
-        left_n = before_n // 2
-        if left_n <= required_doc_size:
-            return False
-        left_docids = random.sample(set(self.doc_ids), left_n)
-
-        # 문서 임베딩 갱신, 프로토타입 갱신
-        temp_prototype = torch.zeros_like(self.prototype)
-        for doc_id in left_docids:
-            doc_embs = get_passage_embeddings(model, [docs[doc_id]["text"]])[0]
-            docs[doc_id]["TOKEN_EMBS"] = doc_embs.cpu()
-            doc_hash = lsh.encode(doc_embs)
-            temp_prototype += doc_hash
-        self.doc_ids = left_docids
-        self.prototype = temp_prototype
-
-        # 문서 미달 처리, 통계 갱신
-        self.update_statistics(docs)
-        after_n = len(self.doc_ids)
-        print(f"doc_ids# {before_n} -> {after_n}, new std:{self.calculate_rms()}")
         return True
 
     def get_statistics(self):
@@ -431,7 +341,10 @@ class Cluster:
         )  # [(doc_id, score), ...]
         scores = [score for _, score in docids_and_scores]
         if r is None:
-            r = sum(scores) / len(scores)
+            qids = self.get_only_qids(docs)
+            score_idx = int(len(scores) * (1 / len(qids)))  # 균등 분할 시 차지하는 갯수
+            r = scores[score_idx]
+            # r = sum(scores) / len(scores)
         idx = bisect.bisect_left(list(reversed(scores)), r)
         selected = [doc_id for doc_id, _ in docids_and_scores[: len(scores) - idx]]
         return r, selected

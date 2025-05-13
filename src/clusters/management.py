@@ -168,7 +168,9 @@ def assign_instance_or_add_cluster(
                 mean, std, n = (
                     closest_cluster.calculate_mean(),
                     closest_cluster.calculate_rms(),
-                    closest_cluster.N,
+                    len(
+                        closest_cluster.get_only_docids(docs, False)
+                    ),  # closest_cluster.N
                 )
 
                 if n <= cluster_min_size or closest_distance <= closest_boundary:
@@ -391,81 +393,6 @@ def evict_clusters(
         for future in futures:
             remaining_clusters.extend(future.result())
     print(f"evict_cluster_instances finished. (left #{len(remaining_clusters)})")
-    return remaining_clusters
-
-
-def evict_clusters2(
-    model, lsh, docs: dict, clusters: List[Cluster], ts, required_doc_size, kept_doc_ids
-) -> List[Cluster]:
-    print("evict_clusters2 started.")
-    # stride. 순서 보장 필요X
-    cluster_chunks = [clusters[i::num_devices] for i in range(num_devices)]
-
-    def process_cluster_chunk(cluster_chunk, device):
-        local_model = copy.deepcopy(model).to(device)
-        local_result = []
-        for cluster in cluster_chunk:
-            is_updated = 1 if cluster.timestamp >= ts else 0
-            is_alive = cluster.evict3(
-                local_model, lsh, docs, required_doc_size, is_updated, kept_doc_ids
-            )
-            if is_alive:
-                local_result.append(cluster)
-        return local_result
-
-    remaining_clusters = []
-    with ThreadPoolExecutor(max_workers=num_devices) as executor:
-        futures = {
-            executor.submit(
-                process_cluster_chunk, cluster_chunk, devices[i % num_devices]
-            ): cluster_chunk
-            for i, cluster_chunk in enumerate(cluster_chunks)
-        }
-        for future in futures:
-            remaining_clusters.extend(future.result())
-    print(f"evict_clusters2 finished. (left #{len(remaining_clusters)})")
-    return remaining_clusters
-
-
-def evict_clusters_random(
-    model,
-    lsh,
-    docs: dict,
-    clusters: List[Cluster],
-    ts,
-    required_doc_size,
-) -> List[Cluster]:
-    print("evict_clusters_random started.")
-    # stride. 순서 보장 필요X
-    cluster_chunks = [clusters[i::num_devices] for i in range(num_devices)]
-
-    def process_cluster_chunk(cluster_chunk, device):
-        local_model = copy.deepcopy(model).to(device)
-        local_result = []
-        for cluster in cluster_chunk:
-            is_updated = 1 if cluster.timestamp >= ts else 0
-            is_alive = cluster.evict_random(
-                local_model,
-                lsh,
-                docs,
-                required_doc_size,
-                is_updated,
-            )
-            if is_alive:
-                local_result.append(cluster)
-        return local_result
-
-    remaining_clusters = []
-    with ThreadPoolExecutor(max_workers=num_devices) as executor:
-        futures = {
-            executor.submit(
-                process_cluster_chunk, cluster_chunk, devices[i % num_devices]
-            ): cluster_chunk
-            for i, cluster_chunk in enumerate(cluster_chunks)
-        }
-        for future in futures:
-            remaining_clusters.extend(future.result())
-    print(f"evict_clusters_random ended. (left #{len(remaining_clusters)})")
     return remaining_clusters
 
 
