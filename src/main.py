@@ -27,6 +27,7 @@ from pipeline import (
     qq_low_train,
     qq_low_evaluate,
     qq_low_train2,
+    create_cos_ans_file,
 )
 
 
@@ -313,7 +314,7 @@ if __name__ == "__main__":
     elif args.exp == "val":
         validate_data()
     elif args.exp == "l2r":
-        # l2r_train()
+        l2r_train()
         l2r_evaluate()
     elif args.exp == "inc_cosine":
         inc_train(is_term=False)
@@ -379,5 +380,7 @@ if __name__ == "__main__":
         dodp_train(dataset="msmarco")
     elif args.exp == "doamin_forget":
         df_train(dataset=args.dataset, start_domain=args.start_domain)
+    elif args.exp == "create_cos_ans_file":
+        create_cos_ans_file()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

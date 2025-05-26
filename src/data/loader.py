@@ -1,7 +1,7 @@
 import json
 import random
 
-# writing_test_qas.forum-353, writing_test_collection-85121
+# writing_test_qas.forum-353, writing_test_collection-8581
 domain_list = ["writing", "lifestyle", "technology", "science", "recreation"]
 dataset_list = [
     "dev_qas.search",
@@ -73,13 +73,13 @@ def load_train_docs(session_number=None):
     train_docs = {}
     if session_number is not None:
         print(f"Read session_number {session_number}th docs")
-        doc_path = f"../data/sub/train_session{session_number}_docs.jsonl"
+        doc_path = f"../data/datasetL/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl_as_dict(doc_path, "doc_id")
         train_docs.update(doc_data)
     else:
-        for i in range(12):
+        for i in range(9):
             print(f"Read all {i}th docs")
-            doc_path = f"../data/sub/train_session{i}_docs.jsonl"
+            doc_path = f"../data/datasetL/train_session{i}_docs.jsonl"
             doc_data = read_jsonl_as_dict(doc_path, "doc_id")
             train_docs.update(doc_data)
     print(f"doc size {len(train_docs)}")
@@ -90,10 +90,10 @@ def load_eval_docs(session_number):
     eval_docs = []
     for i in range(session_number + 1):
         print(f"Read {i}th docs")
-        doc_path = f"../data/sub/train_session{i}_docs.jsonl"
+        doc_path = f"../data/datasetL/train_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
-        doc_path = f"../data/sub/test_session{i}_docs.jsonl"
+        doc_path = f"../data/datasetL/test_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
     return eval_docs
@@ -129,6 +129,6 @@ def write_lines(filename, result_list):
             file.write(result + "\n")
 
 
-def write_line(filename, result):
-    with open(filename, "w", encoding="utf-8") as file:
+def write_line(filename, result, mode="w"):
+    with open(filename, mode, encoding="utf-8") as file:
         file.write(result)

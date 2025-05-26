@@ -83,11 +83,12 @@ def process_batch(
         encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
 
         with torch.no_grad():
-            model_output = encode_mean_pooling(  # DenseModel의 경우 raw/
-                model,
-                encoded_input
-                # encoded_input
-            )  # [batch_size, emb_dim]
+            model_output = model.encode_mean_pooling(encoded_input)
+            # model_output = encode_mean_pooling(
+            #     model,
+            #     encoded_input
+            #     # encoded_input
+            # )  # [batch_size, emb_dim]
 
         for item_id, text, emb in zip(item_ids, texts, model_output.cpu()):
             results[item_id] = {

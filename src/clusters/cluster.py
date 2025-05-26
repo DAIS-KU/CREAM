@@ -19,7 +19,7 @@ from functions import (
 
 from .prototype import RandomProjectionLSH
 
-MAX_SCORE = 256.0
+MAX_SCORE = 256
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
@@ -32,9 +32,9 @@ class Cluster:
         docs: dict,
         use_tensor_key,
         timestamp=0,
-        batch_size=2048,
+        batch_size=8,
         z1=8.0,
-        z2=1.0,
+        z2=0.75,
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
@@ -52,7 +52,7 @@ class Cluster:
             self.update_statistics(docs)
         # print(f"init | S1:{self.S1}, S2:{self.S2}, N:{self.N}, z1:{self.z1}, z2:{self.z2}")
 
-    def get_only_docids(self, docs, verbose=True):
+    def get_only_docids(self, docs: dict, verbose=True):
         # self.doc_ids= self.doc_ids.intersection(docs.keys())
         only_doc_ids = [
             doc_id for doc_id in self.doc_ids if not docs[doc_id]["is_query"]
@@ -61,23 +61,33 @@ class Cluster:
             print(f"Document only #{len(only_doc_ids)}/{len(self.doc_ids)}")
         return only_doc_ids
 
-    def get_only_qids(self, docs):
+    def get_only_qids(self, docs: dict):
         only_qids = [doc_id for doc_id in self.doc_ids if docs[doc_id]["is_query"]]
         print(f"Query only #{len(only_qids)}/{len(self.doc_ids)}")
         return only_qids
 
-    # 캐시 들렸다 오는 것 보다 배치 임베딩이 빠를 것 같기도... 개별 순회 vs 배치 연산
-    def get_docids_and_scores(self, query, docs: dict, batch_size=128):
+    # batch_ids 순서가 유지되는가?
+    def get_docids_and_scores(self, query, docs: dict, batch_size=8):
         query_token_embs = query["TOKEN_EMBS"]
-        # self.get_cached_emb(query["qid"], query_token_embs)
+
         def process_batch(device, batch_doc_ids):
             regl_scores = []
             temp_query_token_embs = query_token_embs.clone().unsqueeze(0).to(device)
             for i in range(0, len(batch_doc_ids), batch_size):
                 batch_ids = batch_doc_ids[i : i + batch_size]
-                # print(f" ㄴ {i}th topk_doc batch({len(ƒbatch_ids)}) on {device}")
-                batch_embs = torch.stack(
-                    [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_ids], dim=0
+                # batch_embs = torch.stack(
+                #         [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_ids], dim=0
+                #     )
+                batch_key = tuple(batch_ids)
+                # if batch_key in self.cache:
+                #     print(f"[cache_HIT] Found cached embeddings for key({i}-{i+len(batch_ids)})")
+                # else:
+                #     print(f"[cache_MISS] Creating embeddings for key({i}-{i+len(batch_ids)})")
+                batch_embs = self.cache.setdefault(
+                    batch_key,
+                    torch.stack(
+                        [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_ids], dim=0
+                    ),
                 )
                 if batch_embs.dim() > 3:
                     batch_embs = batch_embs.squeeze()
@@ -86,15 +96,15 @@ class Cluster:
                     temp_query_token_embs, batch_embs, device
                 )
                 regl_scores.append(regl_score)
-                # print(f"regl_scores: {len(regl_scores)}")
             regl_scores = torch.cat(regl_scores, dim=0)
+            # print(f"regl_scores: {regl_scores.shape}")
             return [
                 (doc_id, regl_scores[idx].item())
                 for idx, doc_id in enumerate(batch_doc_ids)
             ]
 
         regl_scores = []
-        # stride, 순서 보장 필요X
+        #  순서 보장 필요
         only_doc_ids = self.get_only_docids(docs)
         batch_cnt = min(num_devices, len(only_doc_ids))
         doc_ids_batches = [only_doc_ids[i::batch_cnt] for i in range(batch_cnt)]
@@ -110,57 +120,13 @@ class Cluster:
         combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
         return combined_regl_scores
 
-    # 캐시 들렸다 오는 것 보다 배치 임베딩이 빠를 것 같기도... 개별 순회 vs 배치 연산
-    def get_docids_and_positivities(self, query, docs: dict, batch_size=128):
-        query_token_embs = query["TOKEN_EMBS"]
-        # self.get_cached_emb(query["qid"], query_token_embs)
-        def process_batch(device, batch_doc_ids):
-            regl_scores = []
-            temp_query_token_embs = query_token_embs.clone().unsqueeze(0).to(device)
-            for i in range(0, len(batch_doc_ids), batch_size):
-                batch_ids = batch_doc_ids[i : i + batch_size]
-                # print(f" ㄴ {i}th topk_doc batch({len(ƒbatch_ids)}) on {device}")
-                batch_embs = torch.stack(
-                    [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_ids], dim=0
-                )
-                if batch_embs.dim() > 3:
-                    batch_embs = batch_embs.squeeze()
-                # print(f"get_topk_docids({device}) | batch_embs:{batch_embs.shape}, temp_query_token_embs:{temp_query_token_embs.shape}")
-                regl_score = calculate_S_qd_regl_batch(
-                    temp_query_token_embs, batch_embs, device
-                )
-                regl_scores.append(regl_score)
-                # print(f"regl_scores: {len(regl_scores)}")
-            regl_scores = torch.cat(regl_scores, dim=0)
-            return [
-                (regl_scores[idx].item() / len(query["text"]), doc_id)
-                for idx, doc_id in enumerate(batch_doc_ids)
-            ]
-
-        regl_scores = []
-        # stride, 순서 보장 필요X
-        only_doc_ids = self.get_only_docids(docs)
-        batch_cnt = min(num_devices, len(only_doc_ids))
-        doc_ids_batches = [only_doc_ids[i::batch_cnt] for i in range(batch_cnt)]
-        with ThreadPoolExecutor() as executor:
-            futures = []
-            for i, device in enumerate(range(batch_cnt)):
-                futures.append(
-                    executor.submit(process_batch, device, doc_ids_batches[i])
-                )
-            for future in futures:
-                regl_scores.extend(future.result())
-
-        combined_regl_scores = sorted(regl_scores, key=lambda x: x[0])
-        return combined_regl_scores
-
-    def get_topk_docids_and_scores(self, query, docs: dict, k, batch_size=128):
+    def get_topk_docids_and_scores(self, query, docs: dict, k, batch_size=8):
         combined_regl_scores = self.get_docids_and_scores(query, docs, batch_size)
         top_k_regl_docs = combined_regl_scores[:k]
         bottom_k_regl_docs = combined_regl_scores[-k:]
         return top_k_regl_docs, bottom_k_regl_docs  # [(id, score), ]
 
-    def get_topk_docids(self, query, docs: dict, k, batch_size=128) -> List[str]:
+    def get_topk_docids(self, query, docs: dict, k, batch_size=8) -> List[str]:
         top_k_regl_docs, bottom_k_regl_docs = self.get_topk_docids_and_scores(
             query, docs, k, batch_size
         )
@@ -221,8 +187,8 @@ class Cluster:
         max_q_n=150,
         max_q_positive_n=50,
     ) -> bool:
-        # temp_docids, temp_qids = [], self.get_only_qids(docs)
-        temp_docids, temp_qids = [], []
+        temp_docids, temp_qids = [], self.get_only_qids(docs)
+        # temp_docids, temp_qids = [], []
         temp_prototype = torch.zeros_like(self.prototype)
         doc_ids = self.get_only_docids(docs)
         before_d_n, before_q_n = len(doc_ids), len(temp_qids)
@@ -235,10 +201,10 @@ class Cluster:
         BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
 
-        # for batch_start in range(0, len(doc_ids), self.batch_size):
-        for batch_start in range(0, len(self.doc_ids), self.batch_size):
-            # batch_doc_ids = doc_ids[batch_start : batch_start + self.batch_size]
-            batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
+        for batch_start in range(0, len(doc_ids), self.batch_size):
+            # for batch_start in range(0, len(self.doc_ids), self.batch_size):
+            batch_doc_ids = doc_ids[batch_start : batch_start + self.batch_size]
+            # batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
             batch_doc_embs = torch.stack(
                 [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
                 dim=0,
@@ -259,23 +225,24 @@ class Cluster:
         if after_d_n <= required_doc_size:
             return False
 
-        # qsz=int(len(temp_qids)*after_d_n/before_d_n)
-        # temp_qids = random.sample(temp_qids, qsz)
+        qsz = int(len(temp_qids) * after_d_n / before_d_n)
+        temp_qids = random.sample(temp_qids, qsz)
         after_q_n = len(temp_qids)
-        # for qid in temp_qids:
-        #     doc_embs = get_passage_embeddings(model, [docs[qid]["text"]])[0]
-        #     docs[qid]["TOKEN_EMBS"] = doc_embs.cpu()
-        #     doc_hash = lsh.encode(doc_embs)
-        #     temp_prototype += doc_hash
+        for qid in temp_qids:
+            doc_embs = get_passage_embeddings(model, [docs[qid]["text"]])[0]
+            docs[qid]["TOKEN_EMBS"] = doc_embs.cpu()
+            doc_hash = lsh.encode(doc_embs)
+            temp_prototype += doc_hash
 
-        # self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
-        self.doc_ids = list(set(temp_docids))
+        self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
+        # self.doc_ids = list(set(temp_docids))
         self.prototype = temp_prototype
         print(
             f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
         )
 
         self.update_statistics(docs)
+        # self.cache = {}
         print(
             f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
         )

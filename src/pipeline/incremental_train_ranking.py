@@ -123,10 +123,10 @@ def train(
     batch_size=32,
     is_term=False,
 ):
-    for session_number in range(6, session_count):
+    for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        doc_path = f"../data/datasetG/train_session{session_number}_docs.jsonl"
-        query_path = f"../data/datasetG/train_session{session_number}_queries.jsonl"
+        doc_path = f"../data/datasetM/train_session{session_number}_docs.jsonl"
+        query_path = f"../data/datasetM/train_session{session_number}_queries.jsonl"
         queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, "doc_id")
         ts = session_number
@@ -135,7 +135,7 @@ def train(
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/incremental_nt_datasetG_session_{session_number-1}.pth"
+                f"../data/model/incremental_nt_datasetM_session_{session_number-1}.pth"
             )
             model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
         else:
@@ -143,7 +143,7 @@ def train(
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
         new_model_path = (
-            f"../data/model/incremental_nt_datasetG_session_{session_number}.pth"
+            f"../data/model/incremental_nt_datasetM_session_{session_number}.pth"
         )
 
         loss_values = session_train(queries, docs, ts, model, num_epochs, is_term)
@@ -161,11 +161,11 @@ def model_builder(model_path):
 
 
 def evaluate_cosine(sesison_count=10):
-    method = "incremental_nt_datasetG"
+    method = "incremental_nt_datasetM"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -196,10 +196,10 @@ def evaluate_term(sesison_count=10):
 
 
 def _evaluate_term(session_number):
-    method = "incremental_nt_datasetG"
+    method = "incremental_nt_datasetM"
     print(f"Evaluate session {session_number}")
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)

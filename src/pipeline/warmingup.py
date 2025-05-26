@@ -38,12 +38,12 @@ class LOTTEDataset(Dataset):
 
         for session_number in range(9):
             _t = read_jsonl_as_dict(
-                f"../data/datasetD/train_session{session_number}_queries.jsonl", "qid"
+                f"../data/datasetM/train_session{session_number}_queries.jsonl", "qid"
             )
             keys_to_remove = list(_t.keys())
             [self.queries.pop(key, None) for key in keys_to_remove]
             _t = read_jsonl_as_dict(
-                f"../data/datasetD/test_session{session_number}_queries.jsonl", "qid"
+                f"../data/datasetM/test_session{session_number}_queries.jsonl", "qid"
             )
             keys_to_remove = list(_t.keys())
             [self.queries.pop(key, None) for key in keys_to_remove]
@@ -92,12 +92,12 @@ class MSMARCODataset(Dataset):
         self.keys_to_remove = set()
         for session_number in range(12):
             _t = read_jsonl_as_dict(
-                f"../data/datasetD/ms_marco/train_session{session_number}_queries.jsonl",
+                f"../data/datasetM/ms_marco/train_session{session_number}_queries.jsonl",
                 "qid",
             )
             keys_to_remove = update(_t.keys())
             _t = read_jsonl_as_dict(
-                f"../data/datasetD/ms_marco/test_session{session_number}_queries.jsonl",
+                f"../data/datasetM/ms_marco/test_session{session_number}_queries.jsonl",
                 "qid",
             )
             keys_to_remove = update(_t.keys())
@@ -267,8 +267,8 @@ def evaluate_cosine(session_cnt=9):
     method = "pretrained_cosine"
     model_path = f"../data/base_model_lotte.pth"
     for session_number in range(session_cnt):
-        eval_query_path = f"../data/datasetD/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/datasetD/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -305,8 +305,8 @@ def evaluate_term(sesison_count=10):
     method = "pretrained_term"
     model_path = None  # f"../data/base_model_lotte.pth"
     for session_number in range(sesison_count):
-        eval_query_path = f"../data/datasetD/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/datasetD/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)

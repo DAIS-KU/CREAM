@@ -22,7 +22,6 @@ from clusters import (
     renew_data,
     retrieve_top_k_docs_from_cluster,
     clear_unused_documents,
-    get_top_sample_and_score,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -172,7 +171,7 @@ def train(
     include_answer=False,
 ):
     total_loss_values = []
-    loss_values_path = "../data/loss/total_loss_values_proposal_final_datasetG.txt"
+    loss_values_path = "../data/loss/total_loss_values_proposal_final_datasetM.txt"
     required_doc_size = (
         required_doc_size if required_doc_size is not None else positive_k + negative_k
     )
@@ -189,8 +188,8 @@ def train(
         print(f"Training Session {session_number}/{load_cluster}")
         stream = Stream(
             session_number=session_number,
-            query_path=f"../data/datasetG/train_session{session_number}_queries.jsonl",
-            doc_path=f"../data/datasetG/train_session{session_number}_docs.jsonl",
+            query_path=f"../data/datasetM/train_session{session_number}_queries.jsonl",
+            doc_path=f"../data/datasetM/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
@@ -204,7 +203,7 @@ def train(
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/proposal_final_datasetG_session_{session_number-1}.pth"
+                f"../data/model/proposal_final_datasetM_session_{session_number-1}.pth"
             )
             model.load_state_dict(torch.load(model_path, map_location="cuda:1"))
         else:
@@ -212,7 +211,7 @@ def train(
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
         new_model_path = (
-            f"../data/model/proposal_final_datasetG_session_{session_number}.pth"
+            f"../data/model/proposal_final_datasetM_session_{session_number}.pth"
         )
 
         # Initial : 매번 로드 or 첫 세션만 로드
@@ -222,17 +221,17 @@ def train(
             and session_number > 0
         ):
             print(f"Load last sesion clusters, docs and random vectors.")
-            with open(f"../data/clusters_datasetG_{session_number-1}.pkl", "rb") as f:
+            with open(f"../data/clusters_datasetM_{session_number-1}.pkl", "rb") as f:
                 clusters = pickle.load(f)
-            with open(f"../data/prev_docs_datasetG_{session_number-1}.pkl", "rb") as f:
+            with open(f"../data/prev_docs_datasetM_{session_number-1}.pkl", "rb") as f:
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetG_{session_number-1}.pkl", "rb"
+                f"../data/random_vectors_datasetM_{session_number-1}.pkl", "rb"
             ) as f:
                 random_vectors = pickle.load(f)
             # with open(
-            #     f"../data/diversity_buffer_manager_datasetG_{session_number-1}.pkl",
+            #     f"../data/diversity_buffer_manager_datasetM_{session_number-1}.pkl",
             #     "rb",
             # ) as f:
             #     diversity_buffer_manager = pickle.load(f)
@@ -362,14 +361,14 @@ def train(
         # Accumulate
         prev_docs = stream.docs  # {**stream.docs, **eval_stream_docs}
 
-        with open(f"../data/clusters_datasetG_{session_number}.pkl", "wb") as f:
+        with open(f"../data/clusters_datasetM_{session_number}.pkl", "wb") as f:
             pickle.dump(clusters, f)
-        with open(f"../data/prev_docs_datasetG_{session_number}.pkl", "wb") as f:
+        with open(f"../data/prev_docs_datasetM_{session_number}.pkl", "wb") as f:
             pickle.dump(prev_docs, f)
-        with open(f"../data/random_vectors_datasetG_{session_number}.pkl", "wb") as f:
+        with open(f"../data/random_vectors_datasetM_{session_number}.pkl", "wb") as f:
             pickle.dump(random_vectors, f)
         # with open(
-        #     f"../data/diversity_buffer_manager_datasetG_{session_number}.pkl", "wb"
+        #     f"../data/diversity_buffer_manager_datasetM_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
 
@@ -382,8 +381,8 @@ def evaluate_with_cluster(
     model_path,
     clusters: List[Cluster],
 ) -> List[Cluster]:
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,
@@ -408,9 +407,9 @@ def evaluate_with_cluster(
     # end_time = time.time()
     # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/proposal_final_datasetG_{session_number}_with_cluster.txt"
+    # rankings_path = f"../data/rankings/proposal_final_datasetM_{session_number}_with_cluster.txt"
     # write_file(rankings_path, result)
-    # eval_log_path = f"../data/evals/proposa_datasetG_{session_number}_with_cluster.txt"
+    # eval_log_path = f"../data/evals/proposa_datasetM_{session_number}_with_cluster.txt"
     # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
@@ -421,10 +420,10 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number):
-    method = "proposal_final_datasetG"
+    method = "proposal_final_datasetM"
     print(f"Evaluate Session {session_number}")
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -462,8 +461,8 @@ def _evaluate(session_number):
 
 
 def eval_rankings(session_number):
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -473,11 +472,11 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/proposal_final_datasetG_{session_number}_with_cluster.txt"
+        f"../data/rankings/proposal_final_datasetM_{session_number}_with_cluster.txt"
     )
-    eval_log_path = f"../data/evals/proposa_datasetG_{session_number}_with_cluster.txt"
+    eval_log_path = f"../data/evals/proposa_datasetM_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     rankings_path = (
-        f"../data/rankings/proposal_final_datasetG_session_{session_number}.txt"
+        f"../data/rankings/proposal_final_datasetM_session_{session_number}.txt"
     )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

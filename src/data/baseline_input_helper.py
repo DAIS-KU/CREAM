@@ -525,7 +525,7 @@ def build_bm25(docs):
 
 
 def get_candidates(session_number, bm25, query, doc_ids):
-    k = 50 if session_number < 3 else 20
+    k = 50  # if session_number < 3 else 20
     tokenized_query = word_tokenize(query.lower())
     scores = bm25.get_scores(tokenized_query)
     top_k_indices = np.argsort(scores)[-k:]

@@ -46,16 +46,12 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
-    query_data = "/home/work/retrieval/data/sub/train_session(0,1,2)_queries_cos.jsonl"
-    doc_data = f"/home/work/retrieval/data/sub/train_session0_docs.jsonl"
-    bert_weight_path = "/home/work/retrieval/data/base_model_lotte.pth"  # .pth
+    query_data = "/home/work/retrieval/data/datasetL/train_session0_queries_cos.jsonl"
     buffer_data = "../data"  # comp시에는 필요
     output_dir = "../data"
 
     method = "l2r"
-    model = build_model(bert_weight_path)
-    # model_path = f"../data/model/{method}_session_0.pth"
-    # model.load_state_dict(torch.load(model_path, weights_only=True))
+    model = build_model()
     buffer = Buffer(
         model,
         tokenizer,
@@ -136,7 +132,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=F
 
 
 def train(
-    session_count=12,
+    session_count=9,
     num_epochs=1,
     batch_size=32,
     compatible=False,
@@ -147,22 +143,23 @@ def train(
     buffer = build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible)
     method = "l2r"
     output_dir = "../data"
-    for session_number in range(9, session_count):
+    total_sec = 0
+    for session_number in range(session_count):
+        time_values_path = f"../data/loss/total_time_l2r_datasetL_{session_number}.txt"
+        start_time = time.time()
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        # query_path = f"/home/work/retrieval/data/sub/train_session{session_number}_queries.jsonl"
-        doc_path = (
-            f"/home/work/retrieval/data/sub/train_session{session_number}_docs.jsonl"
+        query_path = (
+            f"/home/work/retrieval/data/datasetL/train_session0_queries_cos.jsonl"
         )
-        if session_number < 3:
-            query_path = f"/home/work/retrieval/data/sub/train_session{session_number}_queries_cos.jsonl"
-        else:
-            query_path = (
-                f"/home/work/retrieval/data/sub/train_session(0,1,2)_queries_cos.jsonl"
-            )
-
-        bert_weight_path = "/home/work/retrieval/data/base_model_lotte.pth"
-        model = build_model(bert_weight_path)
+        doc_path = f"/home/work/retrieval/data/datasetL/train_session{session_number}_docs.jsonl"
+        # if session_number < 3:
+        #     query_path = f"/home/work/retrieval/data/datasetL/train_session{session_number}_queries_cos.jsonl"
+        # else:
+        #     query_path = (
+        #         f"/home/work/retrieval/data/datasetL/train_session(0,1,2)_queries_cos.jsonl"
+        #     )
+        model = build_model()
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -188,6 +185,10 @@ def train(
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
         buffer.replace()
+        end_time = time.time()
+        total_sec += end_time - start_time
+        print(f"{end_time-start_time} sec. ")
+    write_line(time_values_path, f"({total_sec}sec)\n", "a")
 
 
 def model_builder(model_path=None):
@@ -209,8 +210,8 @@ def evaluate(sesison_count=12):
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         model_path = f"../data/model/{method}_session_{session_number}.pth"
-        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)

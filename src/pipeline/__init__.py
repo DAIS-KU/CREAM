@@ -28,3 +28,6 @@ from .domain_forget import train as df_train
 from .proposal_train_ranking_qq_low import train as qq_low_train
 from .proposal_train_ranking_qq_low import evaluate as qq_low_evaluate
 from .proposal_train_ranking_qq_low2 import train as qq_low_train2
+
+
+from .generate_baseline_answer import create_cos_ans_file

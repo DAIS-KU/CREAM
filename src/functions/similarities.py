@@ -30,8 +30,12 @@ def calculate_S_qd_regl_batch(E_q, E_d, device):
     if E_d.dim() != 3:
         print(f"⚠️ Warning: E_d is not 3D! Current shape: {E_d.shape}")
     # E_q(batch_size, qlen, 768), E_d(batch_size, dlen, 768),
-    E_q = E_q.to(device).float()
-    E_d = E_d.to(device).float()
+    if E_q.device != device:
+        E_q = E_q.to(device)
+    if E_d.device != device:
+        E_d = E_d.to(device)
+    E_q.float()
+    E_d.float()
     # print(f'calculate_S_qd_regl_batch E_q:{E_q.shape}, E_d:{E_d.shape}')
     E_q_normalized = torch.nn.functional.normalize(E_q, p=2, dim=2)
     E_d_normalized = torch.nn.functional.normalize(E_d, p=2, dim=2)
@@ -42,10 +46,10 @@ def calculate_S_qd_regl_batch(E_q, E_d, device):
     # print(f'calculate_S_qd_regl_batch max_scores:{max_scores.shape}')
     S_qd_scores = max_scores.sum(dim=1)
     # print(f'calculate_S_qd_regl_batch S_qd_scores:{S_qd_scores.shape}')
-    E_q = E_q.cpu()
-    E_d = E_d.cpu()
-    torch.cuda.empty_cache()
-    return S_qd_scores  # (batch_size,)
+    # E_q = E_q.cpu()
+    # E_d = E_d.cpu()
+    # torch.cuda.empty_cache()
+    return S_qd_scores.cpu()  # (batch_size,)
 
 
 def calculate_S_qd_regl_batch_batch(E_q, E_d, device):

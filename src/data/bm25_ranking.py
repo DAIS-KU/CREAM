@@ -14,7 +14,18 @@ def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
             rankings[qid].extend(pids)
 
     top_k_success, top_k_recall = 5, 10
-    domain_prefixes = ["writing", "technology", "lifestyle", "science", "recreation"]
+    domain_prefixes = [
+        "writing",
+        "technology",
+        "lifestyle",
+        "science",
+        "recreation",
+        "domain0",
+        "domain1",
+        "domain2",
+        "domain3",
+        "domain4",
+    ]
     domain_stats = {
         prefix: {"success": 0, "recall": 0.0, "total": 0, "answer_count": 0}
         for prefix in domain_prefixes
@@ -148,13 +159,13 @@ def get_top_k_documents(query, bm25, doc_ids, k=10):
 
 def do_expermient(session_number=0):
     query_path = (
-        f"/home/work/retrieval/data/datasetG/test_session{session_number}_queries.jsonl"
+        f"/home/work/retrieval/data/datasetM/test_session{session_number}_queries.jsonl"
     )
     query_data = read_jsonl(query_path, True)
 
     eval_docs = []
     doc_path = (
-        f"/home/work/retrieval/data/datasetG/test_session{session_number}_docs.jsonl"
+        f"/home/work/retrieval/data/datasetM/test_session{session_number}_docs.jsonl"
     )
     doc_data = read_jsonl(doc_path, False)
     eval_docs.extend(doc_data)

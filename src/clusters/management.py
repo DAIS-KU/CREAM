@@ -205,79 +205,6 @@ def assign_instance_or_add_cluster(
     return clusters
 
 
-def get_top_sample_and_score(
-    query, docs: dict, clusters, verbose=True, use_tensor_key=True
-):
-    closest_cluster_ids, farthest_cluster_ids = find_k_closest_clusters_for_sampling(
-        token_embs=[query["TOKEN_EMBS"]],
-        clusters=clusters,
-        k=3,
-        use_tensor_key=use_tensor_key,
-    )
-    cluster_ids = closest_cluster_ids[0]
-    print(f"cluster_ids:{cluster_ids} ")
-    first_cluster, second_cluster, third_cluster = (
-        clusters[cluster_ids[0]],
-        clusters[cluster_ids[1]],
-        clusters[cluster_ids[2]],
-    )
-    first_positive_samples, _ = first_cluster.get_topk_docids_and_scores(query, docs, 1)
-    second_positive_samples, _ = second_cluster.get_topk_docids_and_scores(
-        query, docs, 1
-    )
-    third_positive_samples, _ = third_cluster.get_topk_docids_and_scores(query, docs, 1)
-    combined_top_samples = sorted(
-        first_positive_samples + second_positive_samples + third_positive_samples,
-        key=lambda x: x[1],
-        reverse=True,
-    )
-
-    positive_sample_id, positivity = (
-        combined_top_samples[0][0],
-        combined_top_samples[0][1]
-        / len(query["text"]),  # positivity = term score 길이 정규화
-    )
-    if verbose:
-        print(
-            f" query: {query['doc_id']} | positive_sample_id: {positive_sample_id} | positivity:{positivity}"
-        )
-    return positive_sample_id, positivity
-
-
-def get_samples_top_bottom(
-    query,
-    docs: dict,
-    clusters,
-    positive_k,
-    negative_k,
-    ts,
-    use_tensor_key,
-    verbose=True,
-):
-    cluster_ids = find_k_closest_clusters_for_sampling(
-        token_embs=[query["TOKEN_EMBS"]],
-        clusters=clusters,
-        k=1,
-        use_tensor_key=use_tensor_key,
-    )[0]
-    print(f"cluster_ids:{cluster_ids} ")
-    first_cluster = clusters[cluster_ids[0]]
-    (
-        first_positive_samples,
-        first_bottom_samples,
-    ) = first_cluster.get_topk_docids_and_scores(query, docs, negative_k)
-
-    positive_samples, negative_samples = (
-        [x[0] for x in first_positive_samples[:1]],
-        [x[0] for x in first_bottom_samples],
-    )
-    if verbose:
-        print(
-            f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
-        )
-    return positive_samples, negative_samples
-
-
 def get_samples_top_bottom_3(
     query,
     docs: dict,
@@ -356,6 +283,66 @@ def get_samples_top_and_farthest3(
         use_tensor_key,
         False,
     )
+    if verbose:
+        print(
+            f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+        )
+    return positive_samples, negative_samples
+
+
+def get_samples_top1_farthest_bottom6(
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    verbose=True,
+):
+    # Find top1 in 3 nearest clusters
+    closest_cluster_ids, _ = find_k_closest_clusters_for_sampling(
+        token_embs=[query["TOKEN_EMBS"]],
+        clusters=clusters,
+        k=3,
+        use_tensor_key=use_tensor_key,
+    )
+    cluster_ids = closest_cluster_ids[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster, third_cluster = (
+        clusters[cluster_ids[0]],
+        clusters[cluster_ids[1]],
+        clusters[cluster_ids[2]],
+    )
+    first_positive_samples, _ = first_cluster.get_topk_docids_and_scores(
+        query, docs, negative_k
+    )
+    second_positive_samples, _ = second_cluster.get_topk_docids_and_scores(
+        query, docs, negative_k
+    )
+    third_positive_samples, _ = third_cluster.get_topk_docids_and_scores(
+        query, docs, negative_k
+    )
+    combined_top_samples = sorted(
+        first_positive_samples + second_positive_samples + third_positive_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    positive_samples = [x[0] for x in combined_top_samples[:positive_k]]
+
+    # Find bottom6 in top1's the farthest cluster
+    _, farthest_cluster_ids = find_k_closest_clusters_for_sampling(
+        token_embs=[query["TOKEN_EMBS"]],
+        clusters=clusters,
+        k=1,
+        use_tensor_key=use_tensor_key,
+    )
+    farthest_cluster = clusters[farthest_cluster_ids[0][0]]
+    _, farthest_cluster_negative_samples = second_cluster.get_topk_docids_and_scores(
+        docs[positive_samples[0]], docs, negative_k
+    )
+    negative_samples = [x[0] for x in farthest_cluster_negative_samples]
+
     if verbose:
         print(
             f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
@@ -508,6 +495,25 @@ def clear_invalid_clusters(clusters: List[Cluster], docs: dict, required_doc_siz
     after_n = len(valid_clusters)
     print(f"Clear invalid clusters #{before_n} -> #{after_n}")
     return valid_clusters
+
+
+def clear_cluster_caches(clusters: List[Cluster]):
+    for cluster in clusters:
+        cluster.cache = {}
+    return clusters
+
+
+def deep_copy_tensor_dict(tensor_dict: dict) -> dict:
+    return {k: v.clone() for k, v in tensor_dict.items()}
+
+
+def compare_tensor_dicts(dict1: dict, dict2: dict) -> bool:
+    if dict1.keys() != dict2.keys():
+        return False
+    for key in dict1:
+        if not torch.equal(dict1[key], dict2[key]):
+            return False
+    return True
 
 
 def clear_unused_documents(clusters: List[Cluster], docs: dict, buffer_manager=None):

@@ -12,17 +12,20 @@ from clusters import (
     Cluster,
     RandomProjectionLSH,
     DiversityBufferManager,
+    GreedyDiversityBufferManager,
     assign_instance_or_add_cluster,
     clear_invalid_clusters,
     evict_clusters,
+    get_samples_top1_farthest_bottom6,
     get_samples_top_and_farthest3,
-    get_samples_top_bottom_3,
     initialize,
     make_query_psuedo_answers,
     renew_data,
     retrieve_top_k_docs_from_cluster,
     clear_unused_documents,
-    get_top_sample_and_score,
+    deep_copy_tensor_dict,
+    compare_tensor_dicts,
+    clear_cluster_caches,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -82,7 +85,7 @@ def streaming_train(
     loss_fn = InfoNCELoss()
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_values = []
+    time_values = []
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
@@ -135,7 +138,7 @@ def streaming_train(
             optimizer.step()
 
             total_loss += loss.item()
-            loss_values.append(loss.item())  # loss.item()
+            time_values.append(loss.item())  # loss.item()
             batch_cnt += 1
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / batch_cnt:.4f}"
@@ -146,7 +149,7 @@ def streaming_train(
         print(
             f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
         )
-    return loss_values, ts
+    return time_values, ts
 
 
 def train(
@@ -171,8 +174,7 @@ def train(
     required_doc_size=None,
     include_answer=False,
 ):
-    total_loss_values = []
-    loss_values_path = "../data/loss/total_loss_values_proposal_datasetG.txt"
+    total_time_values = []
     required_doc_size = (
         required_doc_size if required_doc_size is not None else positive_k + negative_k
     )
@@ -186,11 +188,13 @@ def train(
 
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
+        time_values_path = f"../data/loss/total_time_values_proposal_clear_datasetM_{session_number}.txt"
+        start_time = time.time()
         print(f"Training Session {session_number}/{load_cluster}")
         stream = Stream(
             session_number=session_number,
-            query_path=f"../data/datasetG/train_session{session_number}_queries.jsonl",
-            doc_path=f"../data/datasetG/train_session{session_number}_docs.jsonl",
+            query_path=f"../data/datasetM/train_session{session_number}_queries.jsonl",
+            doc_path=f"../data/datasetM/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
@@ -204,14 +208,16 @@ def train(
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/proposal_datasetG_session_{session_number-1}.pth"
+                f"../data/model/proposal_clear_datasetM_session_{session_number-1}.pth"
             )
             model.load_state_dict(torch.load(model_path, map_location="cuda:1"))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/proposal_datasetG_session_{session_number}.pth"
+        new_model_path = (
+            f"../data/model/proposal_clear_datasetM_session_{session_number}.pth"
+        )
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -220,19 +226,21 @@ def train(
             and session_number > 0
         ):
             print(f"Load last sesion clusters, docs and random vectors.")
-            with open(f"../data/clusters_datasetG_2_{session_number-1}.pkl", "rb") as f:
+            with open(
+                f"../data/clusters_clear_datasetM_{session_number-1}.pkl", "rb"
+            ) as f:
                 clusters = pickle.load(f)
             with open(
-                f"../data/prev_docs_datasetG_2_{session_number-1}.pkl", "rb"
+                f"../data/prev_docs_clear_datasetM_{session_number-1}.pkl", "rb"
             ) as f:
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetG_2_{session_number-1}.pkl", "rb"
+                f"../data/random_vectors_clear_datasetM_{session_number-1}.pkl", "rb"
             ) as f:
                 random_vectors = pickle.load(f)
             # with open(
-            #     f"../data/diversity_buffer_manager_datasetG_{session_number-1}.pkl",
+            #     f"../data/diversity_buffer_manager_datasetM_{session_number-1}.pkl",
             #     "rb",
             # ) as f:
             #     diversity_buffer_manager = pickle.load(f)
@@ -300,8 +308,13 @@ def train(
                 )
             else:
                 batch_start = 0
-
+        end_time = time.time()
+        print(
+            f"############################################Initialize({end_time-start_time}sec)############################################"
+        )
+        write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
         # Assign stream batch
+        total_assign_time = 0
         for i in range(batch_start, len(stream.stream_docs)):
             print(f"Assign {i}th stream starts.")
             start_time = time.time()
@@ -318,16 +331,32 @@ def train(
                 for j, cluster in enumerate(clusters):
                     print(f"{j}th size: {len(cluster.doc_ids)}")
             end_time = time.time()
+            total_assign_time += end_time - start_time
             print(f"Assign {i}th stream ended({end_time - start_time}sec).")
+        print(
+            f"############################################Assign({total_assign_time}sec)############################################"
+        )
+        write_line(time_values_path, f"Assign({total_assign_time}sec)\n", "a")
 
         # Remain only trainable clusters
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
 
         # Train
+        start_time = time.time()
         train_queries = diversity_buffer_manager.get_samples(
             docs=stream.docs, clusters=clusters, sample_size=len(stream.queries)
         )
-        loss_values, ts = streaming_train(
+        end_time = time.time()
+
+        # print(f"============================================BACKUP CACHES BEFORE TRAIN============================================")
+        # before_train_caches = [deep_copy_tensor_dict(cluster.cache) for cluster in clusters]
+        print(
+            f"############################################QuerySelection({end_time - start_time}sec)############################################"
+        )
+        write_line(time_values_path, f"QuerySelection({end_time-start_time}sec)\n", "a")
+        clusters = clear_cluster_caches(clusters)
+        start_time = time.time()
+        time_values, ts = streaming_train(
             queries=train_queries,
             docs=stream.docs,
             ts=ts,
@@ -340,9 +369,23 @@ def train(
             use_label=use_label,
             use_weight=use_weight,
         )
-        write_line(
-            loss_values_path, f"{session_number}, {', '.join(map(str, loss_values))}"
+        end_time = time.time()
+
+        # print(f"============================================CHECK CACHES AFTER TRAIN============================================")
+        # after_train_caches = [deep_copy_tensor_dict(cluster.cache) for cluster in clusters]
+        # for before_dict, after_dict in zip(before_train_caches, after_train_caches):
+        #     for before_dict_key in before_dict.keys():
+        #         if before_dict_key not in after_dict:
+        #             print(f"Disapear key {before_dict_key}")
+        #         else:
+        #             if not compare_tensor_dicts(before_dict, after_dict):
+        #                 print(f"Value chagned {before_dict_key}")
+        #             else:
+        #                 print(f"PASS!")
+        print(
+            f"############################################Train({end_time - start_time}sec)############################################"
         )
+        write_line(time_values_path, f"Train({end_time-start_time}sec)\n", "a")
         torch.save(model.state_dict(), new_model_path)
         # Evaluate
         # clusters, eval_stream_docs = evaluate_with_cluster(
@@ -354,22 +397,31 @@ def train(
         #     use_tensor_key=use_tensor_key,
         # )
         _evaluate(session_number)
-        # # Evict
+
+        start_time = time.time()
+        # Evict
         # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}.png")
         evict_clusters(model, lsh, stream.docs, clusters, ts, required_doc_size)
         # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}_right_after_eviction.png")
         stream.docs = clear_unused_documents(clusters, stream.docs)
         # Accumulate
         prev_docs = stream.docs  # {**stream.docs, **eval_stream_docs}
+        end_time = time.time()
+        print(
+            f"############################################Eviction({end_time - start_time}sec)############################################"
+        )
+        write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
-        with open(f"../data/clusters_datasetG_2_{session_number}.pkl", "wb") as f:
+        with open(f"../data/clusters_clear_datasetM_{session_number}.pkl", "wb") as f:
             pickle.dump(clusters, f)
-        with open(f"../data/prev_docs_datasetG_2_{session_number}.pkl", "wb") as f:
+        with open(f"../data/prev_docs_clear_datasetM_{session_number}.pkl", "wb") as f:
             pickle.dump(prev_docs, f)
-        with open(f"../data/random_vectors_datasetG_2_{session_number}.pkl", "wb") as f:
+        with open(
+            f"../data/random_vectors_clear_datasetM_{session_number}.pkl", "wb"
+        ) as f:
             pickle.dump(random_vectors, f)
         # with open(
-        #     f"../data/diversity_buffer_manager_datasetG_{session_number}.pkl", "wb"
+        #     f"../data/diversity_buffer_manager_datasetM_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
 
@@ -382,8 +434,8 @@ def evaluate_with_cluster(
     model_path,
     clusters: List[Cluster],
 ) -> List[Cluster]:
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,
@@ -408,9 +460,9 @@ def evaluate_with_cluster(
     # end_time = time.time()
     # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/proposal_datasetG_{session_number}_with_cluster.txt"
+    # rankings_path = f"../data/rankings/proposal_clear_datasetM_{session_number}_with_cluster.txt"
     # write_file(rankings_path, result)
-    # eval_log_path = f"../data/evals/proposa_datasetG_{session_number}_with_cluster.txt"
+    # eval_log_path = f"../data/evals/proposa_datasetM_{session_number}_with_cluster.txt"
     # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
@@ -421,10 +473,10 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number):
-    method = "proposal_datasetG"
+    method = "proposal_clear_datasetM"
     print(f"Evaluate Session {session_number}")
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -462,8 +514,8 @@ def _evaluate(session_number):
 
 
 def eval_rankings(session_number):
-    eval_query_path = f"../data/datasetG/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetG/test_session{session_number}_docs.jsonl"
+    eval_query_path = f"../data/datasetM/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"../data/datasetM/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -473,9 +525,13 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/proposal_datasetG_{session_number}_with_cluster.txt"
+        f"../data/rankings/proposal_clear_datasetM_{session_number}_with_cluster.txt"
     )
-    eval_log_path = f"../data/evals/proposa_datasetG_{session_number}_with_cluster.txt"
+    eval_log_path = (
+        f"../data/evals/proposal_clear_datasetM_{session_number}_with_cluster.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = f"../data/rankings/proposal_datasetG_session_{session_number}.txt"
+    rankings_path = (
+        f"../data/rankings/proposal_clear_datasetM_session_{session_number}.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
