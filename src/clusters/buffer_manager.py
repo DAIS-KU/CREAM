@@ -25,14 +25,14 @@ class DiversityBufferManager(BufferManager):
     def __init__(self, buffer_size=150):
         super().__init__(buffer_size)
 
-    def get_samples_in_clsuter(self, docs, cluster, qids, sample_size):
+    def get_samples_in_clsuter(self, docs, cluster, qids, sample_size, cache):
         if len(qids) <= sample_size:
             return qids
         else:
             qsets = {}
             for qidx, qid in enumerate(qids):
                 query = docs[qid]
-                r, doc_ids = cluster.get_doc_ids_in_r(docs, query)
+                r, doc_ids = cluster.get_doc_ids_in_r_with_cache(cache, docs, query)
                 print(f"* {qidx}th query docs in r {r}: #{len(doc_ids)}")
                 qsets[qid] = set(doc_ids)
 
@@ -65,7 +65,7 @@ class DiversityBufferManager(BufferManager):
 
             return selected
 
-    def get_samples(self, docs, clusters, sample_size):
+    def get_samples(self, docs, clusters, caches, sample_size):
         cluster_qids = {}
         total_doc_size, total_query_size = 0, 0
         for cid, cluster in enumerate(clusters):
@@ -99,6 +99,7 @@ class DiversityBufferManager(BufferManager):
                     cluster=clusters[cid],
                     qids=cluster_qids[cid],
                     sample_size=sample_sz,
+                    cache=caches[cid],
                 )
                 diverse_qids.update(dqids)
 

@@ -25,7 +25,8 @@ from clusters import (
     clear_unused_documents,
     deep_copy_tensor_dict,
     compare_tensor_dicts,
-    clear_cluster_caches,
+    build_cluster_cache_table,
+    get_samples_top1_farthest_bottom6_with_cache,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -344,17 +345,35 @@ def train(
         # Train
         start_time = time.time()
         train_queries = diversity_buffer_manager.get_samples(
-            docs=stream.docs, clusters=clusters, sample_size=len(stream.queries)
+            docs=stream.docs,
+            clusters=clusters,
+            caches=cluster_caches,
+            sample_size=len(stream.queries),
         )
         end_time = time.time()
 
-        # print(f"============================================BACKUP CACHES BEFORE TRAIN============================================")
-        # before_train_caches = [deep_copy_tensor_dict(cluster.cache) for cluster in clusters]
+        print(
+            f"=================================================BUILD CACHES BEFORE TRAIN======================================================"
+        )
+        start_time = time.time()
+        cluster_caches = build_cluster_cache_table(
+            queries=train_queries,
+            clusters=clusters,
+            docs=docs,
+            query_batch_size=4,
+            doc_batch_size=512,
+        )
+        end_time = time.time()
+        print(
+            f"==============================================DONE({end_time-start_time}sec)===================================================="
+        )
+        write_line(time_values_path, f"BuildCaches({end_time-start_time}sec)\n", "a")
+
         print(
             f"############################################QuerySelection({end_time - start_time}sec)############################################"
         )
         write_line(time_values_path, f"QuerySelection({end_time-start_time}sec)\n", "a")
-        clusters = clear_cluster_caches(clusters)
+
         start_time = time.time()
         time_values, ts = streaming_train(
             queries=train_queries,
@@ -371,17 +390,6 @@ def train(
         )
         end_time = time.time()
 
-        # print(f"============================================CHECK CACHES AFTER TRAIN============================================")
-        # after_train_caches = [deep_copy_tensor_dict(cluster.cache) for cluster in clusters]
-        # for before_dict, after_dict in zip(before_train_caches, after_train_caches):
-        #     for before_dict_key in before_dict.keys():
-        #         if before_dict_key not in after_dict:
-        #             print(f"Disapear key {before_dict_key}")
-        #         else:
-        #             if not compare_tensor_dicts(before_dict, after_dict):
-        #                 print(f"Value chagned {before_dict_key}")
-        #             else:
-        #                 print(f"PASS!")
         print(
             f"############################################Train({end_time - start_time}sec)############################################"
         )

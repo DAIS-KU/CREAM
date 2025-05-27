@@ -350,6 +350,75 @@ def get_samples_top1_farthest_bottom6(
     return positive_samples, negative_samples
 
 
+def get_samples_top1_farthest_bottom6_with_cache(
+    caches,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    verbose=True,
+):
+    # Find top1 in 3 nearest clusters
+    closest_cluster_ids, _ = find_k_closest_clusters_for_sampling(
+        token_embs=[query["TOKEN_EMBS"]],
+        clusters=clusters,
+        k=3,
+        use_tensor_key=use_tensor_key,
+    )
+    cluster_ids = closest_cluster_ids[0]
+    print(f"cluster_ids:{cluster_ids} ")
+    first_cluster, second_cluster, third_cluster = (
+        clusters[cluster_ids[0]],
+        clusters[cluster_ids[1]],
+        clusters[cluster_ids[2]],
+    )
+    first_positive_samples, _ = first_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[0]], docs=docs, k=negative_k
+    )
+    second_positive_samples, _ = second_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[1]], docs=docs, k=negative_k
+    )
+    third_positive_samples, _ = third_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[2]], docs=docs, k=negative_k
+    )
+    combined_top_samples = sorted(
+        first_positive_samples + second_positive_samples + third_positive_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    positive_samples = [x[0] for x in combined_top_samples[:positive_k]]
+
+    # Find bottom6 in top1's the farthest cluster
+    _, farthest_cluster_ids = find_k_closest_clusters_for_sampling(
+        token_embs=[query["TOKEN_EMBS"]],
+        clusters=clusters,
+        k=1,
+        use_tensor_key=use_tensor_key,
+    )
+    farthest_cluster_id = farthest_cluster_ids[0][0]
+    farthest_cluster = clusters[farthest_cluster_id]
+    top1_query = docs[positive_samples[0]]
+    (
+        _,
+        farthest_cluster_negative_samples,
+    ) = second_cluster.get_topk_docids_and_scores_with_cache(
+        qid=top1_query["doc_id"],
+        cache=caches[farthest_cluster_id],
+        docs=docs,
+        k=negative_k,
+    )
+    negative_samples = [x[0] for x in farthest_cluster_negative_samples]
+
+    if verbose:
+        print(
+            f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+        )
+    return positive_samples, negative_samples
+
+
 def evict_clusters(
     model, lsh, docs: dict, clusters: List[Cluster], ts, required_doc_size
 ) -> List[Cluster]:
@@ -553,3 +622,86 @@ def sample_past_queries(docs, clusters, n=100):
     sampled_queries = [v for k, v in docs.items() if k in sampled_qids]
     print(f"sample_past_queries finished.(sampled queries #{len(sampled_queries)})")
     return sampled_queries
+
+
+def build_cluster_cache_table(
+    queries, clusters: List, docs: Dict, query_batch_size=4, doc_batch_size=512
+):
+    """
+    {
+        cluster_id: {
+            qid: [cluster_docs_len]
+        }
+    }
+    """
+    qids = [q["doc_id"] for q in queries]
+    cluster_splits = [[] for _ in devices]
+    for idx, cluster in enumerate(clusters):
+        cluster_splits[idx % len(devices)].append((idx, cluster))
+
+    # 쿼리 텐서 미리 캐싱
+    query_tensor_cache = {}
+    for q_start in range(0, len(qids), query_batch_size):
+        qid_batch = qids[q_start : q_start + query_batch_size]
+        qid_key = tuple(qid_batch)
+        if qid_key not in query_tensor_cache:
+            q_embs = [docs[qid]["TOKEN_EMBS"].unsqueeze(0) for qid in qid_batch]
+            query_tensor_cache[qid_key] = torch.cat(q_embs, dim=0)
+
+    def worker(device, assigned_clusters):
+        local_cache = {}
+        doc_tensor_cache = {}
+
+        for qid_key, q_batch_tensor in query_tensor_cache.items():
+            qid_batch = list(qid_key)
+
+            for cluster_id, cluster in assigned_clusters:
+                if cluster_id not in doc_tensor_cache:
+                    doc_ids = cluster.get_only_docids(docs)
+                    doc_embs = [
+                        docs[doc_id]["TOKEN_EMBS"].unsqueeze(0)
+                        for doc_id in doc_ids
+                        if doc_id in docs
+                    ]
+                    doc_tensor_cache[cluster_id] = doc_embs
+                else:
+                    doc_embs = doc_tensor_cache[cluster_id]
+
+                if not doc_embs:
+                    for qid in qid_batch:
+                        local_cache.setdefault(cluster_id, {})[qid] = 0
+                    continue
+
+                all_scores = []
+                for d_start in range(0, len(doc_embs), doc_batch_size):
+                    d_batch = torch.cat(
+                        doc_embs[d_start : d_start + doc_batch_size], dim=0
+                    )
+                    scores = calculate_S_qd_regl_batch_batch(
+                        q_batch_tensor, d_batch, device
+                    )
+                    all_scores.append(scores)
+
+                full_score_matrix = torch.cat(all_scores, dim=1)
+                for i, qid in enumerate(qid_batch):
+                    local_cache.setdefault(cluster_id, {})[qid] = full_score_matrix[
+                        i
+                    ].tolist()
+
+        return local_cache
+
+    all_local_caches = []
+    with ThreadPoolExecutor(max_workers=len(devices)) as executor:
+        futures = [
+            executor.submit(worker, device, cluster_splits[i])
+            for i, device in enumerate(devices)
+        ]
+        for future in futures:
+            all_local_caches.append(future.result())
+
+    cluster_cache = {}
+    for local in all_local_caches:
+        for cluster_id, qid_dict in local.items():
+            cluster_cache.setdefault(cluster_id, {}).update(qid_dict)
+
+    return cluster_cache

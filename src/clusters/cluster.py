@@ -126,6 +126,28 @@ class Cluster:
         bottom_k_regl_docs = combined_regl_scores[-k:]
         return top_k_regl_docs, bottom_k_regl_docs  # [(id, score), ]
 
+    def get_topk_docids_and_scores_with_cache(self, qid, cache: dict, docs: dict, k):
+        doc_ids = self.get_only_docids(docs)
+        doc_scores = cache[qid]
+        paired = list(zip(doc_ids, doc_scores))
+        paired.sort(key=lambda x: x[1], reverse=True)
+        top_k = paired[:k]
+        bottom_k = paired[-k:]
+        return top_k, bottom_k
+
+    def get_topk_docids_with_cache(
+        self, query, cache: dict, docs: dict, k
+    ) -> List[str]:
+        (
+            top_k_regl_docs,
+            bottom_k_regl_docs,
+        ) = self.get_topk_bottomk_docids_and_scores_with_cache(
+            qid=query["doc_id"], cache=cache, docs=docs, k=k
+        )
+        top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+        bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
+        return top_k_regl_doc_ids, bottom_k_regl_doc_ids
+
     def get_topk_docids(self, query, docs: dict, k, batch_size=8) -> List[str]:
         top_k_regl_docs, bottom_k_regl_docs = self.get_topk_docids_and_scores(
             query, docs, k, batch_size
@@ -307,6 +329,19 @@ class Cluster:
             query, docs
         )  # [(doc_id, score), ...]
         scores = [score for _, score in docids_and_scores]
+        if r is None:
+            qids = self.get_only_qids(docs)
+            score_idx = int(len(scores) * (1 / len(qids)))  # 균등 분할 시 차지하는 갯수
+            r = scores[score_idx]
+            # r = sum(scores) / len(scores)
+        idx = bisect.bisect_left(list(reversed(scores)), r)
+        selected = [doc_id for doc_id, _ in docids_and_scores[: len(scores) - idx]]
+        return r, selected
+
+    def get_doc_ids_in_r_with_cache(self, cache, docs, query, r=None):
+        doc_ids = self.get_only_docids(docs)
+        doc_scores = cache[query["doc_id"]]
+        docids_and_scores = list(zip(doc_ids, doc_scores))
         if r is None:
             qids = self.get_only_qids(docs)
             score_idx = int(len(scores) * (1 / len(qids)))  # 균등 분할 시 차지하는 갯수
