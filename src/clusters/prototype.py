@@ -35,20 +35,46 @@ class RandomProjectionLSH:
         return hash_table
 
     def get_final_vector(self, hash_table):
-        if self.use_tensor_key:
-            compressed_embeddings = torch.zeros(self.hash_size, self.embedding_dim)
-            for key, values in hash_table.items():
-                values_tensor = torch.stack(values)
-                compressed_embeddings[key] = values_tensor.sum(dim=0)
-            return compressed_embeddings.cpu()
-        else:
-            sparse_map = defaultdict(int)
-            for key, values in hash_table.items():
-                sparse_map[key] = torch.stack(values).sum(dim=0).cpu()
-            return sparse_map
+        # if self.use_tensor_key:
+        compressed_embeddings = torch.zeros(self.hash_size, self.embedding_dim)
+        for key, values in hash_table.items():
+            values_tensor = torch.stack(values)
+            compressed_embeddings[key] = values_tensor.sum(dim=0)
+        return compressed_embeddings.cpu()
+        # else:
+        #     sparse_map = defaultdict(int)
+        #     for key, values in hash_table.items():
+        #         sparse_map[key] = torch.stack(values).sum(dim=0).cpu()
+        #     return sparse_map
 
     def encode(self, embeddings):
         device = embeddings.device
         hash_table = self._hash(embeddings, device)
         final_vector = self.get_final_vector(hash_table)
         return final_vector
+
+    def encode_batch(self, batch_embeddings):
+        """
+        Args:
+            batch_embeddings: Tensor of shape (B, L, D)
+        Returns:
+            compressed_embeddings: Tensor of shape (hash_size, D)
+        """
+        B, L, D = batch_embeddings.shape
+        device = batch_embeddings.device
+        R = self.random_vectors.to(device)  # (num_bits, D)
+        projections = torch.matmul(batch_embeddings, R.T)  # (B, L, num_bits)
+        binary_vectors = (projections > 0).int()  # (B, L, num_bits)
+        hash_keys = torch.sum(
+            binary_vectors * self.powers_of_two.to(device), dim=-1
+        )  # (B, L), 2진수 결과를 10진수 키로.
+        valid_mask = ~(batch_embeddings == 0).all(dim=-1)  # (B, L)
+        hash_keys = hash_keys * valid_mask  # 무효 위치를 0으로
+        compressed_embeddings = torch.zeros(B, self.hash_size, D, device=device)
+        hash_keys_exp = hash_keys.unsqueeze(-1).expand(-1, -1, D)  # (B, L, D)
+        compressed_embeddings.scatter_add_(
+            dim=1, index=hash_keys_exp, src=batch_embeddings
+        )
+        # 모든 배치의 해시 결과를 합산 → (hash_size, D)
+        compressed_sum = compressed_embeddings.sum(dim=0)  # (hash_size, D)
+        return compressed_sum.cpu()

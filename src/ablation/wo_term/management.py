@@ -17,7 +17,9 @@ from functions import (
 from .cluster import Cluster
 from .clustering import kmeans_mean_pooling
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 MAX_SCORE = 1.0
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]

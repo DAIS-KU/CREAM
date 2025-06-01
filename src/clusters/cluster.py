@@ -32,9 +32,9 @@ class Cluster:
         docs: dict,
         use_tensor_key,
         timestamp=0,
-        batch_size=8,
+        batch_size=32,
         z1=8.0,
-        z2=0.75,
+        z2=0.25,  # lotte 0.25 msmarco 0.75
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
@@ -43,7 +43,7 @@ class Cluster:
         self.batch_size = batch_size
         self.z1 = z1
         self.z2 = z2
-        # self.cache = {}
+        self.cache = {}
         if len(self.doc_ids) == 1:
             self.S1 = 0.0
             self.S2 = 0.0
@@ -67,14 +67,14 @@ class Cluster:
         return only_qids
 
     # batch_ids 순서가 유지되는가?
-    def get_docids_and_scores(self, query, docs: dict, batch_size=8):
+    def get_docids_and_scores(self, query, docs: dict):
         query_token_embs = query["TOKEN_EMBS"]
 
         def process_batch(device, batch_doc_ids):
             regl_scores = []
             temp_query_token_embs = query_token_embs.clone().unsqueeze(0).to(device)
-            for i in range(0, len(batch_doc_ids), batch_size):
-                batch_ids = batch_doc_ids[i : i + batch_size]
+            for i in range(0, len(batch_doc_ids), self.batch_size):
+                batch_ids = batch_doc_ids[i : i + self.batch_size]
                 # batch_embs = torch.stack(
                 #         [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_ids], dim=0
                 #     )
@@ -120,8 +120,8 @@ class Cluster:
         combined_regl_scores = sorted(regl_scores, key=lambda x: x[1], reverse=True)
         return combined_regl_scores
 
-    def get_topk_docids_and_scores(self, query, docs: dict, k, batch_size=8):
-        combined_regl_scores = self.get_docids_and_scores(query, docs, batch_size)
+    def get_topk_docids_and_scores(self, query, docs: dict, k):
+        combined_regl_scores = self.get_docids_and_scores(query, docs)
         top_k_regl_docs = combined_regl_scores[:k]
         bottom_k_regl_docs = combined_regl_scores[-k:]
         return top_k_regl_docs, bottom_k_regl_docs  # [(id, score), ]
@@ -148,9 +148,9 @@ class Cluster:
         bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
         return top_k_regl_doc_ids, bottom_k_regl_doc_ids
 
-    def get_topk_docids(self, query, docs: dict, k, batch_size=8) -> List[str]:
+    def get_topk_docids(self, query, docs: dict, k) -> List[str]:
         top_k_regl_docs, bottom_k_regl_docs = self.get_topk_docids_and_scores(
-            query, docs, k, batch_size
+            query, docs, k
         )
         top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
         bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
@@ -223,26 +223,41 @@ class Cluster:
         BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
 
-        for batch_start in range(0, len(doc_ids), self.batch_size):
-            # for batch_start in range(0, len(self.doc_ids), self.batch_size):
-            batch_doc_ids = doc_ids[batch_start : batch_start + self.batch_size]
-            # batch_doc_ids = self.doc_ids[batch_start : batch_start + self.batch_size]
-            batch_doc_embs = torch.stack(
-                [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
-                dim=0,
-            ).squeeze(dim=1)
+        for i in range(0, len(doc_ids), self.batch_size):
+            batch_doc_ids = doc_ids[i : i + self.batch_size]
+            batch_key = tuple(batch_doc_ids)
+            # batch_doc_embs = torch.stack(
+            #     [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
+            #     dim=0,
+            # ).squeeze(dim=1)
+            batch_doc_embs = self.cache.setdefault(
+                batch_key,
+                torch.stack(
+                    [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids], dim=0
+                ),
+            )
             x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
-                batch_doc_embs, self.prototype.unsqueeze(0), batch_doc_embs.device
+                batch_doc_embs.squeeze(dim=1),
+                self.prototype.unsqueeze(0),
+                batch_doc_embs.device,
             )
             mask = x_dists <= BOUNDARY
-            for i in range(len(batch_doc_ids)):
-                doc_id = batch_doc_ids[i]
-                if mask[i].item():
-                    doc_embs = get_passage_embeddings(model, [docs[doc_id]["text"]])[0]
-                    docs[doc_id]["TOKEN_EMBS"] = doc_embs.cpu()
-                    doc_hash = lsh.encode(doc_embs)
-                    temp_docids.append(doc_id)
-                    temp_prototype += doc_hash
+            selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
+            if selected_indices.numel() > 0:
+                selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
+                selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+                temp_docids.extend(selected_doc_ids)
+                temp_prototype += lsh.encode_batch(
+                    new_doc_embs
+                )  # (B, L, D) -> (B, hash_size, D)
+                # for idx, doc_id in enumerate(selected_doc_ids):
+                #     doc_emb = new_doc_embs[idx]
+                #     docs[doc_id]["TOKEN_EMBS"] = doc_emb
+                #     doc_hash = lsh.encode(doc_emb)
+                #     temp_docids.append(doc_id)
+                #     temp_prototype += doc_hash
+
         after_d_n = len(temp_docids)
         if after_d_n <= required_doc_size:
             return False
@@ -250,11 +265,18 @@ class Cluster:
         qsz = int(len(temp_qids) * after_d_n / before_d_n)
         temp_qids = random.sample(temp_qids, qsz)
         after_q_n = len(temp_qids)
-        for qid in temp_qids:
-            doc_embs = get_passage_embeddings(model, [docs[qid]["text"]])[0]
-            docs[qid]["TOKEN_EMBS"] = doc_embs.cpu()
-            doc_hash = lsh.encode(doc_embs)
-            temp_prototype += doc_hash
+        for i in range(0, len(temp_qids), self.batch_size):
+            batch_qids = temp_qids[i : i + self.batch_size]
+            batch_texts = [docs[qid]["text"] for qid in batch_qids]
+            batch_embs = get_passage_embeddings(model, batch_texts).cpu()
+            temp_prototype += lsh.encode_batch(
+                batch_embs
+            )  # (B, L, D) -> (B, hash_size, D)
+            # for j, qid in enumerate(batch_qids):
+            #     doc_emb = batch_embs[j]
+            #     docs[qid]["TOKEN_EMBS"] = doc_emb
+            #     doc_hash = lsh.encode(doc_emb)
+            #     temp_prototype += doc_hash
 
         self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
         # self.doc_ids = list(set(temp_docids))
@@ -264,7 +286,7 @@ class Cluster:
         )
 
         self.update_statistics(docs)
-        # self.cache = {}
+        self.cache = {}
         print(
             f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
         )
@@ -275,7 +297,10 @@ class Cluster:
 
     def update_statistics(self, docs: dict):
         partition = min(len(self.doc_ids), num_devices)
-        id_batches = [self.doc_ids[i::partition] for i in range(partition)]
+        doc_ids = self.get_only_docids(docs)
+        did_batches = [doc_ids[i::partition] for i in range(partition)]
+        q_ids = self.get_only_qids(docs)
+        qid_batches = [q_ids[i::partition] for i in range(partition)]
         # print(f"id_batches {id_batches}")
 
         def process_batch(
@@ -291,6 +316,15 @@ class Cluster:
                     ],
                     dim=0,
                 ).squeeze(1)
+                # batch_doc_ids = id_batch[i : i + self.batch_size]
+                # batch_key = tuple(batch_doc_ids)
+                # batch_token_embs = self.cache.setdefault(
+                #     batch_key,
+                #     torch.stack(
+                #         [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids], dim=0
+                #     ),
+                # )
+                # batch_token_embs = batch_token_embs.squeeze(1)
                 if self.use_tensor_key:
                     if batch_token_embs.dim() == 2:
                         batch_token_embs = batch_token_embs.unsqueeze(0)
@@ -314,7 +348,13 @@ class Cluster:
         results = []
         with ThreadPoolExecutor(max_workers=partition) as executor:
             futures = {
-                executor.submit(process_batch, id_batches[i], devices[i]): i
+                executor.submit(process_batch, did_batches[i], devices[i]): i
+                for i in range(partition)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+            futures = {
+                executor.submit(process_batch, qid_batches[i], devices[i]): i
                 for i in range(partition)
             }
             for future in concurrent.futures.as_completed(futures):
@@ -338,15 +378,16 @@ class Cluster:
         selected = [doc_id for doc_id, _ in docids_and_scores[: len(scores) - idx]]
         return r, selected
 
-    def get_doc_ids_in_r_with_cache(self, cache, docs, query, r=None):
+    def get_doc_ids_in_r_with_cache(self, cache, docs, query):
         doc_ids = self.get_only_docids(docs)
         doc_scores = cache[query["doc_id"]]
         docids_and_scores = list(zip(doc_ids, doc_scores))
-        if r is None:
-            qids = self.get_only_qids(docs)
-            score_idx = int(len(scores) * (1 / len(qids)))  # 균등 분할 시 차지하는 갯수
-            r = scores[score_idx]
-            # r = sum(scores) / len(scores)
-        idx = bisect.bisect_left(list(reversed(scores)), r)
-        selected = [doc_id for doc_id, _ in docids_and_scores[: len(scores) - idx]]
+        docids_and_scores = sorted(docids_and_scores, key=lambda x: x[1], reverse=True)
+        scores = [score for _, score in docids_and_scores]
+        # 균등 분할 시 차지하는 갯수
+        qids = self.get_only_qids(docs)
+        score_idx = int(len(doc_ids) * (1 / len(qids)))
+        r = scores[score_idx]  # 최소 점수
+        # idx = bisect.bisect_left(list(reversed(scores)), r)
+        selected = [doc_id for doc_id, _ in docids_and_scores[:score_idx]]
         return r, selected

@@ -12,7 +12,9 @@ from .loader import load_train_docs, read_jsonl, read_jsonl_as_dict
 max_q_len: int = 32
 max_p_len: int = 128
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
 
 

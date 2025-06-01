@@ -12,7 +12,9 @@ from data import load_eval_docs, read_jsonl, read_jsonl_as_dict, write_file
 from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]

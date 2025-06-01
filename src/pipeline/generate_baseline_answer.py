@@ -19,7 +19,9 @@ def append_jsonl(data, path):
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained("bert-base-uncased").to(devices[-1])
+    model = BertModel.from_pretrained(
+        "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    ).to(devices[-1])
     return model
 
 

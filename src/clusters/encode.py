@@ -14,7 +14,9 @@ from buffer import (
 from clusters import RandomProjectionLSH
 from functions import get_passage_embeddings
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 
 def _renew_queries_with_text(
@@ -190,7 +192,9 @@ def renew_data(
     models, hashes = [], []
     random_vectors = torch.randn(nbits, embedding_dim)
     for device in devices:
-        model = BertModel.from_pretrained("bert-base-uncased").to(device)
+        model = BertModel.from_pretrained(
+            "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+        ).to(device)
         if model_path is not None:
             print("Load model in clusters.encoder.")
             model.load_state_dict(torch.load(model_path, map_location="cuda:0"))

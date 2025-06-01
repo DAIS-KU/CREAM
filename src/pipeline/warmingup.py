@@ -79,7 +79,9 @@ def collate_fn(batch):
     return default_collate(batch)
 
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 
 class MSMARCODataset(Dataset):

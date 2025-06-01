@@ -32,7 +32,9 @@ from functions import (
 )
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]

@@ -6,7 +6,9 @@ from transformers import BertTokenizer
 
 from buffer import DataArguments, ModelArguments, TevatronTrainingArguments
 
-tokenizer = BertTokenizer.from_pretrained("/home/work/retrieval/bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 
 def get_passage_embeddings(model, passages, device=None, max_length=256):

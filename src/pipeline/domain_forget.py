@@ -22,7 +22,9 @@ from functions import (
 from clusters import renew_data
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+)
 
 
 def encode_texts(model, texts, max_length=256):
