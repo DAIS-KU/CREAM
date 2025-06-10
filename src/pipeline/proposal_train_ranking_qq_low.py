@@ -77,7 +77,7 @@ def build_query_caches(clusters, docs):
         qids=all_qids,
         clusters=clusters,
         docs=docs,
-        query_batch_size=32,
+        query_batch_size=64,
         doc_batch_size=512,
     )
     return all_qids, q_caches
@@ -104,7 +104,7 @@ def add_positive_caches(all_qids, q_caches, clusters, docs):
         qids=all_pids,
         clusters=clusters,
         docs=docs,
-        query_batch_size=32,
+        query_batch_size=64,
         doc_batch_size=512,
     )
     total_ids = all_qids + all_pids
@@ -461,7 +461,7 @@ def train(
         #     model_path=new_model_path,
         #     use_tensor_key=use_tensor_key,
         # )
-        # _evaluate(session_number)
+        _evaluate(session_number)
 
         start_time = time.time()
         # Evict

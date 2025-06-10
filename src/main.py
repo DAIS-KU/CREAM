@@ -28,6 +28,9 @@ from pipeline import (
     qq_low_evaluate,
     qq_low_train2,
     create_cos_ans_file,
+    get_correlation,
+    get_correlation_ans,
+    get_cosine_recall,
 )
 
 
@@ -382,5 +385,9 @@ if __name__ == "__main__":
         df_train(dataset=args.dataset, start_domain=args.start_domain)
     elif args.exp == "create_cos_ans_file":
         create_cos_ans_file()
+    elif args.exp == "sim_comp":
+        # get_correlation()
+        # get_correlation_ans()
+        get_cosine_recall()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

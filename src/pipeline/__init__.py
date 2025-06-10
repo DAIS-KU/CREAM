@@ -31,3 +31,5 @@ from .proposal_train_ranking_qq_low2 import train as qq_low_train2
 
 
 from .generate_baseline_answer import create_cos_ans_file
+from .cosine_term_correlation import get_correlation
+from .cosine_term_correlation_answers import get_correlation_ans, get_cosine_recall

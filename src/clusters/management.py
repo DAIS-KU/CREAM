@@ -6,6 +6,7 @@ from typing import List, Any
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from .stream import Stream
 from functions import (
@@ -56,14 +57,15 @@ def initialize(
 
 # tensor_clustering.get_closest_clusters_use_tensor_key
 def find_k_closest_clusters(
-    token_embs: List[Any],
+    token_embs,
     clusters: List[Cluster],
     k,
     device,
     use_tensor_key,
     batch_size=4,
 ) -> List[int]:
-    token_embs = torch.stack(token_embs, dim=0)
+    if not isinstance(token_embs, torch.Tensor):
+        token_embs = torch.stack(token_embs, dim=0)
     prototypes = [cluster.prototype for cluster in clusters]
     scores = []
     if use_tensor_key:
@@ -131,68 +133,142 @@ def find_k_closest_clusters_for_sampling(
     return topk_indices.tolist(), bottomk_indices.tolist()
 
 
+# def assign_instance_or_add_cluster(
+#     lsh: RandomProjectionLSH,
+#     clusters: List[Cluster],
+#     stream_docs,
+#     docs: dict,
+#     ts,
+#     use_tensor_key,
+#     cluster_min_size,
+# ):
+#     print("assign_instance_or_add_cluster started.")
+
+#     # stride. 순서 보장 필요X
+#     batch_cnt = min(num_devices, len(stream_docs))
+#     batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
+#     lock = threading.Lock()
+
+#     def process_batch(batch, device):
+#         print(f"ㄴ Batch {len(batch)} starts on {device}.")
+#         doc_ids = [doc["doc_id"] for doc in batch]
+#         batch_embs = [docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids]
+#         batch_closest_ids = find_k_closest_clusters(
+#             batch_embs, clusters, 1, device, lsh.use_tensor_key
+#         )
+#         for i, doc in enumerate(batch):
+#             doc_embs = batch_embs[i]
+#             doc_hash = lsh.encode(doc_embs)
+#             if len(clusters) == 0:
+#                 print(f"Empty Clusters")
+#                 clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
+#             else:
+#                 closest_cluster_id = batch_closest_ids[i][0]
+#                 closest_cluster = clusters[closest_cluster_id]
+#                 closest_distance = closest_cluster.get_distance(doc_embs)
+#                 closest_boundary = closest_cluster.get_boundary()
+#                 mean, std, n = (
+#                     closest_cluster.calculate_mean(),
+#                     closest_cluster.calculate_rms(),
+#                     len(
+#                         closest_cluster.get_only_docids(docs, False)
+#                     ),  # closest_cluster.N
+#                 )
+
+#                 if n <= cluster_min_size or closest_distance <= closest_boundary:
+#                     with lock:
+#                         closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
+#                 else:
+#                     with lock:
+#                         print(
+#                             f"closest_cluster: {mean}, {std} | N: {n}, doc_ids#:{len(closest_cluster.doc_ids)}, only docs#: {len(closest_cluster.get_only_docids(docs))}"
+#                         )
+#                         print(
+#                             f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
+#                         )
+#                         clusters.append(
+#                             Cluster(
+#                                 doc_hash,
+#                                 [doc],
+#                                 docs,
+#                                 use_tensor_key,
+#                                 ts,
+#                             )
+#                         )
+
+#     with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
+#         futures = []
+#         for i, batch in enumerate(batches):
+#             device = devices[i % batch_cnt]
+#             futures.append(executor.submit(process_batch, batch, device))
+#         for future in futures:
+#             future.result()
+#     print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
+#     return clusters
 def assign_instance_or_add_cluster(
-    lsh: RandomProjectionLSH,
-    clusters: List[Cluster],
+    lsh,
+    clusters,
     stream_docs,
-    docs: dict,
+    docs,
     ts,
     use_tensor_key,
     cluster_min_size,
 ):
     print("assign_instance_or_add_cluster started.")
 
-    # stride. 순서 보장 필요X
     batch_cnt = min(num_devices, len(stream_docs))
     batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
     lock = threading.Lock()
 
     def process_batch(batch, device):
         print(f"ㄴ Batch {len(batch)} starts on {device}.")
+
         doc_ids = [doc["doc_id"] for doc in batch]
         batch_embs = [docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids]
-        batch_closest_ids = find_k_closest_clusters(
-            batch_embs, clusters, 1, device, lsh.use_tensor_key
-        )
-        for i, doc in enumerate(batch):
-            doc_embs = batch_embs[i]
-            doc_hash = lsh.encode(doc_embs)
-            if len(clusters) == 0:
-                print(f"Empty Clusters")
-                clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
-            else:
-                closest_cluster_id = batch_closest_ids[i][0]
-                closest_cluster = clusters[closest_cluster_id]
-                closest_distance = closest_cluster.get_distance(doc_embs)
-                closest_boundary = closest_cluster.get_boundary()
-                mean, std, n = (
-                    closest_cluster.calculate_mean(),
-                    closest_cluster.calculate_rms(),
-                    len(
-                        closest_cluster.get_only_docids(docs, False)
-                    ),  # closest_cluster.N
-                )
+        batch_embs_tensor = torch.stack(batch_embs).to(device)  # (B, L, D)
 
-                if n <= cluster_min_size or closest_distance <= closest_boundary:
-                    with lock:
-                        closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
-                else:
-                    with lock:
-                        print(
-                            f"closest_cluster: {mean}, {std} | N: {n}, doc_ids#:{len(closest_cluster.doc_ids)}, only docs#: {len(closest_cluster.get_only_docids(docs))}"
-                        )
-                        print(
-                            f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
-                        )
-                        clusters.append(
-                            Cluster(
-                                doc_hash,
-                                [doc],
-                                docs,
-                                use_tensor_key,
-                                ts,
-                            )
-                        )
+        # 🔹 배치 해시 인코딩
+        batch_hashes = lsh.encode_batch(
+            batch_embeddings=batch_embs_tensor, is_sum=False
+        )  # (B, hash_size, D)
+
+        # 🔹 배치 클러스터 유사도 계산
+        batch_closest_ids = find_k_closest_clusters(
+            batch_embs_tensor, clusters, 1, device, lsh.use_tensor_key
+        )  # (B, 1)
+
+        for i, doc in enumerate(batch):
+            doc_embs = batch_embs_tensor[i]
+            doc_hash = batch_hashes[i]
+
+            if len(clusters) == 0:
+                with lock:
+                    clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
+                continue
+
+            closest_cluster_id = batch_closest_ids[i][0]
+            closest_cluster = clusters[closest_cluster_id]
+            closest_distance = closest_cluster.get_distance(doc_embs)
+            closest_boundary = closest_cluster.get_boundary()
+            mean, std, n = (
+                closest_cluster.calculate_mean(),
+                closest_cluster.calculate_rms(),
+                len(closest_cluster.get_only_docids(docs, False)),
+            )
+
+            if n <= cluster_min_size or closest_distance <= closest_boundary:
+                with lock:
+                    closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
+            else:
+                with lock:
+                    print(
+                        f"closest_cluster: {mean}, {std} | N: {n}, "
+                        f"doc_ids#:{len(closest_cluster.doc_ids)}, only docs#: {len(closest_cluster.get_only_docids(docs))}"
+                    )
+                    print(
+                        f"closest_distance: {closest_distance}, closest_boundary: {closest_boundary}"
+                    )
+                    clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
 
     with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
         futures = []
@@ -201,6 +277,7 @@ def assign_instance_or_add_cluster(
             futures.append(executor.submit(process_batch, batch, device))
         for future in futures:
             future.result()
+
     print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
     return clusters
 
@@ -651,85 +728,228 @@ def sample_past_queries(docs, clusters, n=100):
 
 
 def build_cluster_cache_table(
-    qids, clusters: List, docs: dict, query_batch_size=4, doc_batch_size=512
+    qids,
+    clusters,
+    docs,
+    query_batch_size=32,
+    doc_batch_size=512,
 ):
     """
-    {
-        cluster_id: {
-            qid: [cluster_docs_len]
-        }
-    }
+    Builds a cache mapping each cluster and query to top-k/bottom-k similarity scores.
+    Returns:
+        cache: Dict[cluster_id][qid] = List[(doc_id, score)] sorted by score desc
     """
+
+    # --- Step 1: 문서 mean pooling + normalize (batched) ---
+    doc_ids = [doc_id for doc_id, v in docs.items() if not v["is_query"]]
+    doc_vec_cache = {}
+
+    for start in range(0, len(doc_ids), doc_batch_size):
+        batch_ids = doc_ids[start : start + doc_batch_size]
+        batch_embs = [
+            docs[doc_id]["TOKEN_EMBS"].mean(dim=0).unsqueeze(0) for doc_id in batch_ids
+        ]
+        batch_tensor = torch.cat(batch_embs, dim=0).to(devices[0])  # (B, 768)
+        normalized = F.normalize(batch_tensor, dim=1)
+        for i, doc_id in enumerate(batch_ids):
+            doc_vec_cache[doc_id] = normalized[i]
+
+    # --- Step 2: 쿼리 mean pooling + normalize (batched) ---
+    query_vec_cache = {}
+    for start in range(0, len(qids), query_batch_size):
+        batch_ids = qids[start : start + query_batch_size]
+        batch_embs = [
+            docs[qid]["TOKEN_EMBS"].mean(dim=0).unsqueeze(0) for qid in batch_ids
+        ]
+        batch_tensor = torch.cat(batch_embs, dim=0).to(devices[0])
+        normalized = F.normalize(batch_tensor, dim=1)
+        for i, qid in enumerate(batch_ids):
+            query_vec_cache[qid] = normalized[i]
+
+    # --- Step 3: 쿼리 TOKEN_EMBS 캐시 (for regl) ---
+    query_token_cache = {}
+    for start in range(0, len(qids), query_batch_size):
+        qid_batch = qids[start : start + query_batch_size]
+        q_tensor = torch.cat(
+            [docs[qid]["TOKEN_EMBS"].unsqueeze(0) for qid in qid_batch], dim=0
+        )
+        query_token_cache[tuple(qid_batch)] = q_tensor
+
+    # --- Step 4: 클러스터 분할 ---
     cluster_splits = [[] for _ in devices]
     for idx, cluster in enumerate(clusters):
         cluster_splits[idx % len(devices)].append((idx, cluster))
 
-    query_tensor_cache = {}
-    for q_start in range(0, len(qids), query_batch_size):
-        qid_batch = qids[q_start : q_start + query_batch_size]
-        qid_key = tuple(qid_batch)
-        if qid_key not in query_tensor_cache:
-            q_embs = [docs[qid]["TOKEN_EMBS"].unsqueeze(0) for qid in qid_batch]
-            query_tensor_cache[qid_key] = torch.cat(q_embs, dim=0)
-
+    # --- Step 5: worker ---
     def worker(device, assigned_clusters):
         local_cache = {}
-        doc_tensor_cache = {}
-        qidx = 0
-        for qid_key, q_batch_tensor in query_tensor_cache.items():
-            qid_batch = list(qid_key)
-            print(f"device {device} | {qidx}th query batch")
-            qidx += 1
-            for cluster_id, cluster in assigned_clusters:
-                if cluster_id not in doc_tensor_cache:
-                    doc_ids = cluster.get_only_docids(docs)
-                    doc_embs = [
-                        docs[doc_id]["TOKEN_EMBS"].unsqueeze(0)
-                        for doc_id in doc_ids
-                        if doc_id in docs
-                    ]
-                    doc_tensor_cache[cluster_id] = doc_embs
-                else:
-                    doc_embs = doc_tensor_cache[cluster_id]
+        for qid_batch_key, q_batch_tensor in query_token_cache.items():
+            qid_batch = list(qid_batch_key)
+            q_vecs = torch.stack([query_vec_cache[qid] for qid in qid_batch]).to(device)
 
-                if not doc_embs:
+            for cluster_id, cluster in assigned_clusters:
+                cluster_doc_ids = cluster.get_only_docids(docs)
+                cluster_qids = cluster.get_only_qids(docs)
+                valid_ids = [
+                    doc_id for doc_id in cluster_doc_ids if doc_id in doc_vec_cache
+                ]
+                if not valid_ids:
                     for qid in qid_batch:
-                        local_cache.setdefault(cluster_id, {})[qid] = 0
+                        local_cache.setdefault(cluster_id, {})[qid] = []
                     continue
 
+                doc_vecs = torch.stack(
+                    [doc_vec_cache[doc_id] for doc_id in valid_ids]
+                ).to(device)
+                sim_matrix = torch.matmul(q_vecs, doc_vecs.T)  # (B_q, D_c)
+
+                # 쿼리별로 topk+bottomk 문서 인덱스 뽑고 전체 doc id 집합 생성
+                all_selected_indices = []
+                q_cnt = (
+                    int(len(cluster_doc_ids) * (len(cluster_qids) / len(cluster_qids)))
+                    * 2
+                    if len(cluster_qids) != 0
+                    else 50
+                )
+                k = min(max(q_cnt, 50), len(valid_ids))
+
+                for i in range(sim_matrix.size(0)):
+                    topk = torch.topk(sim_matrix[i], k=k, largest=True).indices
+                    bottomk = torch.topk(sim_matrix[i], k=k, largest=False).indices
+                    all_selected_indices.append(torch.cat([topk, bottomk]))
+                all_selected_indices = torch.unique(torch.cat(all_selected_indices))
+
+                selected_doc_ids = [valid_ids[j] for j in all_selected_indices.tolist()]
+                if not selected_doc_ids:
+                    for qid in qid_batch:
+                        local_cache.setdefault(cluster_id, {})[qid] = []
+                    continue
+
+                doc_embs = [
+                    docs[doc_id]["TOKEN_EMBS"].unsqueeze(0)
+                    for doc_id in selected_doc_ids
+                ]
+
                 all_scores = []
-                didx = 0
                 for d_start in range(0, len(doc_embs), doc_batch_size):
-                    print(f"ㄴ {cluster_id} {didx}th documents batch")
                     d_batch = torch.cat(
                         doc_embs[d_start : d_start + doc_batch_size], dim=0
                     )
                     scores = calculate_S_qd_regl_batch_batch(
-                        q_batch_tensor, d_batch, device
-                    )
+                        q_batch_tensor.to(device), d_batch.to(device), device
+                    )  # (B_q, B_d)
                     all_scores.append(scores)
-                    didx += 1
 
-                full_score_matrix = torch.cat(all_scores, dim=1)
+                full_scores = torch.cat(all_scores, dim=1)  # (B_q, total_docs)
+
                 for i, qid in enumerate(qid_batch):
-                    local_cache.setdefault(cluster_id, {})[qid] = full_score_matrix[
-                        i
-                    ].tolist()
-
+                    scores = full_scores[i]
+                    doc_score_pairs = list(zip(selected_doc_ids, scores.tolist()))
+                    sorted_pairs = sorted(
+                        doc_score_pairs, key=lambda x: x[1], reverse=True
+                    )
+                    local_cache.setdefault(cluster_id, {})[qid] = sorted_pairs
         return local_cache
 
+    # --- Step 6: 병렬 실행 ---
     all_local_caches = []
     with ThreadPoolExecutor(max_workers=len(devices)) as executor:
         futures = [
-            executor.submit(worker, device, cluster_splits[i])
-            for i, device in enumerate(devices)
+            executor.submit(worker, devices[i], cluster_splits[i])
+            for i in range(len(devices))
         ]
         for future in futures:
             all_local_caches.append(future.result())
 
-    cluster_cache = {}
-    for local in all_local_caches:
-        for cluster_id, qid_dict in local.items():
-            cluster_cache.setdefault(cluster_id, {}).update(qid_dict)
+    # --- Step 7: 결과 병합 ---
+    cache = {}
+    for local_cache in all_local_caches:
+        for cluster_id, q_scores in local_cache.items():
+            cache.setdefault(cluster_id, {}).update(q_scores)
 
-    return cluster_cache
+    return cache
+
+
+# def build_cluster_cache_table(
+#     qids, clusters: List, docs: dict, query_batch_size=4, doc_batch_size=512
+# ):
+#     """
+#     {
+#         cluster_id: {
+#             qid: [cluster_docs_len]
+#         }
+#     }
+#     """
+#     cluster_splits = [[] for _ in devices]
+#     for idx, cluster in enumerate(clusters):
+#         cluster_splits[idx % len(devices)].append((idx, cluster))
+
+#     query_tensor_cache = {}
+#     for q_start in range(0, len(qids), query_batch_size):
+#         qid_batch = qids[q_start : q_start + query_batch_size]
+#         qid_key = tuple(qid_batch)
+#         if qid_key not in query_tensor_cache:
+#             q_embs = [docs[qid]["TOKEN_EMBS"].unsqueeze(0) for qid in qid_batch]
+#             query_tensor_cache[qid_key] = torch.cat(q_embs, dim=0)
+
+#     def worker(device, assigned_clusters):
+#         local_cache = {}
+#         doc_tensor_cache = {}
+#         qidx = 0
+#         for qid_key, q_batch_tensor in query_tensor_cache.items():
+#             qid_batch = list(qid_key)
+#             print(f"device {device} | {qidx}th query batch")
+#             qidx += 1
+#             for cluster_id, cluster in assigned_clusters:
+#                 if cluster_id not in doc_tensor_cache:
+#                     doc_ids = cluster.get_only_docids(docs)
+#                     doc_embs = [
+#                         docs[doc_id]["TOKEN_EMBS"].unsqueeze(0)
+#                         for doc_id in doc_ids
+#                         if doc_id in docs
+#                     ]
+#                     doc_tensor_cache[cluster_id] = doc_embs
+#                 else:
+#                     doc_embs = doc_tensor_cache[cluster_id]
+
+#                 if not doc_embs:
+#                     for qid in qid_batch:
+#                         local_cache.setdefault(cluster_id, {})[qid] = 0
+#                     continue
+
+#                 all_scores = []
+#                 didx = 0
+#                 for d_start in range(0, len(doc_embs), doc_batch_size):
+#                     print(f"ㄴ {cluster_id} {didx}th documents batch")
+#                     d_batch = torch.cat(
+#                         doc_embs[d_start : d_start + doc_batch_size], dim=0
+#                     )
+#                     scores = calculate_S_qd_regl_batch_batch(
+#                         q_batch_tensor, d_batch, device
+#                     )
+#                     all_scores.append(scores)
+#                     didx += 1
+
+#                 full_score_matrix = torch.cat(all_scores, dim=1)
+#                 for i, qid in enumerate(qid_batch):
+#                     local_cache.setdefault(cluster_id, {})[qid] = full_score_matrix[
+#                         i
+#                     ].tolist()
+
+#         return local_cache
+
+#     all_local_caches = []
+#     with ThreadPoolExecutor(max_workers=len(devices)) as executor:
+#         futures = [
+#             executor.submit(worker, device, cluster_splits[i])
+#             for i, device in enumerate(devices)
+#         ]
+#         for future in futures:
+#             all_local_caches.append(future.result())
+
+#     cluster_cache = {}
+#     for local in all_local_caches:
+#         for cluster_id, qid_dict in local.items():
+#             cluster_cache.setdefault(cluster_id, {}).update(qid_dict)
+
+#     return cluster_cache

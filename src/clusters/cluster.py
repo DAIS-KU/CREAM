@@ -2,7 +2,7 @@ import concurrent
 import copy
 import math
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List
 
@@ -32,7 +32,7 @@ class Cluster:
         docs: dict,
         use_tensor_key,
         timestamp=0,
-        batch_size=32,
+        batch_size=64,
         z1=8.0,
         z2=0.25,  # lotte 0.25 msmarco 0.75
     ):
@@ -127,13 +127,10 @@ class Cluster:
         return top_k_regl_docs, bottom_k_regl_docs  # [(id, score), ]
 
     def get_topk_docids_and_scores_with_cache(self, qid, cache: dict, docs: dict, k):
-        doc_ids = self.get_only_docids(docs)
-        doc_scores = cache[qid]
-        paired = list(zip(doc_ids, doc_scores))
-        paired.sort(key=lambda x: x[1], reverse=True)
-        top_k = paired[:k]
-        bottom_k = paired[-k:]
-        return top_k, bottom_k
+        doc_id_scores = cache[qid]
+        top_k_docids_and_scores = doc_id_scores[:k]
+        bottom_k_docids_and_scores = doc_id_scores[-k:]
+        return top_k_docids_and_scores, bottom_k_docids_and_scores
 
     def get_topk_docids_with_cache(
         self, query, cache: dict, docs: dict, k
@@ -198,7 +195,97 @@ class Cluster:
         # else:
         #     print(f"Assign duplicate doc id {doc_id}")
 
-    # max_q_n개 쿼리쌍 남기기, 쿼리 당 max_q_positive_n개 문서 남김 <- 이렇게 eviction하는 건 어떤지?(반경처럼 q_rate)
+    # def evict(
+    #     self,
+    #     model,
+    #     lsh: RandomProjectionLSH,
+    #     docs: dict,
+    #     required_doc_size,
+    #     is_updated,
+    # ) -> bool:
+    #     temp_docids, temp_qids = [], self.get_only_qids(docs)
+    #     # temp_docids, temp_qids = [], []
+    #     temp_prototype = torch.zeros_like(self.prototype)
+    #     doc_ids = self.get_only_docids(docs)
+    #     before_d_n, before_q_n = len(doc_ids), len(temp_qids)
+    #     mean, std, z1, z2 = (
+    #         self.calculate_mean(),
+    #         self.calculate_rms(),
+    #         self.z1,
+    #         self.z2,
+    #     )
+    #     BOUNDARY = mean + z2 * std
+    #     print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
+
+    #     for i in range(0, len(doc_ids), self.batch_size):
+    #         batch_doc_ids = doc_ids[i : i + self.batch_size]
+    #         batch_key = tuple(batch_doc_ids)
+    #         # batch_doc_embs = torch.stack(
+    #         #     [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
+    #         #     dim=0,
+    #         # ).squeeze(dim=1)
+    #         batch_doc_embs = self.cache.setdefault(
+    #             batch_key,
+    #             torch.stack(
+    #                 [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids], dim=0
+    #             ),
+    #         )
+    #         x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
+    #             batch_doc_embs.squeeze(dim=1),
+    #             self.prototype.unsqueeze(0),
+    #             batch_doc_embs.device,
+    #         )
+    #         mask = x_dists <= BOUNDARY
+    #         selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
+    #         if selected_indices.numel() > 0:
+    #             selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
+    #             selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+    #             new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+    #             temp_docids.extend(selected_doc_ids)
+    #             temp_prototype += lsh.encode_batch(
+    #                 new_doc_embs
+    #             )  # (B, L, D) -> (B, hash_size, D)
+    #             # for idx, doc_id in enumerate(selected_doc_ids):
+    #             #     doc_emb = new_doc_embs[idx]
+    #             #     docs[doc_id]["TOKEN_EMBS"] = doc_emb
+    #             #     doc_hash = lsh.encode(doc_emb)
+    #             #     temp_docids.append(doc_id)
+    #             #     temp_prototype += doc_hash
+
+    #     after_d_n = len(temp_docids)
+    #     if after_d_n <= required_doc_size:
+    #         return False
+
+    #     qsz = int(len(temp_qids) * after_d_n / before_d_n)
+    #     temp_qids = random.sample(temp_qids, qsz)
+    #     after_q_n = len(temp_qids)
+    #     for i in range(0, len(temp_qids), self.batch_size):
+    #         batch_qids = temp_qids[i : i + self.batch_size]
+    #         batch_texts = [docs[qid]["text"] for qid in batch_qids]
+    #         batch_embs = get_passage_embeddings(model, batch_texts).cpu()
+    #         temp_prototype += lsh.encode_batch(
+    #             batch_embs
+    #         )  # (B, L, D) -> (B, hash_size, D)
+    #         # for j, qid in enumerate(batch_qids):
+    #         #     doc_emb = batch_embs[j]
+    #         #     docs[qid]["TOKEN_EMBS"] = doc_emb
+    #         #     doc_hash = lsh.encode(doc_emb)
+    #         #     temp_prototype += doc_hash
+
+    #     self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
+    #     # self.doc_ids = list(set(temp_docids))
+    #     self.prototype = temp_prototype
+    #     print(
+    #         f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
+    #     )
+
+    #     self.update_statistics(docs)
+    #     self.cache = {}
+    #     print(
+    #         f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
+    #     )
+    #     return True
+
     def evict(
         self,
         model,
@@ -206,11 +293,8 @@ class Cluster:
         docs: dict,
         required_doc_size,
         is_updated,
-        max_q_n=150,
-        max_q_positive_n=50,
     ) -> bool:
         temp_docids, temp_qids = [], self.get_only_qids(docs)
-        # temp_docids, temp_qids = [], []
         temp_prototype = torch.zeros_like(self.prototype)
         doc_ids = self.get_only_docids(docs)
         before_d_n, before_q_n = len(doc_ids), len(temp_qids)
@@ -223,13 +307,8 @@ class Cluster:
         BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
 
-        for i in range(0, len(doc_ids), self.batch_size):
-            batch_doc_ids = doc_ids[i : i + self.batch_size]
+        def process_doc_batch(batch_doc_ids):
             batch_key = tuple(batch_doc_ids)
-            # batch_doc_embs = torch.stack(
-            #     [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
-            #     dim=0,
-            # ).squeeze(dim=1)
             batch_doc_embs = self.cache.setdefault(
                 batch_key,
                 torch.stack(
@@ -243,20 +322,24 @@ class Cluster:
             )
             mask = x_dists <= BOUNDARY
             selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
-            if selected_indices.numel() > 0:
-                selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
-                selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-                new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-                temp_docids.extend(selected_doc_ids)
-                temp_prototype += lsh.encode_batch(
-                    new_doc_embs
-                )  # (B, L, D) -> (B, hash_size, D)
-                # for idx, doc_id in enumerate(selected_doc_ids):
-                #     doc_emb = new_doc_embs[idx]
-                #     docs[doc_id]["TOKEN_EMBS"] = doc_emb
-                #     doc_hash = lsh.encode(doc_emb)
-                #     temp_docids.append(doc_id)
-                #     temp_prototype += doc_hash
+            if selected_indices.numel() == 0:
+                return [], None
+            selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
+            selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+            new_doc_embs = get_passage_embeddings(model, selected_texts)  # GPU 텐서 유지
+            return selected_doc_ids, new_doc_embs
+
+        doc_futures = []
+        with ThreadPoolExecutor(max_workers=num_devices) as executor:
+            for i in range(0, len(doc_ids), self.batch_size):
+                batch_doc_ids = doc_ids[i : i + self.batch_size]
+                doc_futures.append(executor.submit(process_doc_batch, batch_doc_ids))
+
+            for f in as_completed(doc_futures):
+                selected_doc_ids, new_doc_embs = f.result()
+                if selected_doc_ids and new_doc_embs is not None:
+                    temp_docids.extend(selected_doc_ids)
+                    temp_prototype += lsh.encode_batch(new_doc_embs)
 
         after_d_n = len(temp_docids)
         if after_d_n <= required_doc_size:
@@ -265,30 +348,33 @@ class Cluster:
         qsz = int(len(temp_qids) * after_d_n / before_d_n)
         temp_qids = random.sample(temp_qids, qsz)
         after_q_n = len(temp_qids)
-        for i in range(0, len(temp_qids), self.batch_size):
-            batch_qids = temp_qids[i : i + self.batch_size]
+
+        def process_query_batch(batch_qids):
             batch_texts = [docs[qid]["text"] for qid in batch_qids]
-            batch_embs = get_passage_embeddings(model, batch_texts).cpu()
-            temp_prototype += lsh.encode_batch(
-                batch_embs
-            )  # (B, L, D) -> (B, hash_size, D)
-            # for j, qid in enumerate(batch_qids):
-            #     doc_emb = batch_embs[j]
-            #     docs[qid]["TOKEN_EMBS"] = doc_emb
-            #     doc_hash = lsh.encode(doc_emb)
-            #     temp_prototype += doc_hash
+            batch_embs = get_passage_embeddings(model, batch_texts)  # GPU 텐서 유지
+            return batch_embs
+
+        q_futures = []
+        with ThreadPoolExecutor(max_workers=num_devices) as executor:
+            for i in range(0, len(temp_qids), self.batch_size):
+                batch_qids = temp_qids[i : i + self.batch_size]
+                q_futures.append(executor.submit(process_query_batch, batch_qids))
+
+            for f in as_completed(q_futures):
+                batch_embs = f.result()
+                if batch_embs is not None:
+                    temp_prototype += lsh.encode_batch(batch_embs)
 
         self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
-        # self.doc_ids = list(set(temp_docids))
         self.prototype = temp_prototype
+        self.update_statistics(docs)
+        self.cache = {}
+
         print(
             f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
         )
-
-        self.update_statistics(docs)
-        self.cache = {}
         print(
-            f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
+            f"doc_ids# {before_d_n} -> {after_d_n}, queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
         )
         return True
 
@@ -379,15 +465,17 @@ class Cluster:
         return r, selected
 
     def get_doc_ids_in_r_with_cache(self, cache, docs, query):
-        doc_ids = self.get_only_docids(docs)
-        doc_scores = cache[query["doc_id"]]
-        docids_and_scores = list(zip(doc_ids, doc_scores))
-        docids_and_scores = sorted(docids_and_scores, key=lambda x: x[1], reverse=True)
-        scores = [score for _, score in docids_and_scores]
+        """
+        cache: Dict[cluster_id][qid] = List[(doc_id, score)] sorted by score desc
+        """
         # 균등 분할 시 차지하는 갯수
+        doc_ids = self.get_only_docids(docs)
         qids = self.get_only_qids(docs)
-        score_idx = int(len(doc_ids) * (1 / len(qids)))
-        r = scores[score_idx]  # 최소 점수
-        # idx = bisect.bisect_left(list(reversed(scores)), r)
-        selected = [doc_id for doc_id, _ in docids_and_scores[:score_idx]]
+        k = int(len(doc_ids) * (1 / len(qids)))
+        docids_and_scores = cache[query["doc_id"]]
+        # 왜 캐시사이즈 2*k 보다 훨씬 크지?
+        # [cid][qid] q_bsz * 2k 중 해당 클러스터에 속한 문서 수 -> 전체에서 거르고X 클러스터 내에서 거르고
+        print(f"cache size({query['doc_id']})/{len(cache[query['doc_id']])}")
+        selected = [doc_id for doc_id, _ in docids_and_scores[:k]]
+        r = docids_and_scores[k - 1][1]
         return r, selected

@@ -53,7 +53,7 @@ class RandomProjectionLSH:
         final_vector = self.get_final_vector(hash_table)
         return final_vector
 
-    def encode_batch(self, batch_embeddings):
+    def encode_batch(self, batch_embeddings, is_sum=True):
         """
         Args:
             batch_embeddings: Tensor of shape (B, L, D)
@@ -75,6 +75,9 @@ class RandomProjectionLSH:
         compressed_embeddings.scatter_add_(
             dim=1, index=hash_keys_exp, src=batch_embeddings
         )
-        # 모든 배치의 해시 결과를 합산 → (hash_size, D)
-        compressed_sum = compressed_embeddings.sum(dim=0)  # (hash_size, D)
-        return compressed_sum.cpu()
+        if is_sum:
+            # 모든 배치의 해시 결과를 합산 → (hash_size, D)
+            compressed_sum = compressed_embeddings.sum(dim=0)  # (hash_size, D)
+            return compressed_sum.cpu()
+        else:
+            return compressed_embeddings.cpu()  # (B, hash_size, D)
