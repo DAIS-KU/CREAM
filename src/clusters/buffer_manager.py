@@ -33,7 +33,7 @@ class DiversityBufferManager(BufferManager):
             for qidx, qid in enumerate(qids):
                 query = docs[qid]
                 r, doc_ids = cluster.get_doc_ids_in_r_with_cache(cache, docs, query)
-                print(f"* {qidx}th query docs in r {r}: #{len(doc_ids)}")
+                print(f"* {qidx}th query docs in r: #{len(doc_ids)}")
                 qsets[qid] = set(doc_ids)
 
             qsets = dict(

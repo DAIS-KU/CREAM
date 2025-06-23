@@ -79,6 +79,8 @@ def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
 
         if len(hit_success) > 0:
             overall_success += 1
+        else:
+            print(f"QID {qid} is totally wrong~!")
         overall_recall += len(hit_recall) / len(answer_pids)
 
         for prefix in domain_prefixes:

@@ -31,6 +31,8 @@ from pipeline import (
     get_correlation,
     get_correlation_ans,
     get_cosine_recall,
+    colbert_train,
+    colbert_evaluate,
 )
 
 
@@ -317,7 +319,7 @@ if __name__ == "__main__":
     elif args.exp == "val":
         validate_data()
     elif args.exp == "l2r":
-        l2r_train()
+        # l2r_train()
         l2r_evaluate()
     elif args.exp == "inc_cosine":
         inc_train(is_term=False)
@@ -389,5 +391,8 @@ if __name__ == "__main__":
         # get_correlation()
         # get_correlation_ans()
         get_cosine_recall()
+    elif args.exp == "colbert":
+        colbert_train()
+        colbert_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

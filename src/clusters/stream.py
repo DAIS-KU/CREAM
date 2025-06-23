@@ -3,8 +3,58 @@ import string
 
 import numpy as np
 from .encode import renew_data
-
+import time
 from data import BM25Okapi, read_jsonl, read_jsonl_as_dict, preprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def collect_candidates(
+    bm25: BM25Okapi, doc_ids, query, sampling_size_per_query, include_answer
+):
+    query_tokens = preprocess(query["query"])
+    scores = bm25.get_scores(query_tokens)
+    # 상위 k개 인덱스 추출
+    top_k_idx = np.argpartition(scores, -sampling_size_per_query)[
+        -sampling_size_per_query:
+    ]
+    top_k_indices = top_k_idx[np.argsort(scores[top_k_idx])[::-1]]
+    cand = {doc_ids[i] for i in top_k_indices}
+    if include_answer:
+        cand.update(query["answer_pids"])
+    return cand
+
+
+def filter_docs_parallel(
+    docs,
+    doc_list,
+    queries,
+    sampling_size_per_query,
+    include_answer=False,
+    max_workers=8,
+):
+    corpus = [doc["text"] for doc in docs.values()]
+    bm25 = BM25Okapi(corpus=corpus, tokenizer=preprocess)
+    doc_ids = [doc["doc_id"] for doc in doc_list]
+    candidate_ids = set()
+
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(
+                collect_candidates,
+                bm25,
+                doc_ids,
+                query,
+                sampling_size_per_query,
+                include_answer,
+            )
+            for query in queries
+        ]
+        for fut in as_completed(futures):
+            candidate_ids.update(fut.result())
+    end_time = time.time()
+    print(f"Filtering (parallel): {end_time - start_time:.2f} sec.")
+    return [docs[doc_id] for doc_id in candidate_ids]
 
 
 class Stream:
@@ -28,6 +78,7 @@ class Stream:
         print(f"queries:{len(queries)}, docs:{len(docs)}")
 
         # Filter document(doc_id, text)
+        # self.query_result= {}
         documents = self.filter(
             queries, docs, sampling_rate, sampling_size_per_query, include_answer
         )
@@ -115,20 +166,33 @@ class Stream:
         elif sampling_size_per_query is not None:
             print(f"Documents are passing through BM25.")
             doc_list = list(docs.values())
+            # return filter_docs_parallel(docs, doc_list, queries, sampling_size_per_query)
             corpus = [doc["text"] for doc in doc_list]
             bm25 = BM25Okapi(corpus=corpus, tokenizer=preprocess)
             doc_ids = [doc["doc_id"] for doc in doc_list]
             candidate_ids = set()
+            start_time = time.time()
             for i, query in enumerate(queries):
                 print(f"{i}th query * {sampling_size_per_query}")
                 query_tokens = preprocess(query["query"])
                 scores = bm25.get_scores(query_tokens)
-                top_k_indices = np.argsort(scores)[::-1][:sampling_size_per_query]
-                candidate_ids.update([doc_ids[i] for i in top_k_indices])
+                # 상위 k개만 찾아서 나중에 정렬
+                top_k_idx = np.argpartition(scores, -sampling_size_per_query)[
+                    -sampling_size_per_query:
+                ]
+                top_k_indices = top_k_idx[np.argsort(scores[top_k_idx])[::-1]]
+                # top_k_indices = np.argsort(scores)[::-1]
+                candidates = [
+                    doc_ids[i] for i in top_k_indices
+                ]  # [:sampling_size_per_query]
+                candidate_ids.update(candidates)
                 if include_answer:
                     print(f"Add {i}th query answsers {len(query['answer_pids'])}")
                     candidate_ids.update(query["answer_pids"])
+                # self.query_result[query["qid"]]=candidates
             doc_list = [docs[doc_id] for doc_id in candidate_ids]
+            end_time = time.time()
+            print(f"Filtering : {end_time-start_time} sec.")
             return doc_list
         else:
             print(f"Documents are raw.")

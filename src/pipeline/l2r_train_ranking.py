@@ -147,8 +147,8 @@ def train(
     output_dir = "../data"
     total_sec = 0
     for session_number in range(session_count):
-        time_values_path = f"../data/loss/total_time_l2r_datasetL_{session_number}.txt"
         start_time = time.time()
+        time_values_path = f"../data/loss/total_time_l2r_datasetL_{session_number}.txt"
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
         query_path = (

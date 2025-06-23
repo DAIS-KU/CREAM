@@ -25,7 +25,8 @@ from clusters import (
     clear_unused_documents,
     deep_copy_tensor_dict,
     compare_tensor_dicts,
-    build_cluster_cache_table,
+    build_cluster_cache_table_by_cosine,
+    build_cluster_cache_table_by_query_result,
     get_samples_top_and_farthest3_with_cache,
     get_samples_top_bottom_3_with_cache,
 )
@@ -69,14 +70,15 @@ def merge_nested_dicts(d1, d2):
     return {k: dict(v) for k, v in result.items()}
 
 
-def build_query_caches(clusters, docs):
+def build_query_caches(clusters, docs, query_result):
     all_qids = []
     for cluster in clusters:
         all_qids.extend(cluster.get_only_qids(docs))
-    q_caches = build_cluster_cache_table(
+    q_caches = build_cluster_cache_table_by_cosine(
         qids=all_qids,
         clusters=clusters,
         docs=docs,
+        # query_result=query_result,
         query_batch_size=64,
         doc_batch_size=512,
     )
@@ -100,7 +102,7 @@ def add_positive_caches(all_qids, q_caches, clusters, docs):
     print(
         f"build_positive_caches | all_qids: {len(all_qids)}, all_pids: {len(all_pids)}"
     )
-    p_caches = build_cluster_cache_table(
+    p_caches = build_cluster_cache_table_by_cosine(
         qids=all_pids,
         clusters=clusters,
         docs=docs,
@@ -225,14 +227,16 @@ def train(
     lsh = RandomProjectionLSH(
         random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
     )
-    prev_docs, clusters = None, []
+    prev_docs, clusters, query_result = None, [], {}
     diversity_buffer_manager = DiversityBufferManager()
 
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
-        time_values_path = f"../data/loss/total_time_values_proposal_clear_datasetL_{session_number}.txt"
-        start_time = time.time()
+        time_values_path = (
+            f"../data/loss/total_time_values_proposal_datasetL_{session_number}.txt"
+        )
         print(f"Training Session {session_number}/{load_cluster}")
+        start_time = time.time()
         stream = Stream(
             session_number=session_number,
             query_path=f"../data/datasetL/train_session{session_number}_queries.jsonl",
@@ -244,7 +248,13 @@ def train(
             warming_up_method=warming_up_method,
             include_answer=include_answer,
         )
+        # query_result.update(stream.query_result)
         print(f"Session {session_number} | Document count:{len(stream.docs.keys())}")
+        end_time = time.time()
+        print(
+            f"############################################Initialize({end_time-start_time}sec)############################################"
+        )
+        write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
 
         model = BertModel.from_pretrained(
             "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
@@ -252,16 +262,14 @@ def train(
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/proposal_clear_datasetL_session_{session_number-1}.pth"
+                f"../data/model/proposal_datasetL_session_{session_number-1}.pth"
             )
             model.load_state_dict(torch.load(model_path, map_location="cuda:1"))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = (
-            f"../data/model/proposal_clear_datasetL_session_{session_number}.pth"
-        )
+        new_model_path = f"../data/model/proposal_datasetL_session_{session_number}.pth"
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -269,22 +277,24 @@ def train(
             or (not load_cluster and session_number == start_session_number)
             and session_number > 0
         ):
-            with open(
-                f"../data/clusters_clear_datasetL_{session_number-1}.pkl", "rb"
-            ) as f:
+            with open(f"../data/clusters_datasetL_{session_number-1}.pkl", "rb") as f:
                 print(f"Load last clusters.")
                 clusters = pickle.load(f)
-            with open(
-                f"../data/prev_docs_clear_datasetL_{session_number-1}.pkl", "rb"
-            ) as f:
+            with open(f"../data/prev_docs_datasetL_{session_number-1}.pkl", "rb") as f:
                 print(f"Load last docs.")
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_clear_datasetL_{session_number-1}.pkl", "rb"
+                f"../data/random_vectors_datasetL_{session_number-1}.pkl", "rb"
             ) as f:
                 print(f"Load last random vectors.")
                 random_vectors = pickle.load(f)
+            # with open(
+            #     f"../data/query_result_datasetL_{session_number-1}.pkl", "rb"
+            # ) as f:
+            #     print(f"Load last query_result.")
+            #     last_query_result = pickle.load(f)
+            #     query_result.update(last_query_result)
             # with open(
             #     f"../data/diversity_buffer_manager_datasetL_{session_number-1}.pkl",
             #     "rb",
@@ -354,11 +364,6 @@ def train(
                 )
             else:
                 batch_start = 0
-        end_time = time.time()
-        print(
-            f"############################################Initialize({end_time-start_time}sec)############################################"
-        )
-        write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
         # Assign stream batch
         total_assign_time = 0
         for i in range(batch_start, len(stream.stream_docs)):
@@ -391,7 +396,7 @@ def train(
             f"=================================================BUILD QUERY CACHES======================================================"
         )
         start_time = time.time()
-        all_qids, q_caches = build_query_caches(clusters, stream.docs)
+        all_qids, q_caches = build_query_caches(clusters, stream.docs, query_result)
         end_time = time.time()
         print(
             f"==============================================DONE({end_time-start_time}sec)===================================================="
@@ -477,14 +482,14 @@ def train(
         )
         write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
-        with open(f"../data/clusters_clear_datasetL_{session_number}.pkl", "wb") as f:
+        with open(f"../data/clusters_datasetL_{session_number}.pkl", "wb") as f:
             pickle.dump(clusters, f)
-        with open(f"../data/prev_docs_clear_datasetL_{session_number}.pkl", "wb") as f:
+        with open(f"../data/prev_docs_datasetL_{session_number}.pkl", "wb") as f:
             pickle.dump(prev_docs, f)
-        with open(
-            f"../data/random_vectors_clear_datasetL_{session_number}.pkl", "wb"
-        ) as f:
+        with open(f"../data/random_vectors_datasetL_{session_number}.pkl", "wb") as f:
             pickle.dump(random_vectors, f)
+        # with open(f"../data/query_result_datasetL_{session_number}.pkl", "wb") as f:
+        #     pickle.dump(query_result, f)
         # with open(
         #     f"../data/diversity_buffer_manager_datasetL_{session_number}.pkl", "wb"
         # ) as f:
@@ -525,7 +530,7 @@ def evaluate_with_cluster(
     # end_time = time.time()
     # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/proposal_clear_datasetL_{session_number}_with_cluster.txt"
+    # rankings_path = f"../data/rankings/proposal_datasetL_{session_number}_with_cluster.txt"
     # write_file(rankings_path, result)
     # eval_log_path = f"../data/evals/proposa_datasetL_{session_number}_with_cluster.txt"
     # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
@@ -538,7 +543,7 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number):
-    method = "proposal_clear_datasetL"
+    method = "proposal_datasetL"
     print(f"Evaluate Session {session_number}")
     eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
     eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
@@ -590,13 +595,9 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/proposal_clear_datasetL_{session_number}_with_cluster.txt"
+        f"../data/rankings/proposal_datasetL_{session_number}_with_cluster.txt"
     )
-    eval_log_path = (
-        f"../data/evals/proposal_clear_datasetL_{session_number}_with_cluster.txt"
-    )
+    eval_log_path = f"../data/evals/proposal_datasetL_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = (
-        f"../data/rankings/proposal_clear_datasetL_session_{session_number}.txt"
-    )
+    rankings_path = f"../data/rankings/proposal_datasetL_session_{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

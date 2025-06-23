@@ -9,6 +9,7 @@ from typing import List
 import bisect
 import random
 import torch
+import numpy as np
 
 from functions import (
     calculate_S_qd_regl,
@@ -32,7 +33,7 @@ class Cluster:
         docs: dict,
         use_tensor_key,
         timestamp=0,
-        batch_size=64,
+        batch_size=128,
         z1=8.0,
         z2=0.25,  # lotte 0.25 msmarco 0.75
     ):
@@ -130,6 +131,7 @@ class Cluster:
         doc_id_scores = cache[qid]
         top_k_docids_and_scores = doc_id_scores[:k]
         bottom_k_docids_and_scores = doc_id_scores[-k:]
+        # print(f"get_topk_docids_and_scores_with_cache |  k {k}, top_k_docids_and_scores: {len(top_k_docids_and_scores)}, bottom_k_docids_and_scores: {len(bottom_k_docids_and_scores)}")
         return top_k_docids_and_scores, bottom_k_docids_and_scores
 
     def get_topk_docids_with_cache(
@@ -195,96 +197,88 @@ class Cluster:
         # else:
         #     print(f"Assign duplicate doc id {doc_id}")
 
-    # def evict(
-    #     self,
-    #     model,
-    #     lsh: RandomProjectionLSH,
-    #     docs: dict,
-    #     required_doc_size,
-    #     is_updated,
-    # ) -> bool:
-    #     temp_docids, temp_qids = [], self.get_only_qids(docs)
-    #     # temp_docids, temp_qids = [], []
-    #     temp_prototype = torch.zeros_like(self.prototype)
-    #     doc_ids = self.get_only_docids(docs)
-    #     before_d_n, before_q_n = len(doc_ids), len(temp_qids)
-    #     mean, std, z1, z2 = (
-    #         self.calculate_mean(),
-    #         self.calculate_rms(),
-    #         self.z1,
-    #         self.z2,
-    #     )
-    #     BOUNDARY = mean + z2 * std
-    #     print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
+    def evict_org(
+        self,
+        model,
+        lsh: RandomProjectionLSH,
+        docs: dict,
+        required_doc_size,
+        is_updated,
+    ) -> bool:
+        temp_docids, temp_qids = [], self.get_only_qids(docs)
+        # temp_docids, temp_qids = [], []
+        temp_prototype = torch.zeros_like(self.prototype)
+        doc_ids = self.get_only_docids(docs)
+        doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids])
+        before_d_n, before_q_n = len(doc_ids), len(temp_qids)
+        mean, std, z1, z2 = (
+            self.calculate_mean(),
+            self.calculate_rms(),
+            self.z1,
+            self.z2,
+        )
+        BOUNDARY = mean + z2 * std
+        print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
 
-    #     for i in range(0, len(doc_ids), self.batch_size):
-    #         batch_doc_ids = doc_ids[i : i + self.batch_size]
-    #         batch_key = tuple(batch_doc_ids)
-    #         # batch_doc_embs = torch.stack(
-    #         #     [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids],
-    #         #     dim=0,
-    #         # ).squeeze(dim=1)
-    #         batch_doc_embs = self.cache.setdefault(
-    #             batch_key,
-    #             torch.stack(
-    #                 [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids], dim=0
-    #             ),
-    #         )
-    #         x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
-    #             batch_doc_embs.squeeze(dim=1),
-    #             self.prototype.unsqueeze(0),
-    #             batch_doc_embs.device,
-    #         )
-    #         mask = x_dists <= BOUNDARY
-    #         selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
-    #         if selected_indices.numel() > 0:
-    #             selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
-    #             selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-    #             new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-    #             temp_docids.extend(selected_doc_ids)
-    #             temp_prototype += lsh.encode_batch(
-    #                 new_doc_embs
-    #             )  # (B, L, D) -> (B, hash_size, D)
-    #             # for idx, doc_id in enumerate(selected_doc_ids):
-    #             #     doc_emb = new_doc_embs[idx]
-    #             #     docs[doc_id]["TOKEN_EMBS"] = doc_emb
-    #             #     doc_hash = lsh.encode(doc_emb)
-    #             #     temp_docids.append(doc_id)
-    #             #     temp_prototype += doc_hash
+        for i in range(0, len(doc_ids), self.batch_size):
+            batch_doc_ids = doc_ids[i : i + self.batch_size]
+            batch_doc_embs = doc_embs[i : i + self.batch_size]
+            x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
+                batch_doc_embs.squeeze(dim=1),
+                self.prototype.unsqueeze(0),
+                batch_doc_embs.device,
+            )
+            mask = x_dists <= BOUNDARY
+            selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
+            if selected_indices.numel() > 0:
+                with torch.no_grad():
+                    selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
+                    selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                    new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+                    # selected_doc_embs = batch_doc_embs[selected_indices]
+                    temp_docids.extend(selected_doc_ids)
+                    # temp_prototype += lsh.encode_batch(selected_doc_embs)
+                    temp_prototype += lsh.encode_batch(new_doc_embs)
+                    # selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
+                    # selected_doc_cnt = int(len(selected_doc_ids) * (1 / (1 + np.exp(-z2))))
+                    # if selected_doc_cnt:
+                    #     selected_doc_ids = random.sample(selected_doc_ids, selected_doc_cnt)
+                    #     selected_doc_embs = batch_doc_embs[selected_indices]
+                        #     selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                        #     new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+                        # temp_docids.extend(selected_doc_ids)
+                        # temp_prototype += lsh.encode_batch(selected_doc_embs)
+                    #     temp_prototype += lsh.encode_batch(new_doc_embs)  # (B, L, D) -> (B, hash_size, D)
 
-    #     after_d_n = len(temp_docids)
-    #     if after_d_n <= required_doc_size:
-    #         return False
+        after_d_n = len(temp_docids)
+        if after_d_n <= required_doc_size:
+            return False
 
-    #     qsz = int(len(temp_qids) * after_d_n / before_d_n)
-    #     temp_qids = random.sample(temp_qids, qsz)
-    #     after_q_n = len(temp_qids)
-    #     for i in range(0, len(temp_qids), self.batch_size):
-    #         batch_qids = temp_qids[i : i + self.batch_size]
-    #         batch_texts = [docs[qid]["text"] for qid in batch_qids]
-    #         batch_embs = get_passage_embeddings(model, batch_texts).cpu()
-    #         temp_prototype += lsh.encode_batch(
-    #             batch_embs
-    #         )  # (B, L, D) -> (B, hash_size, D)
-    #         # for j, qid in enumerate(batch_qids):
-    #         #     doc_emb = batch_embs[j]
-    #         #     docs[qid]["TOKEN_EMBS"] = doc_emb
-    #         #     doc_hash = lsh.encode(doc_emb)
-    #         #     temp_prototype += doc_hash
+        qsz = int(len(temp_qids) * after_d_n / before_d_n)
+        temp_qids = random.sample(temp_qids, qsz)
+        after_q_n = len(temp_qids)
+        with torch.no_grad():
+            for i in range(0, len(temp_qids), self.batch_size):
+                batch_qids = temp_qids[i : i + self.batch_size]
+                batch_texts = [docs[qid]["text"] for qid in batch_qids]
+                batch_embs = get_passage_embeddings(model, batch_texts).cpu()
+                temp_prototype += lsh.encode_batch(
+                    batch_embs
+                )  # (B, L, D) -> (B, hash_size, D)
 
-    #     self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
-    #     # self.doc_ids = list(set(temp_docids))
-    #     self.prototype = temp_prototype
-    #     print(
-    #         f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
-    #     )
+        self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
+        # self.doc_ids = list(set(temp_docids))
+        self.prototype = temp_prototype
+        print(
+            f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"
+        )
 
-    #     self.update_statistics(docs)
-    #     self.cache = {}
-    #     print(
-    #         f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
-    #     )
-    #     return True
+        self.update_statistics(docs)
+        self.cache = {}
+        print(
+            f"doc_ids# {before_d_n} -> {after_d_n},queries# {before_q_n} -> {after_q_n}, new std:{self.calculate_rms()}"
+        )
+        return True
 
     def evict(
         self,
@@ -297,6 +291,7 @@ class Cluster:
         temp_docids, temp_qids = [], self.get_only_qids(docs)
         temp_prototype = torch.zeros_like(self.prototype)
         doc_ids = self.get_only_docids(docs)
+        doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids])
         before_d_n, before_q_n = len(doc_ids), len(temp_qids)
         mean, std, z1, z2 = (
             self.calculate_mean(),
@@ -307,14 +302,9 @@ class Cluster:
         BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}")
 
-        def process_doc_batch(batch_doc_ids):
-            batch_key = tuple(batch_doc_ids)
-            batch_doc_embs = self.cache.setdefault(
-                batch_key,
-                torch.stack(
-                    [docs[doc_id]["TOKEN_EMBS"] for doc_id in batch_doc_ids], dim=0
-                ),
-            )
+        def process_doc_batch(i):
+            batch_doc_ids = doc_ids[i : i + self.batch_size]
+            batch_doc_embs = doc_embs[i : i + self.batch_size]
             x_dists = MAX_SCORE - calculate_S_qd_regl_batch(
                 batch_doc_embs.squeeze(dim=1),
                 self.prototype.unsqueeze(0),
@@ -325,15 +315,24 @@ class Cluster:
             if selected_indices.numel() == 0:
                 return [], None
             selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
-            selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-            new_doc_embs = get_passage_embeddings(model, selected_texts)  # GPU 텐서 유지
-            return selected_doc_ids, new_doc_embs
+            # selected_doc_embs = batch_doc_embs[selected_indices]
+            # return selected_doc_ids, selected_doc_embs
+            selected_doc_cnt = int(len(selected_doc_ids) * (1 / (1 + np.exp(-z2))))
+            if selected_doc_cnt:
+                selected_doc_ids = random.sample(selected_doc_ids, selected_doc_cnt)
+                selected_doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in selected_doc_ids], dim=0)
+                # selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                # with torch.no_grad():
+                #     new_doc_embs = get_passage_embeddings(model, selected_texts)  # GPU 텐서 유지
+                # return selected_doc_ids, new_doc_embs
+                return selected_doc_ids, selected_doc_embs
+            else:
+                return [], None
 
         doc_futures = []
         with ThreadPoolExecutor(max_workers=num_devices) as executor:
             for i in range(0, len(doc_ids), self.batch_size):
-                batch_doc_ids = doc_ids[i : i + self.batch_size]
-                doc_futures.append(executor.submit(process_doc_batch, batch_doc_ids))
+                doc_futures.append(executor.submit(process_doc_batch, i))
 
             for f in as_completed(doc_futures):
                 selected_doc_ids, new_doc_embs = f.result()
@@ -349,16 +348,18 @@ class Cluster:
         temp_qids = random.sample(temp_qids, qsz)
         after_q_n = len(temp_qids)
 
-        def process_query_batch(batch_qids):
-            batch_texts = [docs[qid]["text"] for qid in batch_qids]
-            batch_embs = get_passage_embeddings(model, batch_texts)  # GPU 텐서 유지
+        def process_query_batch(i):
+            batch_qids = temp_qids[i : i + self.batch_size]
+            # batch_texts = [docs[qid]["text"] for qid in batch_qids]
+            # with torch.no_grad():
+            #     batch_embs = get_passage_embeddings(model, batch_texts)  # GPU 텐서 유지
+            batch_embs= torch.stack([docs[qid]["TOKEN_EMBS"] for qid in batch_qids], dim=0)
             return batch_embs
 
         q_futures = []
         with ThreadPoolExecutor(max_workers=num_devices) as executor:
             for i in range(0, len(temp_qids), self.batch_size):
-                batch_qids = temp_qids[i : i + self.batch_size]
-                q_futures.append(executor.submit(process_query_batch, batch_qids))
+                q_futures.append(executor.submit(process_query_batch, i))
 
             for f in as_completed(q_futures):
                 batch_embs = f.result()
@@ -380,6 +381,47 @@ class Cluster:
 
     def get_statistics(self):
         return (self.S1, self.S2, self.N)
+
+    # def update_statistics(self, docs: dict):
+    #     all_ids = self.get_only_docids(docs) + self.get_only_qids(docs)
+    #     all_embs = torch.stack(
+    #         [docs[d]["TOKEN_EMBS"].squeeze(1).detach() for d in all_ids],
+    #         dim=0
+    #     )  # shape: (N, L, D) 또는 (N, D)
+
+    #     total = all_embs.size(0)
+    #     partition = min(total, num_devices)
+    #     idx_batches = [list(range(total))[i::partition] for i in range(partition)]
+    #     proto_per_device = {d: self.prototype.unsqueeze(0).to(d) for d in devices}
+
+    #     def process_batch(idx_batch, device):
+    #         sum1, sum2 =0.0, 0.0
+    #         for i in range(0, len(idx_batch), self.batch_size):
+    #             batch_idxs = idx_batch[i : i + self.batch_size]
+    #             batch_embs = all_embs[batch_idxs]  # (B, L, D) or (B, D)
+    #             if self.use_tensor_key:
+    #                 if batch_embs.dim() == 2:  # (B, D)
+    #                     batch_embs = batch_embs.unsqueeze(0)  # → (1, B, D)
+    #                 score = calculate_S_qd_regl_batch(batch_embs, proto_per_device[device], device=device)
+    #             else:
+    #                 score = calculate_S_qd_regl_dict(batch_embs, proto_per_device[device].squeeze(0), device=device)
+    #             x = MAX_SCORE - score
+    #             sum1 += x.sum().item()
+    #             sum2 += (x ** 2).sum().item()
+    #         return sum1, sum2
+
+    #     results = []
+    #     with ThreadPoolExecutor(max_workers=partition) as executor:
+    #         futures = [
+    #             executor.submit(process_batch, batch, devices[i % len(devices)])
+    #             for i, batch in enumerate(idx_batches)
+    #         ]
+    #         for fut in concurrent.futures.as_completed(futures):
+    #             results.append(fut.result())
+
+    #     self.S1 = sum(r[0] for r in results)
+    #     self.S2 = sum(r[1] for r in results)
+    #     self.N = len(all_ids)
 
     def update_statistics(self, docs: dict):
         partition = min(len(self.doc_ids), num_devices)
@@ -477,5 +519,5 @@ class Cluster:
         # [cid][qid] q_bsz * 2k 중 해당 클러스터에 속한 문서 수 -> 전체에서 거르고X 클러스터 내에서 거르고
         print(f"cache size({query['doc_id']})/{len(cache[query['doc_id']])}")
         selected = [doc_id for doc_id, _ in docids_and_scores[:k]]
-        r = docids_and_scores[k - 1][1]
+        r = docids_and_scores[-1][1]
         return r, selected

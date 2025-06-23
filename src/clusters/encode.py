@@ -1,5 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
+import torch.nn.functional as F
+
 
 import torch
 from transformers import BertModel, BertTokenizer
@@ -71,6 +73,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=
             "doc_id": qid,
             "text": text,
             "TOKEN_EMBS": emb,
+            "MEAN_EMB": F.normalize(emb.mean(dim=0), dim=0),
             "is_query": True,
             "answer_pids": pids,
         }
@@ -134,6 +137,7 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=3072, max_length=
             "doc_id": doc_id,
             "text": text,
             "TOKEN_EMBS": emb,
+            "MEAN_EMB": F.normalize(emb.mean(dim=0), dim=0),
             "is_query": False,
             "answer_pids": [],
         }
