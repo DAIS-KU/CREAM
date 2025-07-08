@@ -122,9 +122,9 @@ def train(
 ):
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        doc_path = f"../data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
+        doc_path = f"../data/datasetM_large_share/train_session{session_number}_docs_filtered.jsonl"
         query_path = (
-            f"../data/datasetL_large_share/train_session{session_number}_queries.jsonl"
+            f"../data/datasetM_large_share/train_session{session_number}_queries.jsonl"
         )
         queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, "doc_id")
@@ -135,13 +135,13 @@ def train(
         ).to(devices[-1])
         if session_number != 0:
             print("Load last session model.")
-            model_path = f"../data/model/incremental_nt_datasetL_large_share_session_{session_number-1}.pth"
+            model_path = f"../data/model/incremental_nt_datasetM_large_share_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/incremental_nt_datasetL_large_share_session_{session_number}.pth"
+        new_model_path = f"../data/model/incremental_nt_datasetM_large_share_session_{session_number}.pth"
 
         loss_values = session_train(queries, docs, ts, model, num_epochs, is_term)
         torch.save(model.state_dict(), new_model_path)
@@ -158,14 +158,14 @@ def model_builder(model_path):
 
 
 def evaluate_cosine(sesison_count=10):
-    method = "incremental_nt_datasetL_large_share"
+    method = "incremental_nt_datasetM_large_share"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         eval_query_path = (
-            f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+            f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
         )
         eval_doc_path = (
-            f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
+            f"../data/datasetM_large_share/test_session{session_number}_docs.jsonl"
         )
 
         eval_query_data = read_jsonl(eval_query_path, True)
@@ -197,13 +197,13 @@ def evaluate_term(sesison_count=10):
 
 
 def _evaluate_term(session_number):
-    method = "incremental_nt_datasetL_large_share"
+    method = "incremental_nt_datasetM_large_share"
     print(f"Evaluate session {session_number}")
     eval_query_path = (
-        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+        f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
     )
     eval_doc_path = (
-        f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        f"../data/datasetM_large_share/train_session{session_number}_docs.jsonl"
     )
 
     eval_query_data = read_jsonl(eval_query_path, True)

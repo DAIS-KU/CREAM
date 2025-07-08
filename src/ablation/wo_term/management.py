@@ -528,3 +528,88 @@ def clear_unused_documents(clusters: List[Cluster], docs: dict):
     used_dict = {k: v for k, v in docs.items() if k in all_used_doc_ids}
     print(f"clear_unused_documents | after total #{len(used_dict)}")
     return used_dict
+
+
+def build_cluster_cache_table_by_cosine(
+    qids,
+    clusters,
+    docs,
+    query_batch_size=32,
+    doc_batch_size=512,
+):
+    """
+    Builds a cache mapping each cluster and query to top-k/bottom-k similarity scores.
+    Returns:
+        cache: Dict[cluster_id][qid] = List[(doc_id, score)] sorted by score desc
+    """
+
+    # 1) 클러스터별 doc_ids와 doc_vecs([D, H])만 캐싱
+    cluster_doc_id_cache = {}
+    cluster_doc_vecs_cache = {}
+
+    emb_dim = docs[qids[0]]["EMB"].shape[-1]
+    for cid, cluster in enumerate(clusters):
+        doc_ids = cluster.get_only_docids(docs)
+        cluster_doc_id_cache[cid] = doc_ids
+        if doc_ids:
+            cluster_doc_vecs_cache[cid] = torch.stack(
+                [docs[doc_id]["EMB"] for doc_id in doc_ids], dim=0
+            )
+        else:
+            # 빈 클러스터 처리
+            cluster_doc_vecs_cache[cid] = torch.empty(0, emb_dim)
+
+    # 2) 쿼리 벡터만 batch 크기로 미리 묶어서 캐싱
+    query_vec_batch_cache = []
+    for i in range(0, len(qids), query_batch_size):
+        qid_batch = qids[i : i + query_batch_size]
+        q_vecs = torch.stack([docs[qid]["EMB"] for qid in qid_batch], dim=0)  # [B, H]
+        query_vec_batch_cache.append((qid_batch, q_vecs))
+
+    # 3) 클러스터-디바이스 분배
+    cluster_splits = [[] for _ in devices]
+    for idx, cluster in enumerate(clusters):
+        cluster_splits[idx % len(devices)].append((idx, cluster))
+
+    def worker(device, assigned_clusters):
+        local_cache = {}
+
+        for qid_batch, q_vecs in query_vec_batch_cache:
+            q_vecs = q_vecs.to(device)  # [B, H]
+
+            for cluster_id, _ in assigned_clusters:
+                doc_ids = cluster_doc_id_cache[cluster_id]
+                doc_vecs = cluster_doc_vecs_cache[cluster_id].to(device)  # [D, H]
+                sim_matrix = torch.matmul(q_vecs, doc_vecs.T)  # [B, D]
+                k = min(50, len(doc_ids))
+                topk_idx = torch.topk(sim_matrix, k=k, dim=1, largest=True).indices
+                bottomk_idx = torch.topk(sim_matrix, k=k, dim=1, largest=False).indices
+
+                for i, qid in enumerate(qid_batch):
+                    idxs = torch.cat([topk_idx[i], bottomk_idx[i]]).tolist()
+                    sel_doc_ids = [doc_ids[j] for j in idxs]
+                    pairs = list(zip(sel_doc_ids, scores.tolist()[0]))
+                    local_cache.setdefault(cluster_id, {})[qid] = sorted(
+                        pairs, key=lambda x: x[1], reverse=True
+                    )
+
+        return local_cache
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    all_caches = []
+    with ThreadPoolExecutor(max_workers=len(devices)) as ex:
+        futures = [
+            ex.submit(worker, devices[i], cluster_splits[i])
+            for i in range(len(devices))
+        ]
+        for f in futures:
+            all_caches.append(f.result())
+
+    # 4) 합치기
+    cache = {}
+    for lc in all_caches:
+        for cid, q_scores in lc.items():
+            cache.setdefault(cid, {}).update(q_scores)
+
+    return cache

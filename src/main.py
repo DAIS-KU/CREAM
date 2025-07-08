@@ -8,6 +8,16 @@ from pipeline import (
     inc_train,
     inc_evaluate_cosine,
     inc_evaluate_term,
+    inc_train_m,
+    inc_evaluate_term_m,
+    mir_evaluate,
+    mir_train,
+    gss_evaluate,
+    gss_train,
+    ocs_evaluate,
+    ocs_train,
+    er_evaluate,
+    er_train,
     l2r_evaluate,
     l2r_train,
     proposal_evaluate,
@@ -19,6 +29,7 @@ from pipeline import (
     waringup_train,
     warmingup_evaluate_cosine,
     warmingup_evaluate_term,
+    warmingup_evaluate_term_m,
     proposal_evaluate_rankings,
     train_wo_term_rerank,
     evaluate_wo_term_rerank,
@@ -27,6 +38,7 @@ from pipeline import (
     qq_low_train,
     qq_low_evaluate,
     qq_low_train2,
+    qq_low_evaluate2,
     create_cos_ans_file,
     get_correlation,
     get_correlation_ans,
@@ -34,6 +46,8 @@ from pipeline import (
     colbert_train,
     colbert_evaluate,
 )
+
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 
 def validate_json_files(file_paths):
@@ -268,6 +282,8 @@ if __name__ == "__main__":
             include_answer=args.include_answer,
         )
     elif args.exp == "proposal_qq_low":
+        # 학습함수 주석처리
+        """
         qq_low_train(
             start_session_number=args.start,
             end_sesison_number=args.end,
@@ -289,7 +305,8 @@ if __name__ == "__main__":
             required_doc_size=args.rdsz,
             include_answer=args.include_answer,
         )
-        # qq_low_evaluate()
+        """
+        qq_low_evaluate()
     elif args.exp == "proposal_qq_low2":
         qq_low_train2(
             start_session_number=args.start,
@@ -312,14 +329,17 @@ if __name__ == "__main__":
             required_doc_size=args.rdsz,
             include_answer=args.include_answer,
         )
+        qq_low_evaluate2()
     elif args.exp == "wu":
         # waringup_train()
         # warmingup_evaluate_cosine()
         warmingup_evaluate_term()
+    elif args.exp == "wu_m":
+        warmingup_evaluate_term_m()
     elif args.exp == "val":
         validate_data()
     elif args.exp == "l2r":
-        # l2r_train()
+        l2r_train()
         l2r_evaluate()
     elif args.exp == "inc_cosine":
         inc_train(is_term=False)
@@ -327,6 +347,9 @@ if __name__ == "__main__":
     elif args.exp == "inc_term":
         inc_train(is_term=True)
         inc_evaluate_term()
+    elif args.exp == "inc_term_m":
+        inc_train_m(is_term=True)
+        inc_evaluate_term_m()
     elif args.exp == "inc_uni_term":
         inc_uni_train(is_term=True)
     elif args.exp == "ablation_cluster_rerank":
@@ -386,13 +409,26 @@ if __name__ == "__main__":
     elif args.exp == "doamin_forget":
         df_train(dataset=args.dataset, start_domain=args.start_domain)
     elif args.exp == "create_cos_ans_file":
-        create_cos_ans_file()
+        create_cos_ans_file(dataset="datasetL_large_share")
+        create_cos_ans_file(dataset="datasetM_large_share")
     elif args.exp == "sim_comp":
         # get_correlation()
         # get_correlation_ans()
         get_cosine_recall()
     elif args.exp == "colbert":
-        colbert_train()
+        # colbert_train()
         colbert_evaluate()
+    elif args.exp == "er":
+        er_train()
+        er_evaluate()
+    elif args.exp == "ocs":
+        ocs_train()
+        ocs_evaluate()
+    elif args.exp == "mir":
+        mir_train()
+        mir_evaluate()
+    elif args.exp == "gss":
+        gss_train()
+        gss_evaluate()
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

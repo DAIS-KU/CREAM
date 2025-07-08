@@ -90,8 +90,8 @@ def build_bm25(docs):
 
 def prepare_inputs(session_number, positive_k=1, negative_k=6):
     inputs = {}
-    query_path = f"../data/datasetL/train_session{session_number}_queries.jsonl"
-    doc_path = f"../data/datasetL/train_session{session_number}_docs.jsonl"
+    query_path = f"../data/datasetM_large/train_session{session_number}_queries.jsonl"
+    doc_path = f"../data/datasetM_large/train_session{session_number}_docs.jsonl"
     queries = read_jsonl(query_path, is_query=True)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     doc_ids = list(docs.keys())

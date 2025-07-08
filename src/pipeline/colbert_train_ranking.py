@@ -68,11 +68,13 @@ def session_train(session_number, model, num_epochs, batch_size=32):
 
     for epoch in range(num_epochs):
         inputs = prepare_colbert_inputs(session_number)
-        total_loss, total_sec, batch_cnt = 0, 0, 0    
+        total_loss, total_sec, batch_cnt = 0, 0, 0
         input_cnt = len(inputs)
         random.shuffle(inputs)
 
-        print(f"[session_number {session_number} / epoch {epoch}] Total inputs #{input_cnt}")
+        print(
+            f"[session_number {session_number} / epoch {epoch}] Total inputs #{input_cnt}"
+        )
 
         start_time = time.time()
         for start_idx in range(0, input_cnt, batch_size):
@@ -124,7 +126,7 @@ def session_train(session_number, model, num_epochs, batch_size=32):
 
 
 def train(
-    session_count=9,
+    session_count=10,
     num_epochs=1,
     batch_size=32,
     compatible=False,
@@ -138,11 +140,11 @@ def train(
     for session_number in range(session_count):
         start_time = time.time()
         time_values_path = (
-            f"../data/loss/total_time_colbert_datasetL_{session_number}.txt"
+            f"../data/loss/total_time_colbert_datasetL_large_share_{session_number}.txt"
         )
         print(f"Train Session {session_number}")
-        query_path = f"/home/work/retrieval/data/datasetL/train_session{session_number}_queries.jsonl"
-        doc_path = f"/home/work/retrieval/data/datasetL/train_session{session_number}_docs.jsonl"
+        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
         model = build_model()
 
         if session_number != 0:
@@ -177,15 +179,20 @@ def model_builder(model_path=None):
 
 
 def evaluate(session_count=10):
-    for session_number in range(session_count):
+    for session_number in range(6, session_count):
         _evaluate(session_number)
 
 
 def _evaluate(session_number):
     method = "colbert"
     print(f"Evaluate Session {session_number}")
-    eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
+    eval_query_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+    )
+    # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
+    eval_doc_path = (
+        f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+    )
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)

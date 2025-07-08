@@ -11,7 +11,14 @@ from buffer import (
     ModelArguments,
     TevatronTrainingArguments,
 )
-from data import write_line, load_eval_docs, prepare_inputs, read_jsonl, write_file
+from data import (
+    load_eval_docs,
+    prepare_inputs,
+    read_jsonl,
+    write_file,
+    read_jsonl_as_dict,
+)
+
 from functions import (
     SimpleContrastiveLoss,
     evaluate_dataset,
@@ -26,55 +33,59 @@ tokenizer = BertTokenizer.from_pretrained(
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+device = devices[-1] if num_gpus > 0 else torch.device("cpu")
 
 
 def build_model(bert_weight_path=None, model_path=None):
     model_args = ModelArguments(model_name_or_path="bert-base-uncased")
-    training_args = TevatronTrainingArguments(output_dir="../data/model")
+    training_args = TevatronTrainingArguments(
+        output_dir="/home/work/retrieval/data/model"
+    )
     model = DenseModel.build(
         model_args,
         training_args,
         cache_dir=model_args.cache_dir,
     )
     if bert_weight_path:
-        bert_state_dict = torch.load(bert_weight_path, map_location=devices[-1])
+        bert_state_dict = torch.load(bert_weight_path)
         model.lm_q.load_state_dict(bert_state_dict)
         model.lm_p.load_state_dict(bert_state_dict)
 
     if model_path:
-        model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
-    # model.to(devices[0])
+        model.load_state_dict(torch.load(model_path, weights_only=True))
+    # model.to(devices[1])
     return model
 
 
-def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
+def build_er_buffer(new_batch_size, mem_batch_size, compatible):
+    # query_data = f"/home/work/retrieval/data/datasetL2_large/train_session0_queries_cos.jsonl"
     query_data = (
-        "/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
     )
-    # query_data = "/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
+    doc_data = (
+        f"/home/work/retrieval/data/datasetL_large_share/train_session0_docs.jsonl"
+    )
     buffer_data = "../data"  # comp시에는 필요
-    output_dir = "../data"
+    output_dir = "/home/work/retrieval/data/er_output"
+    # bert_weight_path = "/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth" # .pth
 
-    method = "l2r"
+    method = "er"
     model = build_model()
+
+    # model_path = f"../data/model/{method}_session_0.pth"
+
+    # model.load_state_dict(torch.load(model_path, weights_only=True))
     buffer = Buffer(
         model,
         tokenizer,
         DataArguments(
-            retrieve_method="our",
-            update_method="our",
             query_data=query_data,
-            doc_data=None,
-            alpha=0.6,
-            beta=0.4,
+            doc_data=None,  # doc_data,
+            # buffer_data=buffer_data,
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
-            mem_upsample=mem_upsample,
             mem_size=30,
-            mem_eval_size=10,
-            mem_replace_size=10,
-            upsample_scale=2.0,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -82,7 +93,7 @@ def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=False):
+def session_train(inputs, model, buffer, num_epochs, batch_size=32, compatible=False):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
     print(f"Total inputs #{input_cnt}")
@@ -90,7 +101,7 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=F
 
     loss_values = []
     loss_fn = SimpleContrastiveLoss()
-    learning_rate = 5e-6
+    learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     batch_cnt = 0
 
@@ -105,12 +116,14 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=F
             for qid in range(start_idx, end_idx):
                 q_tensors, docs_tensors, docid_lst = inputs[qid]
                 output = model(q_tensors, docs_tensors)
+                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
-                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
-                # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
-                if compatible:
-                    buffer.update_old_embs(docid_lst, output.p_reps)
+                # print(
+                #     f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}"
+                # )
+            if compatible:
+                buffer.update_old_embs(docid_lst, output.p_reps)
             q_embs, d_embs = torch.cat(qreps_batch, dim=0), torch.cat(
                 dreps_batch, dim=0
             )
@@ -143,31 +156,17 @@ def train(
     compatible=False,
     new_batch_size=3,
     mem_batch_size=3,
-    mem_upsample=6,
 ):
-    buffer = build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible)
-    method = "l2r"
-    output_dir = "../data"
-    total_sec = 0
+    buffer = build_er_buffer(new_batch_size, mem_batch_size, compatible)
+    method = "er"
+    output_dir = "/home/work/retrieval/data/er_output"
     for session_number in range(session_count):
-        start_time = time.time()
-        time_values_path = (
-            f"../data/loss/total_time_l2r_datasetL_large_share_{session_number}.txt"
-        )
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = (
-            f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
-            # f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
-        )
+        # query_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl"
         doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-        # if session_number < 3:
-        #     query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries_cos.jsonl"
-        # else:
-        #     query_path = (
-        #         f"/home/work/retrieval/data/datasetL_large_share/train_session(0,1,2)_queries_cos.jsonl"
-        #     )
-        model = build_model()
+        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        # query_path = f"/home/work/retrieval/data/datasetL2_large/train_session0_queries_cos.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -178,13 +177,16 @@ def train(
             mem_batch_size,
             compatible,
         )
-
+        # bert_weight_path = "/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth"
         model = build_model()
+
         if session_number != 0:
-            model_path = f"../data/model/{method}_session_{session_number-1}.pth"
+            model_path = f"/home/work/retrieval/data/model/{method}_session_{session_number-1}.pth"
             print(f"Load model {model_path}")
-            model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
-        new_model_path = f"../data/model/{method}_session_{session_number}.pth"
+            model.load_state_dict(torch.load(model_path, weights_only=True))
+        new_model_path = (
+            f"/home/work/retrieval/data/model/{method}_session_{session_number}.pth"
+        )
         model.train()
 
         loss_values = session_train(
@@ -192,11 +194,6 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
-        buffer.replace()
-        end_time = time.time()
-        total_sec += end_time - start_time
-        print(f"{end_time-start_time} sec. ")
-    write_line(time_values_path, f"({total_sec}sec)\n", "a")
 
 
 def model_builder(model_path=None):
@@ -214,18 +211,11 @@ def model_builder(model_path=None):
 
 
 def evaluate(sesison_count=10):
-    method = "l2r"
+    method = "er"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        model_path = f"../data/model/{method}_session_{session_number}.pth"
-        eval_query_path = (
-            f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
-        )
-        eval_doc_path = (
-            f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-        )
-        # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
-
+        eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
 
@@ -235,17 +225,21 @@ def evaluate(sesison_count=10):
 
         rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
         model_path = f"../data/model/{method}_session_{session_number}.pth"
+        # model_path = f"/home/hyeongu/ContinualRetrieval_paper/data/model/{method}_sup2_session_{session_number}.pth"
 
         start_time = time.time()
+        """추가한 부분 : 리스트에서 딕셔너리로 변환"""
         eval_query_data, eval_doc_data = renew_data_mean_pooling(
             model_builder, model_path, eval_query_data, eval_doc_data
         )
+        """
+        인자 개수 수정
+        result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10, method, session_number)
+        """
         result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
         write_file(rankings_path, result)
         eval_log_path = f"../data/evals/{method}_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del eval_query_data, eval_doc_data

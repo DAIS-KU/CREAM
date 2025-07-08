@@ -338,19 +338,19 @@ def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=2048, qbatch_si
 def make_query_term_samples(model, queries, docs, sampling_size_per_query=50):
     print(f"make_query_term_samples started.({sampling_size_per_query})")
     doc_list = list(docs.values())
-    corpus = [doc["text"] for doc in doc_list]
-    bm25 = BM25Okapi(corpus=corpus, tokenizer=preprocess)
-    doc_ids = [doc["doc_id"] for doc in doc_list]
-    candidate_doc_ids = set()
-    for i, query in enumerate(queries):
-        print(f"{i}th query * {sampling_size_per_query}")
-        query_tokens = preprocess(query["query"])
-        scores = bm25.get_scores(query_tokens)
-        sorted_indices = np.argsort(scores)[::-1]
-        top_k_indices = sorted_indices[:sampling_size_per_query]
-        top_k_doc_ids = [doc_ids[_id] for _id in top_k_indices]
-        candidate_doc_ids.update(top_k_doc_ids)
-    doc_list = [docs[doc_id] for doc_id in candidate_doc_ids]
+    # corpus = [doc["text"] for doc in doc_list]
+    # bm25 = BM25Okapi(corpus=corpus, tokenizer=preprocess)
+    # doc_ids = [doc["doc_id"] for doc in doc_list]
+    # candidate_doc_ids = set()
+    # for i, query in enumerate(queries):
+    #     print(f"{i}th query * {sampling_size_per_query}")
+    #     query_tokens = preprocess(query["query"])
+    #     scores = bm25.get_scores(query_tokens)
+    #     sorted_indices = np.argsort(scores)[::-1]
+    #     top_k_indices = sorted_indices[:sampling_size_per_query]
+    #     top_k_doc_ids = [doc_ids[_id] for _id in top_k_indices]
+    #     candidate_doc_ids.update(top_k_doc_ids)
+    # doc_list = [docs[doc_id] for doc_id in candidate_doc_ids]
 
     query_embs, doc_embs = renew_data(queries, doc_list)
     result = get_top_k_documents(query_embs, doc_embs, 6)

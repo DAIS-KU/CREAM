@@ -11,12 +11,17 @@ from buffer import (
     ModelArguments,
     TevatronTrainingArguments,
 )
-from data import write_line, load_eval_docs, prepare_inputs, read_jsonl, write_file
+from data import (
+    load_eval_docs,
+    prepare_inputs,
+    read_jsonl,
+    write_file,
+)
+
 from functions import (
+    get_top_k_documents_by_cosine,
     SimpleContrastiveLoss,
     evaluate_dataset,
-    get_top_k_documents_by_cosine,
-    renew_data_mean_pooling,
 )
 
 torch.autograd.set_detect_anomaly(True)
@@ -26,55 +31,63 @@ tokenizer = BertTokenizer.from_pretrained(
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+device = devices[-1] if num_gpus > 0 else torch.device("cpu")
 
 
 def build_model(bert_weight_path=None, model_path=None):
     model_args = ModelArguments(model_name_or_path="bert-base-uncased")
-    training_args = TevatronTrainingArguments(output_dir="../data/model")
+    training_args = TevatronTrainingArguments(
+        output_dir="/home/work/retrieval/data/model"
+    )
     model = DenseModel.build(
         model_args,
         training_args,
         cache_dir=model_args.cache_dir,
     )
+
     if bert_weight_path:
-        bert_state_dict = torch.load(bert_weight_path, map_location=devices[-1])
+        bert_state_dict = torch.load(
+            bert_weight_path, weights_only=True, map_location=device
+        )
         model.lm_q.load_state_dict(bert_state_dict)
         model.lm_p.load_state_dict(bert_state_dict)
 
     if model_path:
-        model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
-    # model.to(devices[0])
+        model.load_state_dict(
+            torch.load(model_path, weights_only=True, map_location=device)
+        )
     return model
 
 
-def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
+def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
+    # query_data = f"/home/sunho/continual_retrieval/ContinualRetrieval_paper/data/datasetM/train_session0_queries_cos.jsonl"
     query_data = (
-        "/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
     )
-    # query_data = "/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
-    buffer_data = "../data"  # comp시에는 필요
-    output_dir = "../data"
+    doc_data = (
+        f"/home/work/retrieval/data/datasetL_large_share/train_session0_docs.jsonl"
+    )
+    # doc_data = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
+    buffer_data = "./data"  # comp시에는 필요
+    output_dir = "/home/work/retrieval/data/mir_output"
 
-    method = "l2r"
+    method = "mir"
+    # model = build_model(bert_weight_path="/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth")
     model = build_model()
+
     buffer = Buffer(
         model,
         tokenizer,
         DataArguments(
-            retrieve_method="our",
-            update_method="our",
+            retrieve_method="mir",
             query_data=query_data,
-            doc_data=None,
-            alpha=0.6,
-            beta=0.4,
+            doc_data=None,  # doc_data,
+            # buffer_data=buffer_data,
             new_batch_size=new_batch_size,
             mem_batch_size=mem_batch_size,
             compatible=compatible,
-            mem_upsample=mem_upsample,
             mem_size=30,
-            mem_eval_size=10,
-            mem_replace_size=10,
-            upsample_scale=2.0,
+            subsample=30,
         ),
         TevatronTrainingArguments(output_dir=output_dir),
     )
@@ -82,15 +95,17 @@ def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
 
 
 # https://github.com/caiyinqiong/L-2R/blob/main/src/tevatron/trainer.py
-def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=False):
+def session_train(
+    session_number, inputs, model, buffer, num_epochs, batch_size=8, compatible=False
+):
     # inputs : (q_lst, d_lst) = ( {q의 'input_ids', 'attention_mask'}, {docs의 'input_ids', 'attention_mask'})이 튜플이 원소인 2중리스트
     input_cnt = len(inputs)
-    print(f"Total inputs #{input_cnt}")
+    print(f"Total inputs #{input_cnt} with compatiblity {compatible}")
     random.shuffle(inputs)
 
     loss_values = []
     loss_fn = SimpleContrastiveLoss()
-    learning_rate = 5e-6
+    learning_rate = 2e-5
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     batch_cnt = 0
 
@@ -103,11 +118,17 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=F
             print(f"batch {start_idx}-{end_idx}")
             qreps_batch, dreps_batch = [], []
             for qid in range(start_idx, end_idx):
-                q_tensors, docs_tensors, docid_lst = inputs[qid]
-                output = model(q_tensors, docs_tensors)
+                if not compatible or session_number == 0:
+                    q_tensors, docs_tensors, docid_lst = inputs[qid]
+                    output = model(q_tensors, docs_tensors)
+                else:
+                    q_tensors, docs_tensors, identity, doc_oldemb, docid_lst = inputs[
+                        qid
+                    ]
+                    output = model(q_tensors, docs_tensors, identity, doc_oldemb)
+                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 qreps_batch.append(output.q_reps)
                 dreps_batch.append(output.p_reps)
-                # output.q_reps: torch.Size([1, 768]), output.p_reps: torch.Size([8, 768])
                 # print(f"output.q_reps:{output.q_reps.shape}, output.p_reps:{output.p_reps.shape}")
                 if compatible:
                     buffer.update_old_embs(docid_lst, output.p_reps)
@@ -137,37 +158,36 @@ def session_train(inputs, model, buffer, num_epochs, batch_size=96, compatible=F
 
 
 def train(
-    session_count=10,
+    session_count=9,
     num_epochs=1,
-    batch_size=32,
+    batch_size=16,
     compatible=False,
     new_batch_size=3,
     mem_batch_size=3,
-    mem_upsample=6,
 ):
-    buffer = build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible)
-    method = "l2r"
-    output_dir = "../data"
-    total_sec = 0
+
+    # buffer = build_mir_buffer(new_batch_size, mem_batch_size, compatible)
+    buffer = build_mir_buffer(new_batch_size, mem_batch_size, compatible)
+    method = "mir"
+    output_dir = "/home/work/retrieval/data/er_output"
     for session_number in range(session_count):
-        start_time = time.time()
-        time_values_path = (
-            f"../data/loss/total_time_l2r_datasetL_large_share_{session_number}.txt"
-        )
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
-        query_path = (
-            f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
-            # f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
-        )
+
+        # doc_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
         doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-        # if session_number < 3:
-        #     query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries_cos.jsonl"
+        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        # query_path = f"/home/sunho/continual_retrieval/ContinualRetrieval_paper/data/datasetM/train_session0_queries_cos.jsonl"
+
+        # if session_number < 3: # 수정
+        #     # query_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl" # 수정
+        #     query_path = f"/home/sunho/continual_retrieval/ContinualRetrieval_paper/train_session{session_number}_queries_cos.jsonl"
         # else:
-        #     query_path = (
-        #         f"/home/work/retrieval/data/datasetL_large_share/train_session(0,1,2)_queries_cos.jsonl"
-        #     )
-        model = build_model()
+
+        #     # query_path = f"/mnt/DAIS_NAS/huijeong/train_session0_queries.jsonl" # 수정
+        #     query_path = f"/home/sunho/continual_retrieval/ContinualRetrieval_paper/train_session(0,1,2)_queries_cos.jsonl"
+
+        # query_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -179,52 +199,41 @@ def train(
             compatible,
         )
 
+        # model = build_model(bert_weight_path="/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth")
         model = build_model()
+        # model.to(device)
+
         if session_number != 0:
-            model_path = f"../data/model/{method}_session_{session_number-1}.pth"
+            model_path = f"/home/work/retrieval/data/model/{method}_session_{session_number-1}.pth"
             print(f"Load model {model_path}")
-            model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
-        new_model_path = f"../data/model/{method}_session_{session_number}.pth"
+            model.load_state_dict(
+                torch.load(model_path, weights_only=True, map_location=device)
+            )
+        new_model_path = (
+            f"/home/work/retrieval/data/model/{method}_session_{session_number}.pth"
+        )
         model.train()
 
         loss_values = session_train(
-            inputs, model, buffer, num_epochs, batch_size, compatible
+            session_number, inputs, model, buffer, num_epochs, batch_size, compatible
         )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
-        buffer.replace()
-        end_time = time.time()
-        total_sec += end_time - start_time
-        print(f"{end_time-start_time} sec. ")
-    write_line(time_values_path, f"({total_sec}sec)\n", "a")
 
 
-def model_builder(model_path=None):
-    model_args = ModelArguments(model_name_or_path="bert-base-uncased")
-    training_args = TevatronTrainingArguments(output_dir="../data/model")
-    model = DenseModel.build(
-        model_args,
-        training_args,
-        cache_dir=model_args.cache_dir,
-    )
-    if model_path:
-        model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
-    # model.to(devices[0])
-    return model
-
-
-def evaluate(sesison_count=10):
-    method = "l2r"
+def evaluate(sesison_count=9):
+    method = "mir"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
         model_path = f"../data/model/{method}_session_{session_number}.pth"
         eval_query_path = (
-            f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+            # f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_queries.jsonl"
+            f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
         )
         eval_doc_path = (
-            f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+            # f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_docs.jsonl"
+            f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
         )
-        # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -237,9 +246,6 @@ def evaluate(sesison_count=10):
         model_path = f"../data/model/{method}_session_{session_number}.pth"
 
         start_time = time.time()
-        eval_query_data, eval_doc_data = renew_data_mean_pooling(
-            model_builder, model_path, eval_query_data, eval_doc_data
-        )
         result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
         end_time = time.time()
         print(f"Spend {end_time-start_time} seconds for retrieval.")
@@ -248,4 +254,3 @@ def evaluate(sesison_count=10):
         write_file(rankings_path, result)
         eval_log_path = f"../data/evals/{method}_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-        del eval_query_data, eval_doc_data

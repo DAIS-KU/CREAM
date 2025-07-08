@@ -6,6 +6,7 @@ from functions import renew_data_mean_pooling, get_top_k_documents_by_cosine
 from data import read_jsonl
 from transformers import BertModel
 import os
+import time
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -25,7 +26,8 @@ def model_builder(model_path):
     return model
 
 
-def create_cos_ans_file(dataset="datasetM"):
+def create_cos_ans_file(dataset="datasetL_large_share"):
+    start_time = time.time()
     train_query_path = (
         f"/home/work/retrieval/data/{dataset}/train_session0_queries.jsonl"
     )
@@ -48,3 +50,5 @@ def create_cos_ans_file(dataset="datasetM"):
     for q in queries_data:
         q["cos_ans_pids"] = qid_kpids[q["qid"]]
     append_jsonl(queries_data, target_path)
+    end_time = time.time()
+    print(f"Total time: {end_time-start_time} sec.")

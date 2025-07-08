@@ -145,9 +145,11 @@ def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=2048)
 def get_top_k_documents_gpu_batch(
     new_q_data_batch, docs, query_ids, k, devices, batch_size=2048
 ):
-    queries_token_embs = [new_q_data_batch[qid]["TOKEN_EMBS"] for qid in query_ids]
+    queries_token_embs = [
+        new_q_data_batch[qid]["TOKEN_EMBS"].to(devices[-1]) for qid in query_ids
+    ]
     queries_token_embs = torch.stack(
-        queries_token_embs
+        queries_token_embs, dim=0
     )  # (qbatch_size, seqlen, hidden)
     docs_cnt = len(docs)
     num_gpus = len(devices)

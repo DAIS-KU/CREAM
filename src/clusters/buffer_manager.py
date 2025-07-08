@@ -105,7 +105,7 @@ class DiversityBufferManager(BufferManager):
 
             while len(diverse_qids) < sample_size:
                 remains = sample_size - len(diverse_qids)
-                rand_cid = random.sample(cluster_qids.keys(), 1)[0]
+                rand_cid = random.sample(list(cluster_qids.keys()), 1)[0]
                 sample_sz = min(len(cluster_qids[rand_cid]), remains)
                 rand_qids = random.sample(cluster_qids[rand_cid], sample_sz)
                 diverse_qids.update(rand_qids)

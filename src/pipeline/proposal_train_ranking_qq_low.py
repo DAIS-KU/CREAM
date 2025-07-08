@@ -26,7 +26,6 @@ from clusters import (
     deep_copy_tensor_dict,
     compare_tensor_dicts,
     build_cluster_cache_table_by_cosine,
-    build_cluster_cache_table_by_query_result,
     get_samples_top_and_farthest3_with_cache,
     get_samples_top_bottom_3_with_cache,
 )
@@ -45,6 +44,10 @@ tokenizer = BertTokenizer.from_pretrained(
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+
+
+from multiprocessing import Pool, cpu_count
+import torch
 
 
 def encode_texts(model, texts, max_length=256):
@@ -232,15 +235,13 @@ def train(
 
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
-        time_values_path = (
-            f"../data/loss/total_time_values_proposal_datasetL_{session_number}.txt"
-        )
+        time_values_path = f"../data/loss/total_time_values_proposal_datasetL_large_{session_number}.txt"
         print(f"Training Session {session_number}/{load_cluster}")
         start_time = time.time()
         stream = Stream(
             session_number=session_number,
-            query_path=f"../data/datasetL/train_session{session_number}_queries.jsonl",
-            doc_path=f"../data/datasetL/train_session{session_number}_docs.jsonl",
+            query_path=f"../data/datasetL_large_share/train_session{session_number}_queries.jsonl",
+            doc_path=f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
@@ -262,14 +263,16 @@ def train(
         if session_number != 0:
             print("Load last session model.")
             model_path = (
-                f"../data/model/proposal_datasetL_session_{session_number-1}.pth"
+                f"../data/model/proposal_datasetL_large_session_{session_number-1}.pth"
             )
             model.load_state_dict(torch.load(model_path, map_location="cuda:1"))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/proposal_datasetL_session_{session_number}.pth"
+        new_model_path = (
+            f"../data/model/proposal_datasetL_large_session_{session_number}.pth"
+        )
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -277,26 +280,30 @@ def train(
             or (not load_cluster and session_number == start_session_number)
             and session_number > 0
         ):
-            with open(f"../data/clusters_datasetL_{session_number-1}.pkl", "rb") as f:
+            with open(
+                f"../data/clusters_datasetL_large_{session_number-1}.pkl", "rb"
+            ) as f:
                 print(f"Load last clusters.")
                 clusters = pickle.load(f)
-            with open(f"../data/prev_docs_datasetL_{session_number-1}.pkl", "rb") as f:
+            with open(
+                f"../data/prev_docs_datasetL_large_{session_number-1}.pkl", "rb"
+            ) as f:
                 print(f"Load last docs.")
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetL_{session_number-1}.pkl", "rb"
+                f"../data/random_vectors_datasetL_large_{session_number-1}.pkl", "rb"
             ) as f:
                 print(f"Load last random vectors.")
                 random_vectors = pickle.load(f)
             # with open(
-            #     f"../data/query_result_datasetL_{session_number-1}.pkl", "rb"
+            #     f"../data/query_result_datasetL_large_{session_number-1}.pkl", "rb"
             # ) as f:
             #     print(f"Load last query_result.")
             #     last_query_result = pickle.load(f)
             #     query_result.update(last_query_result)
             # with open(
-            #     f"../data/diversity_buffer_manager_datasetL_{session_number-1}.pkl",
+            #     f"../data/diversity_buffer_manager_datasetL_large_{session_number-1}.pkl",
             #     "rb",
             # ) as f:
             #     diversity_buffer_manager = pickle.load(f)
@@ -466,7 +473,7 @@ def train(
         #     model_path=new_model_path,
         #     use_tensor_key=use_tensor_key,
         # )
-        _evaluate(session_number)
+        # _evaluate(session_number)
 
         start_time = time.time()
         # Evict
@@ -482,16 +489,18 @@ def train(
         )
         write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
-        with open(f"../data/clusters_datasetL_{session_number}.pkl", "wb") as f:
+        with open(f"../data/clusters_datasetL_large_{session_number}.pkl", "wb") as f:
             pickle.dump(clusters, f)
-        with open(f"../data/prev_docs_datasetL_{session_number}.pkl", "wb") as f:
+        with open(f"../data/prev_docs_datasetL_large_{session_number}.pkl", "wb") as f:
             pickle.dump(prev_docs, f)
-        with open(f"../data/random_vectors_datasetL_{session_number}.pkl", "wb") as f:
+        with open(
+            f"../data/random_vectors_datasetL_large_{session_number}.pkl", "wb"
+        ) as f:
             pickle.dump(random_vectors, f)
-        # with open(f"../data/query_result_datasetL_{session_number}.pkl", "wb") as f:
+        # with open(f"../data/query_result_datasetL_large_{session_number}.pkl", "wb") as f:
         #     pickle.dump(query_result, f)
         # with open(
-        #     f"../data/diversity_buffer_manager_datasetL_{session_number}.pkl", "wb"
+        #     f"../data/diversity_buffer_manager_datasetL_large_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
 
@@ -504,8 +513,12 @@ def evaluate_with_cluster(
     model_path,
     clusters: List[Cluster],
 ) -> List[Cluster]:
-    eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
+    eval_query_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+    )
+    eval_doc_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
+    )
     stream = Stream(
         session_number=session_number,
         query_path=eval_query_path,
@@ -530,23 +543,28 @@ def evaluate_with_cluster(
     # end_time = time.time()
     # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/proposal_datasetL_{session_number}_with_cluster.txt"
+    # rankings_path = f"../data/rankings/proposal_datasetL_large_{session_number}_with_cluster.txt"
     # write_file(rankings_path, result)
-    # eval_log_path = f"../data/evals/proposa_datasetL_{session_number}_with_cluster.txt"
+    # eval_log_path = f"../data/evals/proposa_datasetL_large_{session_number}_with_cluster.txt"
     # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
 
 def evaluate(session_count=10):
-    for session_number in range(session_count):
+    for session_number in range(8, 5, -1):
         _evaluate(session_number)
 
 
 def _evaluate(session_number):
-    method = "proposal_datasetL"
+    method = "proposal_datasetL_large"
     print(f"Evaluate Session {session_number}")
-    eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
+    eval_query_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+    )
+    eval_doc_path = (
+        f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+    )
+    # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -584,8 +602,12 @@ def _evaluate(session_number):
 
 
 def eval_rankings(session_number):
-    eval_query_path = f"../data/datasetL/test_session{session_number}_queries.jsonl"
-    eval_doc_path = f"../data/datasetL/test_session{session_number}_docs.jsonl"
+    eval_query_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+    )
+    eval_doc_path = (
+        f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
+    )
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -595,9 +617,13 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/proposal_datasetL_{session_number}_with_cluster.txt"
+        f"../data/rankings/proposal_datasetL_large_{session_number}_with_cluster.txt"
     )
-    eval_log_path = f"../data/evals/proposal_datasetL_{session_number}_with_cluster.txt"
+    eval_log_path = (
+        f"../data/evals/proposal_datasetL_large_{session_number}_with_cluster.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = f"../data/rankings/proposal_datasetL_session_{session_number}.txt"
+    rankings_path = (
+        f"../data/rankings/proposal_datasetL_large_session_{session_number}.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

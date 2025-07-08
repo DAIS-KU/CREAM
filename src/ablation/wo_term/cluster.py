@@ -174,7 +174,7 @@ class Cluster:
             self.z2,
             self.N,
         )
-        BOUNDARY = mean + z2 * std * is_updated
+        BOUNDARY = mean + z2 * std
         print(f"BOUNDARY: {BOUNDARY}| mean:{mean}, std:{std}, z1:{z1}, z2:{z2}, n:{n}")
 
         for batch_start in range(0, len(self.doc_ids), self.batch_size):

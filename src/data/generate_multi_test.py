@@ -81,11 +81,11 @@ def sessioning(
         for i in range(session_count):
             append_jsonl(
                 train_query_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_queries.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_queries.jsonl",
             )
             append_jsonl(
                 test_query_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/test_session{i}_queries.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/test_session{i}_queries.jsonl",
             )
 
         print(f"[DONE] Train Query {domain} | {' / '.join(map(str, train_cnts))}")
@@ -129,11 +129,12 @@ def sessioning(
         for i in range(session_count):
             append_jsonl(
                 train_doc_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
             )
             append_jsonl(
                 test_doc_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/test_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
+                # f"/home/work/retrieval/data/datasetM_large_share/{dataset}/test_session{i}_docs.jsonl",
             )
 
         print(
@@ -186,11 +187,12 @@ def sessioning(
         for i in range(session_count):
             append_jsonl(
                 left_train_doc_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
             )
             append_jsonl(
                 left_test_doc_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/test_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
+                # f"/home/work/retrieval/data/datasetM_large_share/{dataset}/test_session{i}_docs.jsonl",
             )
 
         print(
@@ -254,7 +256,7 @@ def sessioning_accumulate(
         for i in range(session_count):
             append_jsonl(
                 train_q_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_queries.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_queries.jsonl",
             )
         print(f"[DONE] Train Query {domain} | {'/'.join(map(str, train_cnts))}")
         print(f"[DONE] Test  Query {domain} | {'/'.join(map(str, test_cnts))}")
@@ -302,7 +304,7 @@ def sessioning_accumulate(
         for i in range(session_count):
             append_jsonl(
                 train_d_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
             )
         print(f"[DONE] Train Docs   {domain} | {'/'.join(map(str, train_cnts))}")
         print(f"[DONE] Test  Docs   {domain} | {'/'.join(map(str, test_cnts))}")
@@ -344,7 +346,7 @@ def sessioning_accumulate(
         for i in range(session_count):
             append_jsonl(
                 left_train_d_batches[i],
-                f"/home/work/retrieval/data/datasetM/{dataset}/train_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/train_session{i}_docs.jsonl",
             )
         print(f"[DONE] Leftover Train Docs {domain}")
 
@@ -356,14 +358,14 @@ def sessioning_accumulate(
             cumulative_qs.extend(test_q_batches[i])
             append_jsonl(
                 cumulative_qs,
-                f"/home/work/retrieval/data/datasetM/{dataset}/test_session{i}_queries.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/test_session{i}_queries.jsonl",
             )
             # ▶ 문서 누적 (정답 + no-answer)
             cumulative_docs.extend(test_d_batches[i])
             cumulative_docs.extend(left_test_d_batches[i])
             append_jsonl(
                 cumulative_docs,
-                f"/home/work/retrieval/data/datasetM/{dataset}/test_session{i}_docs.jsonl",
+                f"/home/work/retrieval/data/datasetM_large_share/{dataset}/test_session{i}_docs.jsonl",
             )
         print(f"[DONE] Cumulative Test Queries & Docs {domain}")
 
@@ -471,7 +473,7 @@ def process_hotpot_qa(path="../data/hotpot_dev_distractor_v1.json"):
             print(f"{i}th query and answer: {qna}")
         if i == 13000:
             break
-    save_jsonl(processed, "/home/work/retrieval/data/raw/msmarco/pretrained,jsonl")
+    save_jsonl(processed, "/home/work/retrieval/data/raw/msmarco/pretrained.jsonl")
 
 
 def check_duplicate(session_count=12):
@@ -504,27 +506,29 @@ if __name__ == "__main__":
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
         domain_answer_rate=[4.27],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
-            150,
-            150,
+            1215,
             0,
             0,
             0,
+            1215,
+            1215,
             0,
-            150,
-            150,
             0,
+            0,
+            1215,
         ],  # [0,0,0,300,0 ,0,0,0,300,0, 0,0,0,300,0],
         need_test_query_counts=[
-            20,
-            20,
-            20,
+            90,
+            90,
             0,
             0,
+            90,
+            90,
+            90,
             0,
-            20,
-            20,
-            20,
-        ],  # [0,0,0,20,20, 0,0,0,20,20, 0,0,0,20,20],
+            0,
+            90,
+        ],  # [0,0,0,90,90, 0,0,0,90,90, 0,0,0,90,90],
     )
 
     sessioning(
@@ -534,27 +538,29 @@ if __name__ == "__main__":
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
         domain_answer_rate=[4.27],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
+            1215,
+            1215,
             0,
             0,
             0,
-            150,
-            150,
+            1215,
+            1215,
             0,
             0,
-            150,
-            150,
+            0,
         ],  # [300,0,0,0,0, 300,0,0,0,0, 300,0,0,0,0],
         need_test_query_counts=[
+            90,
+            90,
+            90,
             0,
             0,
+            90,
+            90,
+            90,
             0,
-            20,
-            20,
-            20,
             0,
-            20,
-            20,
-        ],  # [20,20,0,0,0,20,20,0,0,0, 20,20,0,0,0],
+        ],  # [90,90,0,0,0,90,90,0,0,0, 90,90,0,0,0],
     )
 
     sessioning(
@@ -565,26 +571,28 @@ if __name__ == "__main__":
         domain_answer_rate=[4.27],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
             0,
-            150,
-            150,
+            1215,
+            1215,
             0,
             0,
-            150,
-            150,
+            0,
+            1215,
+            1215,
             0,
             0,
         ],  # [0,0,300,0,0, 0,0,300,0,0, 0,0,300,0,0],
         need_test_query_counts=[
             0,
-            20,
-            20,
-            20,
+            90,
+            90,
+            90,
             0,
-            20,
-            20,
-            20,
             0,
-        ],  # [0,0,20,20,0, 0,0,20,20,0, 0,0,20,20,0],
+            90,
+            90,
+            90,
+            0,
+        ],  # [0,0,90,90,0, 0,0,90,90,0, 0,0,90,90,0],
     )
     sessioning(
         dataset="msmarco",
@@ -593,27 +601,29 @@ if __name__ == "__main__":
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
         domain_answer_rate=[4.27],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
-            150,
+            0,
+            0,
+            1215,
+            1215,
             0,
             0,
             0,
-            150,
-            150,
+            1215,
+            1215,
             0,
-            0,
-            150,
         ],  # [0,300,0,0,0,0,300,0,0,0, 0,300,0,0,0],
         need_test_query_counts=[
-            20,
-            20,
             0,
             0,
-            20,
-            20,
-            20,
+            90,
+            90,
+            90,
             0,
-            20,
-        ],  # [0,20,20,0,0, 0,20,20,0,0, 0,20,20,0,0],
+            0,
+            90,
+            90,
+            90,
+        ],  # [0,90,90,0,0, 0,90,90,0,0, 0,90,90,0,0],
     )
 
     sessioning(
@@ -625,23 +635,25 @@ if __name__ == "__main__":
         need_train_query_counts=[
             0,
             0,
-            150,
-            150,
+            0,
+            1215,
+            1215,
             0,
             0,
             0,
-            0,
-            0,
+            1215,
+            1215,
         ],  # [0,0,0,0,300, 0,0,0,0,300, 0,0,0,0,300],
         need_test_query_counts=[
             0,
             0,
-            20,
-            20,
-            20,
+            0,
+            90,
+            90,
+            90,
             0,
             0,
-            0,
-            0,
-        ],  # [0,0,0,0,20, 20,0,0,0,20, 20,0,0,20,20],
+            90,
+            90,
+        ],  # [0,0,0,0,90, 90,0,0,0,90, 90,0,0,90,90],
     )

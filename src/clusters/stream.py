@@ -78,10 +78,11 @@ class Stream:
         print(f"queries:{len(queries)}, docs:{len(docs)}")
 
         # Filter document(doc_id, text)
-        # self.query_result= {}
-        documents = self.filter(
-            queries, docs, sampling_rate, sampling_size_per_query, include_answer
-        )
+        # documents = self.filter(
+        #     queries, docs, sampling_rate, sampling_size_per_query, include_answer
+        # )
+        documents = self.read_filtered_docs(session_number)
+
         print(f"queries:{len(queries)}, documents:{len(documents)}")
         # Encode (doc_id, text, token_embs, is_query)
         query_docs, doc_docs = renew_data(queries=queries, documents=documents)
@@ -147,6 +148,11 @@ class Stream:
             print(
                 f"#doc_stream {len(self.stream_docs)}, stream_docs size {min(map(len, self.stream_docs))}-{max(map(len, self.stream_docs))}"
             )
+
+    def read_filtered_docs(self, session_number):
+        filtered_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
+        filtered_doc_list = read_jsonl(filtered_doc_path, is_query=False)
+        return filtered_doc_list
 
     def filter(
         self,

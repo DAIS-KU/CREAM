@@ -13,10 +13,11 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
-        devices[-1]
-    )
-    model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
+    model = BertModel.from_pretrained(
+        "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    ).to(devices[-1])
+    if model_path:
+        model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
     model.eval()
     return model
 
@@ -42,7 +43,8 @@ class Stream:
         print(f"queries:{len(queries)}, docs:{len(docs)}")
 
         # Filter document(doc_id, text)
-        documents = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
+        # documents = self.filter(queries, docs, sampling_rate, sampling_size_per_query)
+        documents = self.read_filtered_docs(session_number)
         print(f"queries:{len(queries)}, documents:{len(documents)}")
         # Encode (doc_id, text, token_embs, is_query)
         query_docs, doc_docs = renew_data_mean_pooling(
@@ -141,3 +143,8 @@ class Stream:
             print(f"Documents are raw.")
             doc_list = list(docs.values())
             return doc_list
+
+    def read_filtered_docs(self, session_number):
+        filtered_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
+        filtered_doc_list = read_jsonl(filtered_doc_path, is_query=False)
+        return filtered_doc_list

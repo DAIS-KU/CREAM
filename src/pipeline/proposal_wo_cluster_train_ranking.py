@@ -50,8 +50,7 @@ def streaming_train(
     loss_fn = InfoNCELoss()
     learning_rate = learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_values = []
-
+    time_values = []
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
@@ -59,11 +58,11 @@ def streaming_train(
         for start_idx in range(0, query_cnt, batch_size):
             end_idx = min(start_idx + batch_size, query_cnt)
             print(f"query {start_idx}-{end_idx}")
-
-            query_batch, pos_docs_batch, neg_docs_batch = [], [], []
+            query_batch = []
+            pos_docs_all, neg_docs_all = [], []  # flat list of all pos/neg texts
             for idx in range(start_idx, end_idx):
                 query = queries[idx]
-                pos_ids, neg_ids = get_samples_top_bottom(
+                pos_ids, neg_ids = make_query_psuedo_answers_wo_cluster(
                     query=query,
                     docs=docs,
                     clusters=clusters,
@@ -74,27 +73,21 @@ def streaming_train(
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
-                query_batch.append(query["query"])
-                query_embeddings = encode_texts(model=model, texts=query["query"])
-                pos_embeddings = encode_texts(
-                    model=model, texts=pos_docs
-                )  # (positive_k, embedding_dim)
-                pos_docs_batch.append(pos_embeddings)
-
-                neg_embeddings = encode_texts(
-                    model=model, texts=neg_docs
-                )  # (negative_k, embedding_dim)
-                neg_docs_batch.append(neg_embeddings)
-
-            query_embeddings = encode_texts(
-                model=model, texts=query_batch
-            )  # (batch_size, embedding_dim)
-            positive_embeddings = torch.stack(
-                pos_docs_batch
-            )  # (batch_size, positive_k, embedding_dim)
-            negative_embeddings = torch.stack(
-                neg_docs_batch
-            )  # (batch_size, negative_k, embedding_dim)
+                query_batch.append(query["text"])
+                pos_docs_all.extend(pos_docs)  # flatten
+                neg_docs_all.extend(neg_docs)  # flatten
+            # batch_size 개 쿼리 → (batch_size, embedding_dim)
+            query_embeddings = encode_texts(model=model, texts=query_batch)
+            # 전체 긍정/부정 텍스트 → (batch_size * K, embedding_dim)
+            pos_embeddings = encode_texts(model=model, texts=pos_docs_all)
+            neg_embeddings = encode_texts(model=model, texts=neg_docs_all)
+            # → (batch_size, K, embedding_dim)
+            positive_embeddings = pos_embeddings.view(
+                -1, positive_k, pos_embeddings.shape[-1]
+            )
+            negative_embeddings = neg_embeddings.view(
+                -1, negative_k, neg_embeddings.shape[-1]
+            )
 
             loss = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
 
@@ -103,7 +96,7 @@ def streaming_train(
             optimizer.step()
 
             total_loss += loss.item()
-            loss_values.append(loss.item())  # loss.item()
+            time_values.append(loss.item())  # loss.item()
             batch_cnt += 1
             print(
                 f"Processed {end_idx}/{query_cnt} queries | Batch Loss: {loss.item():.4f} | Total Loss: {total_loss / batch_cnt:.4f}"
@@ -114,10 +107,10 @@ def streaming_train(
         print(
             f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
         )
-    return loss_values, ts
+    return time_values, ts
 
 
-def filter_bm25(queries, docs, sampling_size_per_query=100):
+def filter_bm25(queries, docs, sampling_size_per_query=50):
     print(f"Documents are passing through BM25.")
     doc_list = list(docs.values())
     corpus = [doc["text"] for doc in doc_list]
@@ -141,24 +134,21 @@ def train(
 ):
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
-        query_path = f"../data/sub/train_session{session_number}_queries.jsonl"
-        doc_path = f"../data/sub/train_session{session_number}_docs.jsonl"
-        queries = read_jsonl(query_path, True)
+        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
+        queries = read_jsonl(query_path, True)[:10]
         docs = read_jsonl_as_dict(doc_path, "doc_id")
         ts = session_number
 
-        model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
-            devices[1]
-        )
+        model = BertModel.from_pretrained(
+            "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+        ).to(devices[1])
         if session_number != 0:
             print("Load last session model.")
             model_path = (
                 f"../data/model/proposal_wo_cluster_session_{session_number-1}.pth"
             )
-        else:
-            print("Load Warming up model.")
-            model_path = f"../data/base_model_lotte.pth"
-        model.load_state_dict(torch.load(model_path, weights_only=True))
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         model.train()
         new_model_path = (
             f"../data/model/proposal_wo_cluster_session_{session_number}.pth"
@@ -174,8 +164,8 @@ def evaluate(session_count=12):
     method = "proposal_wo_cluster"
     for session_number in range(session_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"../data/sub/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"../data/sub/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)

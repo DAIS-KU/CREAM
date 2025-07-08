@@ -158,14 +158,13 @@ def get_top_k_documents(query, bm25, doc_ids, k=10):
 
 
 def do_expermient(session_number=0):
-    query_path = (
-        f"/home/work/retrieval/data/datasetM/test_session{session_number}_queries.jsonl"
-    )
+    query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
     query_data = read_jsonl(query_path, True)
 
     eval_docs = []
     doc_path = (
-        f"/home/work/retrieval/data/datasetM/test_session{session_number}_docs.jsonl"
+        f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        # f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_docs.jsonl"
     )
     doc_data = read_jsonl(doc_path, False)
     eval_docs.extend(doc_data)
@@ -188,12 +187,12 @@ def do_expermient(session_number=0):
         if qcnt % 10 == 0:
             print(f"qcnt: {qcnt}")
 
-    rankings_path = f"/home/work/retrieval/data/rankings/bm25.txt"
+    rankings_path = f"/home/work/retrieval/data/rankings/bm25_{session_number}.txt"
     write_file(rankings_path, result)
-    eval_log_path = f"/home/work/retrieval/data/evals/bm25.txt"
+    eval_log_path = f"/home/work/retrieval/data/evals/bm25_{session_number}.txt"
     evaluate_dataset(query_path, rankings_path, eval_doc_count, eval_log_path)
 
 
 if __name__ == "__main__":
-    for i in range(9):
+    for i in range(10):
         do_expermient(i)

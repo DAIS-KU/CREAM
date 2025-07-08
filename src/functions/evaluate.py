@@ -58,7 +58,18 @@ def evaluate_dataset(query_path, rankings_path, doc_count, eval_log_path=None):
             rankings[qid].extend(pids)
 
     top_k_success, top_k_recall = 5, 10
-    domain_prefixes = ["writing", "technology", "lifestyle", "science", "recreation"]
+    domain_prefixes = [
+        "writing",
+        "technology",
+        "lifestyle",
+        "science",
+        "recreation",
+        "domain0",
+        "domain1",
+        "domain2",
+        "domain3",
+        "domain4",
+    ]
     domain_stats = {
         prefix: {"success": 0, "recall": 0.0, "total": 0, "answer_count": 0}
         for prefix in domain_prefixes

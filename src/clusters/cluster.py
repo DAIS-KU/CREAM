@@ -232,8 +232,12 @@ class Cluster:
             selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
             if selected_indices.numel() > 0:
                 with torch.no_grad():
-                    selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
-                    selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                    selected_doc_ids = [
+                        batch_doc_ids[i] for i in selected_indices.tolist()
+                    ]
+                    selected_texts = [
+                        docs[doc_id]["text"] for doc_id in selected_doc_ids
+                    ]
                     new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
                     # selected_doc_embs = batch_doc_embs[selected_indices]
                     temp_docids.extend(selected_doc_ids)
@@ -244,10 +248,10 @@ class Cluster:
                     # if selected_doc_cnt:
                     #     selected_doc_ids = random.sample(selected_doc_ids, selected_doc_cnt)
                     #     selected_doc_embs = batch_doc_embs[selected_indices]
-                        #     selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-                        #     new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-                        # temp_docids.extend(selected_doc_ids)
-                        # temp_prototype += lsh.encode_batch(selected_doc_embs)
+                    #     selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                    #     new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+                    # temp_docids.extend(selected_doc_ids)
+                    # temp_prototype += lsh.encode_batch(selected_doc_embs)
                     #     temp_prototype += lsh.encode_batch(new_doc_embs)  # (B, L, D) -> (B, hash_size, D)
 
         after_d_n = len(temp_docids)
@@ -320,12 +324,14 @@ class Cluster:
             selected_doc_cnt = int(len(selected_doc_ids) * (1 / (1 + np.exp(-z2))))
             if selected_doc_cnt:
                 selected_doc_ids = random.sample(selected_doc_ids, selected_doc_cnt)
-                selected_doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in selected_doc_ids], dim=0)
-                # selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-                # with torch.no_grad():
-                #     new_doc_embs = get_passage_embeddings(model, selected_texts)  # GPU 텐서 유지
-                # return selected_doc_ids, new_doc_embs
-                return selected_doc_ids, selected_doc_embs
+                # selected_doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in selected_doc_ids], dim=0)
+                selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
+                with torch.no_grad():
+                    new_doc_embs = get_passage_embeddings(
+                        model, selected_texts
+                    )  # GPU 텐서 유지
+                return selected_doc_ids, new_doc_embs
+                # return selected_doc_ids, selected_doc_embs
             else:
                 return [], None
 
@@ -350,10 +356,10 @@ class Cluster:
 
         def process_query_batch(i):
             batch_qids = temp_qids[i : i + self.batch_size]
-            # batch_texts = [docs[qid]["text"] for qid in batch_qids]
-            # with torch.no_grad():
-            #     batch_embs = get_passage_embeddings(model, batch_texts)  # GPU 텐서 유지
-            batch_embs= torch.stack([docs[qid]["TOKEN_EMBS"] for qid in batch_qids], dim=0)
+            batch_texts = [docs[qid]["text"] for qid in batch_qids]
+            with torch.no_grad():
+                batch_embs = get_passage_embeddings(model, batch_texts)  # GPU 텐서 유지
+            # batch_embs= torch.stack([docs[qid]["TOKEN_EMBS"] for qid in batch_qids], dim=0)
             return batch_embs
 
         q_futures = []
