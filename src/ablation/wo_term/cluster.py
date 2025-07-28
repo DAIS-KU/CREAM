@@ -4,6 +4,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -53,6 +54,11 @@ class Cluster:
         ]
         print(f"Document only #{len(only_doc_ids)}")
         return only_doc_ids
+
+    def get_only_qids(self, docs: dict):
+        only_qids = [doc_id for doc_id in self.doc_ids if docs[doc_id]["is_query"]]
+        print(f"Query only #{len(only_qids)}/{len(self.doc_ids)}")
+        return only_qids
 
     def get_topk_docids_and_scores(self, model, query, docs: dict, k, batch_size=128):
         query_token_embs = query["EMB"]
@@ -110,6 +116,34 @@ class Cluster:
         bottom_k_doc_ids = [x[0] for x in bottom_k_docs]
         return top_k_doc_ids, bottom_k_doc_ids
 
+    def get_topk_docids_and_scores_with_cache(self, qid, cache: dict, docs: dict, k):
+        doc_id_scores = cache[qid]
+        top_k_docids_and_scores = doc_id_scores[:k]
+        bottom_k_docids_and_scores = doc_id_scores[-k:]
+        # print(f"get_topk_docids_and_scores_with_cache |  k {k}, top_k_docids_and_scores: {len(top_k_docids_and_scores)}, bottom_k_docids_and_scores: {len(bottom_k_docids_and_scores)}")
+        return top_k_docids_and_scores, bottom_k_docids_and_scores
+
+    def get_topk_docids_with_cache(
+        self, query, cache: dict, docs: dict, k
+    ) -> List[str]:
+        (
+            top_k_regl_docs,
+            bottom_k_regl_docs,
+        ) = self.get_topk_bottomk_docids_and_scores_with_cache(
+            qid=query["doc_id"], cache=cache, docs=docs, k=k
+        )
+        top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+        bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
+        return top_k_regl_doc_ids, bottom_k_regl_doc_ids
+
+    def get_topk_docids(self, query, docs: dict, k) -> List[str]:
+        top_k_regl_docs, bottom_k_regl_docs = self.get_topk_docids_and_scores(
+            query, docs, k
+        )
+        top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+        bottom_k_regl_doc_ids = [x[0] for x in bottom_k_regl_docs]
+        return top_k_regl_doc_ids, bottom_k_regl_doc_ids
+
     def calculate_mean(self):
         mean = self.S1 / self.N
         return mean
@@ -162,8 +196,8 @@ class Cluster:
         # print(f"assign | {self.get_statistics()} | prototype is nan {torch.isnan(self.prototype).any()}")
 
     def evict(self, model, docs: dict, required_doc_size, is_updated) -> bool:
-        before_n = len(self.doc_ids)
-        temp_docids = []
+        before_d_n = len(self.doc_ids)
+        temp_docids, temp_qids = [], self.get_only_qids(docs)
         temp_prototype = torch.zeros_like(self.prototype)
         num_selected = 0
 
@@ -205,15 +239,19 @@ class Cluster:
                     temp_prototype += batch_doc_embs[i].to(temp_prototype.device)
                     num_selected += 1
         self.doc_ids = temp_docids
-        after_n = len(self.doc_ids)
+        after_d_n = len(self.doc_ids)
+
         if num_selected > 0:  # nan 방지
             self.prototype = temp_prototype / len(temp_docids)
+            qsz = int(len(temp_qids) * after_d_n / before_d_n)
+            temp_qids = random.sample(temp_qids, qsz)
+            after_q_n = len(temp_qids)
         else:
             return False
         if len(self.doc_ids) < required_doc_size:
             return False
         print(
-            f"doc_ids# {before_n} -> {after_n} | prototype is nan {torch.isnan(self.prototype).any()}"
+            f"doc_ids# {before_d_n} -> {after_d_n} | prototype is nan {torch.isnan(self.prototype).any()}"
         )
         self.update_statistics(model, docs)
         return True
@@ -284,3 +322,19 @@ class Cluster:
         exponent = -(T - self.timestamp) / self.u
         weight = math.exp(exponent)
         return weight
+
+    def get_doc_ids_in_r_with_cache(self, cache, docs, query):
+        """
+        cache: Dict[cluster_id][qid] = List[(doc_id, score)] sorted by score desc
+        """
+        # 균등 분할 시 차지하는 갯수
+        doc_ids = self.get_only_docids(docs)
+        qids = self.get_only_qids(docs)
+        k = int(len(doc_ids) * (1 / len(qids)))
+        docids_and_scores = cache[query["doc_id"]]
+        # 왜 캐시사이즈 2*k 보다 훨씬 크지?
+        # [cid][qid] q_bsz * 2k 중 해당 클러스터에 속한 문서 수 -> 전체에서 거르고X 클러스터 내에서 거르고
+        print(f"cache size({query['doc_id']})/{len(cache[query['doc_id']])}")
+        selected = [doc_id for doc_id, _ in docids_and_scores[:k]]
+        r = docids_and_scores[-1][1]
+        return r, selected

@@ -68,13 +68,15 @@ def encode_document(
 
 
 def get_documents_for_query(docs, query, bm25, doc_ids, positive_k, negative_k):
-    pos_doc_id = random.choice(query["answer_pids"])
+    pos_doc_id = random.choice(query["cos_ans_pids"])
+    # pos_doc_id = random.choice(query["answer_pids"])
     pos_doc = docs[pos_doc_id]["text"]
     tokenized_query = preprocess(query["query"].lower())
     scores = bm25.get_scores(tokenized_query)
     ranked_indices = np.argpartition(-scores, negative_k * 4)[: negative_k * 4]
     ranked_indices = ranked_indices[np.argsort(-scores[ranked_indices])]
-    answer_pids = set(query["answer_pids"])
+    answer_pids = set(query["cos_ans_pids"])
+    # answer_pids = set(query["answer_pids"])
     neg_doc_ids = [doc_ids[i] for i in ranked_indices if doc_ids[i] not in answer_pids][
         :negative_k
     ]
@@ -90,8 +92,10 @@ def build_bm25(docs):
 
 def prepare_inputs(session_number, positive_k=1, negative_k=6):
     inputs = {}
-    query_path = f"../data/datasetM_large/train_session{session_number}_queries.jsonl"
-    doc_path = f"../data/datasetM_large/train_session{session_number}_docs.jsonl"
+    query_path = (
+        f"../data/datasetL_large/train_session{session_number}_queries_cos.jsonl"
+    )
+    doc_path = f"../data/datasetL_large/train_session{session_number}_docs.jsonl"
     queries = read_jsonl(query_path, is_query=True)
     docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
     doc_ids = list(docs.keys())

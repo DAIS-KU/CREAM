@@ -48,10 +48,12 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_l2r_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
+    # query_data = (
+    #     "/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
+    # )
     query_data = (
-        "/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        "/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
     )
-    # query_data = "/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
     buffer_data = "../data"  # comp시에는 필요
     output_dir = "../data"
 
@@ -149,23 +151,23 @@ def train(
     method = "l2r"
     output_dir = "../data"
     total_sec = 0
-    for session_number in range(session_count):
+    for session_number in range(8, session_count):
         start_time = time.time()
         time_values_path = (
-            f"../data/loss/total_time_l2r_datasetL_large_share_{session_number}.txt"
+            f"../data/loss/total_time_l2r_datasetL_large_{session_number}.txt"
         )
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
         query_path = (
-            f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
-            # f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries_cos.jsonl"
+            # f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
+            f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
         )
-        doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
         # if session_number < 3:
-        #     query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries_cos.jsonl"
+        #     query_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_queries_cos.jsonl"
         # else:
         #     query_path = (
-        #         f"/home/work/retrieval/data/datasetL_large_share/train_session(0,1,2)_queries_cos.jsonl"
+        #         f"/home/work/retrieval/data/datasetL_large/train_session(0,1,2)_queries_cos.jsonl"
         #     )
         model = build_model()
         inputs = prepare_inputs(
@@ -200,7 +202,9 @@ def train(
 
 
 def model_builder(model_path=None):
-    model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+    model_args = ModelArguments(
+        model_name_or_path="/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    )
     training_args = TevatronTrainingArguments(output_dir="../data/model")
     model = DenseModel.build(
         model_args,
@@ -219,12 +223,14 @@ def evaluate(sesison_count=10):
         print(f"Evaluate Session {session_number}")
         model_path = f"../data/model/{method}_session_{session_number}.pth"
         eval_query_path = (
-            f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+            f"../data/datasetL_large/test_session{session_number}_queries.jsonl"
         )
+        # eval_doc_path = (
+        #     f"../data/datasetL_large/train_session{session_number}_docs.jsonl"
+        # )
         eval_doc_path = (
-            f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+            f"../data/datasetL_large/test_session{session_number}_docs.jsonl"
         )
-        # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)

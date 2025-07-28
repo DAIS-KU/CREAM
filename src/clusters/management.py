@@ -81,6 +81,8 @@ def find_k_closest_clusters(
         for prototype in prototypes:
             score = calculate_S_qd_regl_dict(token_embs, prototype, device)
             scores.append(score.unsqueeze(1))
+    if len(scores) == 0:
+        print(f"prototypes: {len(prototypes)}")
     scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
     topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)  # 각 샘플별 k개 선택
     # print(

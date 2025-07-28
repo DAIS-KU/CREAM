@@ -77,8 +77,7 @@ def find_k_closest_clusters(
 
 
 def find_k_closest_clusters_for_sampling(
-    model,
-    embs: List[Any],
+    embs,
     clusters: List[Cluster],
     k,
     batch_size=8,
@@ -120,51 +119,8 @@ def find_k_closest_clusters_for_sampling(
 
     scores_tensor = torch.cat(scores, dim=1)  # (num_samples, num_clusters)
     topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)
-    return topk_indices.tolist()
-
-
-def get_samples_rerank(
-    model,
-    query,
-    docs: dict,
-    clusters,
-    positive_k,
-    negative_k,
-    use_tensor_key=True,
-    candidate_num=6,
-):
-    cluster_ids = find_k_closest_clusters_for_sampling(
-        model=model, embs=torch.stack([query["EMB"]], dim=0), clusters=clusters, k=3
-    )[0]
-    print(f"cluster_ids:{cluster_ids} ")
-    first_cluster, second_cluster, third_cluster = (
-        clusters[cluster_ids[0]],
-        clusters[cluster_ids[1]],
-        clusters[cluster_ids[2]],
-    )
-
-    first_samples, _ = first_cluster.get_topk_docids_and_scores(
-        model, query, docs, candidate_num
-    )
-    second_samples, _ = second_cluster.get_topk_docids_and_scores(
-        model, query, docs, candidate_num
-    )
-    third_samples, _ = third_cluster.get_topk_docids_and_scores(
-        model, query, docs, candidate_num
-    )
-    combined_samples = sorted(
-        first_samples + second_samples + third_samples, key=lambda x: x[1], reverse=True
-    )
-    top_k_doc_ids = [x[0] for x in combined_samples]
-
-    positive_samples, negative_samples = (
-        top_k_doc_ids[:positive_k],
-        top_k_doc_ids[positive_k : positive_k + negative_k],
-    )
-    print(
-        f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
-    )
-    return positive_samples, negative_samples
+    bottomk_values, bottomk_indices = torch.topk(scores_tensor, k, dim=1, largest=False)
+    return topk_indices.tolist(), bottomk_indices.tolist()
 
 
 def get_samples_top_bottom(
@@ -175,26 +131,13 @@ def get_samples_top_bottom(
     positive_k,
     negative_k,
 ):
-    # cluster_ids = find_k_closest_clusters_for_sampling(
-    #     model=model,
-    #     embs=torch.stack([query["EMB"]], dim=0),
-    #     clusters=clusters,
-    #     k=1,
-    # )[0]
-    # print(f"cluster_ids:{cluster_ids}")
-    # first_cluster = clusters[cluster_ids[0]]
-    # (
-    #     first_positive_samples,
-    #     first_bottom_samples,
-    # ) = first_cluster.get_topk_docids_and_scores(model, query, docs, negative_k)
-    # positive_samples = [first_positive_samples[0][0]]
-    # negative_samples = [x[0] for x in first_bottom_samples]
-    cluster_ids = find_k_closest_clusters_for_sampling(
-        model=model,
-        embs=torch.stack([query["EMB"]], dim=0),
+    closest_cluster_ids, farthest_cluster_ids = find_k_closest_clusters_for_sampling(
+        embs=query["EMB"],
         clusters=clusters,
         k=3,
-    )[0]
+    )
+    cluster_ids = closest_cluster_ids[0]
+
     print(f"cluster_ids:{cluster_ids} ")
     first_cluster, second_cluster, third_cluster = (
         clusters[cluster_ids[0]],
@@ -509,7 +452,7 @@ def make_cos_query_psuedo_answers(model, queries, docs, clusters, k=1):
     result = {}
     for i, query in enumerate(queries):
         cluster_ids = find_k_closest_clusters_for_sampling(
-            model, torch.stack([query["EMB"]], dim=0), clusters, 1
+            torch.stack([query["EMB"]], dim=0), clusters, 1
         )[0]
         first_cluster = clusters[cluster_ids[0]]
         result[query["doc_id"]] = first_cluster.get_topk_docids(model, query, docs, k)[
@@ -588,7 +531,8 @@ def build_cluster_cache_table_by_cosine(
                 for i, qid in enumerate(qid_batch):
                     idxs = torch.cat([topk_idx[i], bottomk_idx[i]]).tolist()
                     sel_doc_ids = [doc_ids[j] for j in idxs]
-                    pairs = list(zip(sel_doc_ids, scores.tolist()[0]))
+                    sel_sims = sim_matrix[i, idxs].tolist()
+                    pairs = list(zip(sel_doc_ids, sel_sims))
                     local_cache.setdefault(cluster_id, {})[qid] = sorted(
                         pairs, key=lambda x: x[1], reverse=True
                     )
@@ -613,3 +557,99 @@ def build_cluster_cache_table_by_cosine(
             cache.setdefault(cid, {}).update(q_scores)
 
     return cache
+
+
+def get_samples_top_bottom_3_with_cache(
+    caches,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    verbose=True,
+):
+    closest_cluster_ids, farthest_cluster_ids = find_k_closest_clusters_for_sampling(
+        embs=query["EMB"],
+        clusters=clusters,
+        k=3,
+    )
+    cluster_ids = closest_cluster_ids[0]
+    print(
+        f"cluster_ids:{cluster_ids} / positive_k {positive_k}, negative_k {negative_k}"
+    )
+    first_cluster, second_cluster, third_cluster = (
+        clusters[cluster_ids[0]],
+        clusters[cluster_ids[1]],
+        clusters[cluster_ids[2]],
+    )
+    (
+        first_positive_samples,
+        first_bottom_samples,
+    ) = first_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[0]], docs=docs, k=negative_k
+    )
+    (
+        second_positive_samples,
+        second_bottom_samples,
+    ) = second_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[1]], docs=docs, k=negative_k
+    )
+    (
+        third_positive_samples,
+        third_bottom_samples,
+    ) = third_cluster.get_topk_docids_and_scores_with_cache(
+        qid=query["doc_id"], cache=caches[cluster_ids[2]], docs=docs, k=negative_k
+    )
+    combined_top_samples = sorted(
+        first_positive_samples + second_positive_samples + third_positive_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    combined_bottom_samples = sorted(
+        first_bottom_samples + second_bottom_samples + third_bottom_samples,
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    positive_samples = [x[0] for x in combined_top_samples[:positive_k]]
+    negative_samples = [x[0] for x in combined_bottom_samples[-negative_k:]]
+    if verbose:
+        print(
+            f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+        )
+    return positive_samples, negative_samples
+
+
+def get_samples_top_and_farthest3_with_cache(
+    caches,
+    query,
+    docs: dict,
+    clusters,
+    positive_k,
+    negative_k,
+    ts,
+    use_tensor_key,
+    verbose=True,
+):
+    positive_samples, _ = get_samples_top_bottom_3_with_cache(
+        caches, query, docs, clusters, positive_k, negative_k, ts, use_tensor_key, False
+    )
+    positive_sample = docs[positive_samples[0]]
+    # _, negative_samples = get_samples_top_bottom_3(
+    _, negative_samples = get_samples_top_bottom_3_with_cache(
+        caches,
+        positive_sample,
+        docs,
+        clusters,
+        positive_k,
+        negative_k,
+        ts,
+        use_tensor_key,
+        False,
+    )
+    if verbose:
+        print(
+            f" query: {query['doc_id']} | positive: {positive_samples} | negative:{negative_samples}"
+        )
+    return positive_samples, negative_samples

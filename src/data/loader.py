@@ -73,15 +73,13 @@ def load_train_docs(session_number=None):
     train_docs = {}
     if session_number is not None:
         print(f"Read session_number {session_number}th docs")
-        doc_path = (
-            f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-        )
+        doc_path = f"../data/datasetL_large/train_session{session_number}_docs.jsonl"
         doc_data = read_jsonl_as_dict(doc_path, "doc_id")
         train_docs.update(doc_data)
     else:
         for i in range(10):
             print(f"Read all {i}th docs")
-            doc_path = f"../data/datasetL_large_share/train_session{i}_docs.jsonl"
+            doc_path = f"../data/datasetL_large/train_session{i}_docs.jsonl"
             doc_data = read_jsonl_as_dict(doc_path, "doc_id")
             train_docs.update(doc_data)
     print(f"doc size {len(train_docs)}")
@@ -92,10 +90,10 @@ def load_eval_docs(session_number):
     eval_docs = []
     for i in range(session_number + 1):
         print(f"Read {i}th docs")
-        doc_path = f"../data/datasetL_large_share/train_session{i}_docs.jsonl"
+        doc_path = f"../data/datasetL_large/train_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
-        doc_path = f"../data/datasetL_large_share/test_session{i}_docs.jsonl"
+        doc_path = f"../data/datasetL_large/test_session{i}_docs.jsonl"
         doc_data = read_jsonl(doc_path, False)
         eval_docs.extend(doc_data)
     return eval_docs

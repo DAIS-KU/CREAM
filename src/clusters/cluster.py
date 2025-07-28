@@ -197,7 +197,7 @@ class Cluster:
         # else:
         #     print(f"Assign duplicate doc id {doc_id}")
 
-    def evict_org(
+    def evict(
         self,
         model,
         lsh: RandomProjectionLSH,
@@ -284,7 +284,7 @@ class Cluster:
         )
         return True
 
-    def evict(
+    def evict_opt(
         self,
         model,
         lsh: RandomProjectionLSH,

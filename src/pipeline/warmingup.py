@@ -306,7 +306,7 @@ def evaluate_cosine(session_cnt=9):
 def evaluate_term(sesison_count=10):
     method = "wo_learning_term"
     model_path = None  # f"../data/base_model_lotte.pth"
-    for session_number in range(sesison_count):
+    for session_number in range(9, 0, -1):
         eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
         eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
 

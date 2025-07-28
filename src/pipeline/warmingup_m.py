@@ -304,11 +304,11 @@ def evaluate_cosine(session_cnt=9):
 
 
 def evaluate_term(sesison_count=10):
-    method = "wo_learning_term"
+    method = "wo_learning_term_m"
     model_path = None  # f"../data/base_model_lotte.pth"
     for session_number in range(sesison_count):
-        eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        eval_query_path = f"/home/work/retrieval/data/datasetM_large_share/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"/home/work/retrieval/data/datasetM_large_share/train_session{session_number}_docs.jsonl"
 
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)

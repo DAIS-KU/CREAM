@@ -56,8 +56,14 @@ class Reservoir_update(object):
                 idx_buffer[i].item(): idx_new_data[i].item()
                 for i in range(len(idx_buffer))
             }  # idx_buffer[i]：buffer的index，idx_new_data[i]：新数据的index
-            data = np.array(buffer.buffer_qid2dids[qid])
-            data[list(idx_map.keys())] = np.array(docids)[list(idx_map.values())]
+
+            data = np.array(buffer.buffer_qid2dids[qid], dtype=object)
+            data[list(idx_map.keys())] = np.array(docids, dtype=object)[
+                list(idx_map.values())
+            ]
+
+            # data = np.array(buffer.buffer_qid2dids[qid])
+            # data[list(idx_map.keys())] = np.array(docids)[list(idx_map.values())]
             buffer.buffer_qid2dids[qid] = list(data)
             filled_idx_lst.append(list(idx_map.keys()))
 

@@ -144,6 +144,71 @@ def _prepare_inputs(
                 prepared.append(identity)
                 prepared.append(doc_oldemb)
             prepared.append(all_docids_lst)  # for updating old emb
+
+    # 추가한 부분 : ocs
+    elif cl_method == "ocs":
+        if not compatible or session_number == 0:
+            qid_lst, docids_lst = inputs[0], inputs[1]
+            # mem_passage: training(data selection)    candidate_neg_docids: candidate for updating (난 res_did_lst로)
+            (
+                mem_passage,
+                pos_docids,
+                candidate_neg_docids,
+                res_did_lst,
+            ) = buffer.retrieve(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )  # [num_q*(new_bz+mem_bz), d_len]
+            buffer.update(
+                qid_lst=qid_lst,
+                docids_lst=res_did_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )
+
+            if mem_passage is not None:
+                for key, val in mem_passage.items():
+                    prepared[1][key] = val
+            prepared.append(docids_lst)  # for updating old emb
+        else:
+            qid_lst, docids_lst = inputs[0], inputs[1]
+
+            (
+                mem_passage,
+                pos_docids,
+                candidate_neg_docids,
+                res_did_lst,
+            ) = buffer.retrieve(
+                qid_lst=qid_lst,
+                docids_lst=docids_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )  # [num_q*(1+mem_bz), 768],gpu; [num_q*(new_bz+mem_bz), d_len],gpu
+            buffer.update(
+                qid_lst=qid_lst,
+                docids_lst=res_did_lst,
+                q_lst=prepared[0],
+                d_lst=prepared[1],
+            )
+
+            if mem_passage is not None:
+                for key, val in mem_passage.items():
+                    prepared[1][key] = val
+
+                identity = []  # [1+mem_batch_size, num_q]
+                pos_identity = torch.arange(len(qid_lst)) * (
+                    1 + new_batch_size + mem_batch_size
+                )
+                identity.append(pos_identity)
+                for i in range(mem_batch_size):
+                    identity.append(pos_identity + i + 1 + new_batch_size)
+                identity = torch.stack(identity, dim=0).transpose(0, 1).reshape(-1)
+                prepared.append(identity)
+                prepared.append(mem_emb)
+            prepared.append(docids_lst)  # for updating old emb
+
     elif cl_method == "mir":
         if not compatible:
             qid_lst, docids_lst = inputs[0], inputs[1]
@@ -521,8 +586,10 @@ def collate(features):
 
 
 def build_bm25(docs):
+    print(f"Build BM25")
     tokenized_corpus = [word_tokenize(doc["text"].lower()) for doc in docs]
     bm25 = BM25Okapi(corpus=tokenized_corpus, k1=0.8, b=0.75)
+    print(f"BM25 Done.")
     return bm25
 
 
@@ -550,8 +617,9 @@ def getitem(
     psg_ids = []
     encoded_passages = []
 
-    pos_id = query["answer_pids"][0]
-    # pos_id = query["cos_ans_pids"][0]
+    # pos_id = query["answer_pids"][0]
+    pos_id = query["cos_ans_pids"][0]
+
     pos_psg = docs[pos_id]["text"]
     psg_ids.append(pos_id)
     encoded_passages.append(create_one_example(pos_psg))
@@ -561,8 +629,8 @@ def getitem(
     if filtered:
         neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
     else:
-        valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
-        # valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
+        # valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
+        valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
         neg_ids = random.sample(valid_neg_ids, negative_size)
 
     for neg_id in neg_ids:
@@ -579,15 +647,15 @@ def load_inputs(
     compatible,
     filtered=False,
 ):
-    queries = read_jsonl(query_path, True, compatible)
+    queries = read_jsonl(query_path, True, compatible)[:2430]
     random.shuffle(queries)
 
     session_docs = load_train_docs(session_number=session_number)
     docs = load_train_docs()
     answer_doc_ids = set()
     for q in queries:
-        answer_doc_ids.update(q["answer_pids"])
-        # answer_doc_ids.update(q["cos_ans_pids"])
+        # answer_doc_ids.update(q["answer_pids"])
+        answer_doc_ids.update(q["cos_ans_pids"])
     answer_docs = {k: v for k, v in docs.items() if k in answer_doc_ids}
     session_docs.update(answer_docs)
     bm25 = build_bm25(list(session_docs.values())) if filtered else None

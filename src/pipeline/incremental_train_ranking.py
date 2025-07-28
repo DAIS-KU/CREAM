@@ -192,7 +192,7 @@ def evaluate_cosine(sesison_count=10):
 
 
 def evaluate_term(sesison_count=10):
-    for session_number in range(sesison_count):
+    for session_number in range(6, 7, 1):
         _evaluate_term(session_number)
 
 

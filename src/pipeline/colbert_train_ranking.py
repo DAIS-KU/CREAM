@@ -134,17 +134,17 @@ def train(
     mem_batch_size=3,
     mem_upsample=6,
 ):
-    method = "colbert"
+    method = "colbert_l_unsupervised"
     output_dir = "../data"
     total_sec = 0
     for session_number in range(session_count):
         start_time = time.time()
         time_values_path = (
-            f"../data/loss/total_time_colbert_datasetL_large_share_{session_number}.txt"
+            f"../data/loss/total_time_colbert_datasetL_large_{session_number}.txt"
         )
         print(f"Train Session {session_number}")
-        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_queries.jsonl"
-        doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        query_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_queries_cos.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
         model = build_model()
 
         if session_number != 0:
@@ -164,7 +164,9 @@ def train(
 
 def model_builder(model_path=None):
     model_args = ModelArguments(
-        model_name_or_path="bert-base-uncased", add_pooler=True, projection_out_dim=128
+        model_name_or_path="/home/work/retrieval/bert-base-uncased/bert-base-uncased",
+        add_pooler=True,
+        projection_out_dim=128,
     )
     training_args = TevatronTrainingArguments(output_dir="../data/model")
     model = ColbertModel.build(
@@ -179,20 +181,20 @@ def model_builder(model_path=None):
 
 
 def evaluate(session_count=10):
-    for session_number in range(6, session_count):
+    for session_number in range(session_count):
         _evaluate(session_number)
 
 
 def _evaluate(session_number):
-    method = "colbert"
+    method = "colbert_l_unsupervised"
     print(f"Evaluate Session {session_number}")
     eval_query_path = (
-        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
+        f"../data/datasetL_large/test_session{session_number}_queries.jsonl"
     )
-    # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
-    eval_doc_path = (
-        f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-    )
+    eval_doc_path = f"../data/datasetL_large/test_session{session_number}_docs.jsonl"
+    # eval_doc_path = (
+    #     f"../data/datasetL_large/train_session{session_number}_docs.jsonl"
+    # )
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)

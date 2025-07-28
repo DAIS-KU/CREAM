@@ -5,6 +5,8 @@ import os
 from pipeline import (
     train_wo_term,
     evaluate_wo_term,
+    train_wo_term_m,
+    evaluate_wo_term_m,
     inc_train,
     inc_evaluate_cosine,
     inc_evaluate_term,
@@ -22,8 +24,6 @@ from pipeline import (
     l2r_train,
     proposal_evaluate,
     proposal_train,
-    train_wo_cluster_rerank,
-    evaluate_wo_cluster_rerank,
     train_wo_cluster,
     evaluate_wo_cluster,
     waringup_train,
@@ -31,8 +31,6 @@ from pipeline import (
     warmingup_evaluate_term,
     warmingup_evaluate_term_m,
     proposal_evaluate_rankings,
-    train_wo_term_rerank,
-    evaluate_wo_term_rerank,
     dodp_train,
     df_train,
     qq_low_train,
@@ -282,53 +280,50 @@ if __name__ == "__main__":
             include_answer=args.include_answer,
         )
     elif args.exp == "proposal_qq_low":
-        # 학습함수 주석처리
-        """
-        qq_low_train(
-            start_session_number=args.start,
-            end_sesison_number=args.end,
-            load_cluster=args.load_cluster,
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            negative_k=args.negative_k,
-            use_label=args.use_label,
-            use_weight=args.use_weight,
-            use_tensor_key=args.use_tensor_key,
-            max_iters=args.mi,
-            warmingup_rate=args.wr,
-            init_k=args.init_k,
-            cluster_min_size=args.cmnsz,
-            sampling_rate=args.sr,
-            sampling_size_per_query=args.sspq,
-            nbits=args.nbits,
-            warming_up_method=args.warming_up_method,
-            required_doc_size=args.rdsz,
-            include_answer=args.include_answer,
-        )
-        """
+        # qq_low_train(
+        #     start_session_number=args.start,
+        #     end_sesison_number=args.end,
+        #     load_cluster=args.load_cluster,
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     negative_k=args.negative_k,
+        #     use_label=args.use_label,
+        #     use_weight=args.use_weight,
+        #     use_tensor_key=args.use_tensor_key,
+        #     max_iters=args.mi,
+        #     warmingup_rate=args.wr,
+        #     init_k=args.init_k,
+        #     cluster_min_size=args.cmnsz,
+        #     sampling_rate=args.sr,
+        #     sampling_size_per_query=args.sspq,
+        #     nbits=args.nbits,
+        #     warming_up_method=args.warming_up_method,
+        #     required_doc_size=args.rdsz,
+        #     include_answer=args.include_answer,
+        # )
         qq_low_evaluate()
     elif args.exp == "proposal_qq_low2":
-        qq_low_train2(
-            start_session_number=args.start,
-            end_sesison_number=args.end,
-            load_cluster=args.load_cluster,
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            negative_k=args.negative_k,
-            use_label=args.use_label,
-            use_weight=args.use_weight,
-            use_tensor_key=args.use_tensor_key,
-            max_iters=args.mi,
-            warmingup_rate=args.wr,
-            init_k=args.init_k,
-            cluster_min_size=args.cmnsz,
-            sampling_rate=args.sr,
-            sampling_size_per_query=args.sspq,
-            nbits=args.nbits,
-            warming_up_method=args.warming_up_method,
-            required_doc_size=args.rdsz,
-            include_answer=args.include_answer,
-        )
+        # qq_low_train2(
+        #     start_session_number=args.start,
+        #     end_sesison_number=args.end,
+        #     load_cluster=args.load_cluster,
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     negative_k=args.negative_k,
+        #     use_label=args.use_label,
+        #     use_weight=args.use_weight,
+        #     use_tensor_key=args.use_tensor_key,
+        #     max_iters=args.mi,
+        #     warmingup_rate=args.wr,
+        #     init_k=args.init_k,
+        #     cluster_min_size=args.cmnsz,
+        #     sampling_rate=args.sr,
+        #     sampling_size_per_query=args.sspq,
+        #     nbits=args.nbits,
+        #     warming_up_method=args.warming_up_method,
+        #     required_doc_size=args.rdsz,
+        #     include_answer=args.include_answer,
+        # )
         qq_low_evaluate2()
     elif args.exp == "wu":
         # waringup_train()
@@ -345,43 +340,40 @@ if __name__ == "__main__":
         inc_train(is_term=False)
         inc_evaluate_cosine()
     elif args.exp == "inc_term":
-        inc_train(is_term=True)
+        # inc_train(is_term=False)
         inc_evaluate_term()
     elif args.exp == "inc_term_m":
-        inc_train_m(is_term=True)
+        inc_train_m(is_term=False)
         inc_evaluate_term_m()
     elif args.exp == "inc_uni_term":
         inc_uni_train(is_term=True)
-    elif args.exp == "ablation_cluster_rerank":
-        train_wo_cluster_rerank()
-        evaluate_wo_cluster_rerank()
     elif args.exp == "ablation_cluster":
         train_wo_cluster()
         evaluate_wo_cluster()
     elif args.exp == "ablation_term":
-        train_wo_term(
-            start_session_number=args.start,
-            end_sesison_number=args.end,
-            load_cluster=args.load_cluster,
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            negative_k=args.negative_k,
-            use_label=args.use_label,
-            use_weight=args.use_weight,
-            use_tensor_key=args.use_tensor_key,
-            max_iters=args.mi,
-            warmingup_rate=args.wr,
-            init_k=args.init_k,
-            cluster_min_size=args.cmnsz,
-            sampling_rate=args.sr,
-            sampling_size_per_query=args.sspq,
-            nbits=args.nbits,
-            warming_up_method=args.warming_up_method,
-            required_doc_size=args.rdsz,
-        )
+        # train_wo_term(
+        #     start_session_number=args.start,
+        #     end_sesison_number=args.end,
+        #     load_cluster=args.load_cluster,
+        #     num_epochs=args.num_epochs,
+        #     batch_size=args.batch_size,
+        #     negative_k=args.negative_k,
+        #     use_label=args.use_label,
+        #     use_weight=args.use_weight,
+        #     use_tensor_key=args.use_tensor_key,
+        #     max_iters=args.mi,
+        #     warmingup_rate=args.wr,
+        #     init_k=args.init_k,
+        #     cluster_min_size=args.cmnsz,
+        #     sampling_rate=args.sr,
+        #     sampling_size_per_query=args.sspq,
+        #     nbits=args.nbits,
+        #     warming_up_method=args.warming_up_method,
+        #     required_doc_size=args.rdsz,
+        # )
         evaluate_wo_term()
-    elif args.exp == "ablation_term_rerank":
-        train_wo_term_rerank(
+    elif args.exp == "ablation_term_m":
+        train_wo_term_m(
             start_session_number=args.start,
             end_sesison_number=args.end,
             load_cluster=args.load_cluster,
@@ -401,7 +393,7 @@ if __name__ == "__main__":
             warming_up_method=args.warming_up_method,
             required_doc_size=args.rdsz,
         )
-        evaluate_wo_term_rerank()
+        evaluate_wo_term_m()
     elif args.exp == "dodp_train_lotte":
         dodp_train(dataset="lotte")
     elif args.exp == "dodp_train_msmarco":
@@ -409,14 +401,14 @@ if __name__ == "__main__":
     elif args.exp == "doamin_forget":
         df_train(dataset=args.dataset, start_domain=args.start_domain)
     elif args.exp == "create_cos_ans_file":
-        create_cos_ans_file(dataset="datasetL_large_share")
-        create_cos_ans_file(dataset="datasetM_large_share")
+        create_cos_ans_file(dataset="datasetM_large")
+        create_cos_ans_file(dataset="datasetL_large")
     elif args.exp == "sim_comp":
         # get_correlation()
         # get_correlation_ans()
         get_cosine_recall()
     elif args.exp == "colbert":
-        # colbert_train()
+        colbert_train()
         colbert_evaluate()
     elif args.exp == "er":
         er_train()

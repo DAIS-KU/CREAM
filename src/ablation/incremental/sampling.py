@@ -112,7 +112,7 @@ def get_top_k_documents_cosine(query_emb, docs, k, devices, batch_size=4096):
             # print(f"score: {score.shape}")
             scores.extend(
                 [
-                    (doc["ID"], score[idx].item())
+                    (doc["doc_id"], score[idx].item())
                     for idx, doc in enumerate(docs[start_idx:end_idx])
                 ]
             )
@@ -164,9 +164,15 @@ def make_query_cos_samples(model, queries, docs, sampling_size_per_query=100):
         query_tokens = preprocess(query["query"])
         scores = bm25.get_scores(query_tokens)
         sorted_indices = np.argsort(scores)[::-1]
-        top_k_indices = sorted_indices[:sampling_size_per_query]
-        top_k_doc_ids = [doc_ids[_id] for _id in top_k_indices]
+        top_k_indices, bottom_k_indices = (
+            sorted_indices[:sampling_size_per_query],
+            sorted_indices[-sampling_size_per_query:],
+        )
+        top_k_doc_ids, bottom_k_doc_ids = [doc_ids[_id] for _id in top_k_indices], [
+            doc_ids[_id] for _id in bottom_k_indices
+        ]
         candidate_doc_ids.update(top_k_doc_ids)
+        candidate_doc_ids.update(bottom_k_doc_ids)
     doc_list = [docs[doc_id] for doc_id in candidate_doc_ids]
 
     query_embs, doc_embs = encode_data_mean_pooling(model, queries, doc_list)

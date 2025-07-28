@@ -17,16 +17,12 @@ from .l2r_train_ranking import train as l2r_train
 from .proposal_train_ranking import evaluate as proposal_evaluate
 from .proposal_train_ranking import eval_rankings as proposal_evaluate_rankings
 from .proposal_train_ranking import train as proposal_train
-from .proposal_wo_cluster_train_ranking_rerank import (
-    evaluate as evaluate_wo_cluster_rerank,
-)
-from .proposal_wo_cluster_train_ranking_rerank import train as train_wo_cluster_rerank
 from .proposal_wo_cluster_train_ranking import evaluate as evaluate_wo_cluster
 from .proposal_wo_cluster_train_ranking import train as train_wo_cluster
 from .proposal_wo_term_train_ranking import evaluate as evaluate_wo_term
 from .proposal_wo_term_train_ranking import train as train_wo_term
-from .proposal_wo_term_train_ranking_rerank import evaluate as evaluate_wo_term_rerank
-from .proposal_wo_term_train_ranking_rerank import train as train_wo_term_rerank
+from .proposal_wo_term_train_ranking_m import evaluate as evaluate_wo_term_m
+from .proposal_wo_term_train_ranking_m import train as train_wo_term_m
 from .warmingup import evaluate_cosine as warmingup_evaluate_cosine
 from .warmingup import evaluate_term as warmingup_evaluate_term
 from .warmingup import train as waringup_train

@@ -25,6 +25,8 @@ from functions import (
     get_top_k_documents_by_cosine,
     renew_data_mean_pooling,
 )
+import time
+
 
 torch.autograd.set_detect_anomaly(True)
 tokenizer = BertTokenizer.from_pretrained(
@@ -37,7 +39,9 @@ device = devices[-1] if num_gpus > 0 else torch.device("cpu")
 
 
 def build_model(bert_weight_path=None, model_path=None):
-    model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+    model_args = ModelArguments(
+        model_name_or_path="/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    )
     training_args = TevatronTrainingArguments(
         output_dir="/home/work/retrieval/data/model"
     )
@@ -58,13 +62,12 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_er_buffer(new_batch_size, mem_batch_size, compatible):
-    # query_data = f"/home/work/retrieval/data/datasetL2_large/train_session0_queries_cos.jsonl"
+    # query_data = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
     query_data = (
-        f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
+        f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
     )
-    doc_data = (
-        f"/home/work/retrieval/data/datasetL_large_share/train_session0_docs.jsonl"
-    )
+    doc_data = f"/home/work/retrieval/data/datasetL_large/train_session0_docs.jsonl"
+
     buffer_data = "../data"  # comp시에는 필요
     output_dir = "/home/work/retrieval/data/er_output"
     # bert_weight_path = "/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth" # .pth
@@ -160,13 +163,17 @@ def train(
     buffer = build_er_buffer(new_batch_size, mem_batch_size, compatible)
     method = "er"
     output_dir = "/home/work/retrieval/data/er_output"
+    start_time = time.time()
+    time_values_path = f"../data/loss/total_time_er_datasetL_large_{session_number}.txt"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
         # query_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl"
-        doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
-        query_path = f"/home/work/retrieval/data/datasetL_large_share/train_session0_queries.jsonl"
-        # query_path = f"/home/work/retrieval/data/datasetL2_large/train_session0_queries_cos.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
+        query_path = (
+            f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
+        )
+        # query_path = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
         inputs = prepare_inputs(
             session_number,
             query_path,
@@ -181,11 +188,11 @@ def train(
         model = build_model()
 
         if session_number != 0:
-            model_path = f"/home/work/retrieval/data/model/{method}_session_{session_number-1}.pth"
+            model_path = f"/home/work/retrieval/data/model/{method}LS_session_{session_number-1}.pth"
             print(f"Load model {model_path}")
             model.load_state_dict(torch.load(model_path, weights_only=True))
         new_model_path = (
-            f"/home/work/retrieval/data/model/{method}_session_{session_number}.pth"
+            f"/home/work/retrieval/data/model/{method}LS_session_{session_number}.pth"
         )
         model.train()
 
@@ -194,10 +201,16 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
+    end_time = time.time()
+    total_sec = end_time - start_time
+    print(f"{total_sec} sec. ")
+    write_line(time_values_path, f"({total_sec}sec)\n", "a")
 
 
 def model_builder(model_path=None):
-    model_args = ModelArguments(model_name_or_path="bert-base-uncased")
+    model_args = ModelArguments(
+        model_name_or_path="/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    )
     training_args = TevatronTrainingArguments(output_dir="../data/model")
     model = DenseModel.build(
         model_args,
@@ -214,8 +227,9 @@ def evaluate(sesison_count=10):
     method = "er"
     for session_number in range(sesison_count):
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
+        eval_query_path = f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_queries.jsonl"
+        # eval_doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
+        eval_doc_path = f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_docs.jsonl"
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
 
@@ -223,17 +237,18 @@ def evaluate(sesison_count=10):
         eval_doc_count = len(eval_doc_data)
         print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-        rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-        model_path = f"../data/model/{method}_session_{session_number}.pth"
-        # model_path = f"/home/hyeongu/ContinualRetrieval_paper/data/model/{method}_sup2_session_{session_number}.pth"
+        rankings_path = f"../data/rankings/{method}LS_session_{session_number}.txt"
+        model_path = f"../data/model/{method}LS_session_{session_number}.pth"
 
         start_time = time.time()
-        """추가한 부분 : 리스트에서 딕셔너리로 변환"""
+
+        # 추가한 부분 : 리스트에서 딕셔너리로 변환
         eval_query_data, eval_doc_data = renew_data_mean_pooling(
             model_builder, model_path, eval_query_data, eval_doc_data
         )
+
         """
-        인자 개수 수정
+        # 인자 개수 수정
         result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10, method, session_number)
         """
         result = get_top_k_documents_by_cosine(eval_query_data, eval_doc_data, 10)
@@ -241,5 +256,5 @@ def evaluate(sesison_count=10):
         print(f"Spend {end_time-start_time} seconds for retrieval.")
 
         write_file(rankings_path, result)
-        eval_log_path = f"../data/evals/{method}_{session_number}.txt"
+        eval_log_path = f"../data/evals/{method}LS_{session_number}.txt"
         evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

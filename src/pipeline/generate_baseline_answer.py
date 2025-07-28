@@ -26,12 +26,17 @@ def model_builder(model_path):
     return model
 
 
-def create_cos_ans_file(dataset="datasetL_large_share"):
+def create_cos_ans_file(dataset):
+    for session_number in range(4, 3, -1):
+        _create_cos_ans_file(session_number, dataset)
+
+
+def _create_cos_ans_file(session_number, dataset):
     start_time = time.time()
-    train_query_path = (
-        f"/home/work/retrieval/data/{dataset}/train_session0_queries.jsonl"
+    train_query_path = f"/home/work/retrieval/data/{dataset}/train_session{session_number}_queries.jsonl"
+    train_docs_path = (
+        f"/home/work/retrieval/data/{dataset}/train_session{session_number}_docs.jsonl"
     )
-    train_docs_path = f"/home/work/retrieval/data/{dataset}/train_session0_docs.jsonl"
     queries_data = read_jsonl(train_query_path, True)
     documents_data = read_jsonl(train_docs_path, False)
     new_q_data, new_d_data = renew_data_mean_pooling(
@@ -44,9 +49,7 @@ def create_cos_ans_file(dataset="datasetL_large_share"):
         new_q_data=new_q_data, new_d_data=new_d_data, k=1, batch_size=4096
     )
 
-    target_path = (
-        f"/home/work/retrieval/data/{dataset}/train_session0_queries_cos.jsonl"
-    )
+    target_path = f"/home/work/retrieval/data/{dataset}/train_session{session_number}_queries_cos.jsonl"
     for q in queries_data:
         q["cos_ans_pids"] = qid_kpids[q["qid"]]
     append_jsonl(queries_data, target_path)

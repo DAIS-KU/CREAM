@@ -86,11 +86,11 @@ def process_batch(
 
         with torch.no_grad():
             # for baselines
-            # model_output = model.encode_mean_pooling(encoded_input)
+            model_output = model.encode_mean_pooling(encoded_input)
             # for bert
-            model_output = encode_mean_pooling(
-                model, encoded_input
-            )  # [batch_size, emb_dim]
+            # model_output = encode_mean_pooling(
+            # model, encoded_input
+            # )  [batch_size, emb_dim]
 
         for item_id, text, emb in zip(item_ids, texts, model_output.cpu()):
             results[item_id] = {

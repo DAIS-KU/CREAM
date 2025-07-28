@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from transformers import BertModel, BertTokenizer
 
-from ablation import get_samples_rerank, make_query_psuedo_answers_wo_cluster
+from ablation import make_query_psuedo_answers_wo_cluster
 from clusters import renew_data
 from data import load_eval_docs, read_jsonl, read_jsonl_as_dict, write_file
 from functions import InfoNCELoss, evaluate_dataset, get_top_k_documents

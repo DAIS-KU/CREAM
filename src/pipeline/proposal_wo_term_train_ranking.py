@@ -2,6 +2,7 @@ import pickle
 import random
 import time
 from typing import List
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -19,6 +20,8 @@ from ablation import (
     clear_unused_documents,
     Stream,
     DiversityBufferManager,
+    build_cluster_cache_table_by_cosine,
+    get_samples_top_bottom_3_with_cache,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -62,7 +65,7 @@ def merge_nested_dicts(d1, d2):
     return {k: dict(v) for k, v in result.items()}
 
 
-def build_query_caches(clusters, docs, query_result):
+def build_query_caches(clusters, docs):
     all_qids = []
     for cluster in clusters:
         all_qids.extend(cluster.get_only_qids(docs))
@@ -70,7 +73,6 @@ def build_query_caches(clusters, docs, query_result):
         qids=all_qids,
         clusters=clusters,
         docs=docs,
-        # query_result=query_result,
         query_batch_size=64,
         doc_batch_size=512,
     )
@@ -148,7 +150,7 @@ def streaming_train(
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
 
-                query_batch.append(query["query"])
+                query_batch.append(query["text"])
                 pos_docs_all.extend(pos_docs)  # flatten
                 neg_docs_all.extend(neg_docs)  # flatten
             # batch_size 개 쿼리 → (batch_size, embedding_dim)
@@ -248,13 +250,13 @@ def train(
             session_number > 0
         ):
             print(f"Load last sesion clusters, docs.")
-            with open(f"../data/clusters_wo_term_{session_number-1}.pkl", "rb") as f:
-                clusters = pickle.load(f)
-                print("Cluster loaded.")
-            with open(f"../data/prev_docs_wo_term_{session_number-1}.pkl", "rb") as f:
-                prev_docs = pickle.load(f)
-                print("Prev_docs loaded.")
-            stream.docs.update(prev_docs)
+            # with open(f"../data/clusters_wo_term_{session_number-1}.pkl", "rb") as f:
+            #     clusters = pickle.load(f)
+            #     print("Cluster loaded.")
+            # with open(f"../data/prev_docs_wo_term_{session_number-1}.pkl", "rb") as f:
+            #     prev_docs = pickle.load(f)
+            #     print("Prev_docs loaded.")
+            # stream.docs.update(prev_docs)
             batch_start = 0
         else:
             if session_number == 0:
@@ -308,49 +310,49 @@ def train(
         # Remain only trainable clusters
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)
         # Train
-        train_queries = stream.queries
-        # print(
-        #     f"=================================================BUILD QUERY CACHES======================================================"
-        # )
-        # start_time = time.time()
-        # all_qids, q_caches = build_query_caches(clusters, stream.docs, query_result)
-        # end_time = time.time()
-        # print(
-        #     f"==============================================DONE({end_time-start_time}sec)===================================================="
-        # )
-        # write_line(
-        #     time_values_path, f"BuildQueryCaches({end_time-start_time}sec)\n", "a"
-        # )
-        # # Train
-        # start_time = time.time()
-        # train_queries = diversity_buffer_manager.get_samples(
-        #     docs=stream.docs,
-        #     clusters=clusters,
-        #     caches=q_caches,
-        #     sample_size=len(stream.queries),
-        # )
-        # end_time = time.time()
+        # train_queries = stream.queries
+        print(
+            f"=================================================BUILD QUERY CACHES======================================================"
+        )
+        start_time = time.time()
+        all_qids, q_caches = build_query_caches(clusters, stream.docs)
+        end_time = time.time()
+        print(
+            f"==============================================DONE({end_time-start_time}sec)===================================================="
+        )
+        write_line(
+            time_values_path, f"BuildQueryCaches({end_time-start_time}sec)\n", "a"
+        )
+        # Train
+        start_time = time.time()
+        train_queries = diversity_buffer_manager.get_samples(
+            docs=stream.docs,
+            clusters=clusters,
+            caches=q_caches,
+            sample_size=len(stream.queries),
+        )
+        end_time = time.time()
 
-        # print(
-        #     f"############################################QuerySelection({end_time - start_time}sec)############################################"
-        # )
-        # write_line(time_values_path, f"QuerySelection({end_time-start_time}sec)\n", "a")
+        print(
+            f"############################################QuerySelection({end_time - start_time}sec)############################################"
+        )
+        write_line(time_values_path, f"QuerySelection({end_time-start_time}sec)\n", "a")
 
-        # print(
-        #     f"=================================================BUILD POSITIVE CACHES======================================================"
-        # )
-        # start_time = time.time()
-        # all_qids = [q["doc_id"] for q in train_queries]
-        # total_ids, cluster_caches = add_positive_caches(
-        #     all_qids, q_caches, clusters, stream.docs
-        # )
-        # end_time = time.time()
-        # print(
-        #     f"==============================================DONE({end_time-start_time}sec)===================================================="
-        # )
-        # write_line(
-        #     time_values_path, f"BuildPositiveCaches({end_time-start_time}sec)\n", "a"
-        # )
+        print(
+            f"=================================================BUILD POSITIVE CACHES======================================================"
+        )
+        start_time = time.time()
+        all_qids = [q["doc_id"] for q in train_queries]
+        total_ids, cluster_caches = add_positive_caches(
+            all_qids, q_caches, clusters, stream.docs
+        )
+        end_time = time.time()
+        print(
+            f"==============================================DONE({end_time-start_time}sec)===================================================="
+        )
+        write_line(
+            time_values_path, f"BuildPositiveCaches({end_time-start_time}sec)\n", "a"
+        )
 
         loss_values, ts = streaming_train(
             queries=train_queries,
@@ -435,17 +437,23 @@ def evaluate_with_cluster(
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained("/home/work/retrieval/bert-base-uncased").to(
-        devices[-1]
-    )
+    model = BertModel.from_pretrained(
+        "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
+    ).to(devices[-1])
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
 
 
-def evaluate(session_number, model_path):
+def evaluate(sesison_count=10):
+    for session_number in range(sesison_count):
+        _evaluate(session_number)
+
+
+def _evaluate(session_number):
     method = "proposal_wo_term"
     print(f"Evaluate Session {session_number}")
+    model_path = f"../data/model/{method}_session_{session_number}.pth"
     eval_query_path = f"/home/work/retrieval/data/datasetL_large_share/test_session{session_number}_queries.jsonl"
     eval_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs.jsonl"
 
