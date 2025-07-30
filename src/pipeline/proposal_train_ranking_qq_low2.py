@@ -232,7 +232,7 @@ def train(
 
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
-        time_values_path = f"../data/loss/total_time_values_proposal_datasetM_large_share_z15_{session_number}.txt"
+        time_values_path = f"../data/loss/total_time_values_proposal_datasetM_large_share_z35_{session_number}.txt"
         print(f"Training Session {session_number}/{load_cluster}")
         start_time = time.time()
         stream = Stream(
@@ -259,13 +259,13 @@ def train(
         ).to(devices[-1])
         if session_number != 0:
             print("Load last session model.")
-            model_path = f"../data/model/proposal_datasetM_large_share_z15_session_{session_number-1}.pth"
+            model_path = f"../data/model/proposal_datasetM_large_share_z35_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/proposal_datasetM_large_share_z15_session_{session_number}.pth"
+        new_model_path = f"../data/model/proposal_datasetM_large_share_z35_session_{session_number}.pth"
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -557,7 +557,7 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number):
-    method = "proposal_datasetM_large_share_z15"
+    method = "proposal_datasetM_large_share_z35"
     print(f"Evaluate Session {session_number}")
     eval_query_path = (
         f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
