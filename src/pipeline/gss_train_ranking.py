@@ -23,6 +23,7 @@ from data import (
     load_eval_docs,
     prepare_inputs,
     read_jsonl,
+    write_line,
     write_file,
     read_jsonl_as_dict,
 )
@@ -65,7 +66,7 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_gss_buffer(new_batch_size, mem_batch_size, compatible, buffer_path=None):
-    # query_data = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
+    # query_data = f"/home/work/retrieval/data/datasetM_large/train_session0_queries_cos.jsonl"
     query_data = (
         f"/home/work/retrieval/data/datasetM_large/train_session0_queries.jsonl"
     )
@@ -186,20 +187,14 @@ def train(
     # buffer_path = f"{output_dir}/buffer.pkl" if resume_session > 0 else None
     buffer = build_gss_buffer(new_batch_size, mem_batch_size, compatible, buffer_path)
     start_time = time.time()
-    time_values_path = (
-        f"../data/loss/total_time_gss_datasetL_large_{session_number}.txt"
-    )
+    time_values_path = f"../data/loss/total_time_gss_datasetM_large.txt"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
-
-        if session_number != 0:
-            continue
-
         doc_path = f"/home/work/retrieval/data/datasetM_large/train_session{session_number}_docs.jsonl"
         query_path = (
             f"/home/work/retrieval/data/datasetM_large/train_session0_queries.jsonl"
         )
-        # query_path = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
+        # query_path = f"/home/work/retrieval/data/datasetM_large/train_session0_queries_cos.jsonl"
 
         # doc_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
 
@@ -243,6 +238,10 @@ def train(
         )
         torch.save(model.state_dict(), new_model_path)
         buffer.save(output_dir)
+    end_time = time.time()
+    total_sec = end_time - start_time
+    print(f"{total_sec} sec. ")
+    write_line(time_values_path, f"({total_sec}sec)\n", "a")
 
 
 # 추가한 부분 : model_builder 함수

@@ -1,0 +1,44 @@
+nohup: ignoring input
+Running experiments: proposal_qq_low2
+Start session: 0
+End session: 10
+Load cluster: False
+Use cluster warming up: stream_seed
+Use label: False
+Use weight: False
+Use tensor key: True
+Use nbits: 12
+Use max_iters: 3
+Use warmingup_rate: None
+Use warmingup_k: 12
+Use cluster_min_size: 50
+Use required_doc_size: 50
+Use stream sampling rate: None
+Use sampling size per query: 50
+Number of Epochs: 1
+Include answer: False
+Evaluate Session 0
+Query count:180, Document count:60423
+Using 1 GPUs: [device(type='cuda', index=0)]
+Load model in clusters.encoder.
+Traceback (most recent call last):
+  File "/home/work/retrieval/src/main.py", line 328, in <module>
+    qq_low_evaluate2()
+  File "/home/work/retrieval/src/pipeline/proposal_train_ranking_qq_low2.py", line 556, in evaluate
+    _evaluate(session_number)
+  File "/home/work/retrieval/src/pipeline/proposal_train_ranking_qq_low2.py", line 581, in _evaluate
+    new_q_data, new_d_data = renew_data(
+                             ^^^^^^^^^^^
+  File "/home/work/retrieval/src/clusters/encode.py", line 204, in renew_data
+    model.load_state_dict(torch.load(model_path, map_location="cuda:0"))
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/serialization.py", line 1415, in load
+    with _open_file_like(f, "rb") as opened_file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/serialization.py", line 736, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/serialization.py", line 717, in __init__
+    super().__init__(open(name, mode))
+                     ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '../data/model/proposal_datasetM_large_share_z15_session_0.pth'

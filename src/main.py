@@ -43,6 +43,7 @@ from pipeline import (
     get_cosine_recall,
     colbert_train,
     colbert_evaluate,
+    average_field_length,
 )
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -303,27 +304,27 @@ if __name__ == "__main__":
         # )
         qq_low_evaluate()
     elif args.exp == "proposal_qq_low2":
-        # qq_low_train2(
-        #     start_session_number=args.start,
-        #     end_sesison_number=args.end,
-        #     load_cluster=args.load_cluster,
-        #     num_epochs=args.num_epochs,
-        #     batch_size=args.batch_size,
-        #     negative_k=args.negative_k,
-        #     use_label=args.use_label,
-        #     use_weight=args.use_weight,
-        #     use_tensor_key=args.use_tensor_key,
-        #     max_iters=args.mi,
-        #     warmingup_rate=args.wr,
-        #     init_k=args.init_k,
-        #     cluster_min_size=args.cmnsz,
-        #     sampling_rate=args.sr,
-        #     sampling_size_per_query=args.sspq,
-        #     nbits=args.nbits,
-        #     warming_up_method=args.warming_up_method,
-        #     required_doc_size=args.rdsz,
-        #     include_answer=args.include_answer,
-        # )
+        qq_low_train2(
+            start_session_number=args.start,
+            end_sesison_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
+        )
         qq_low_evaluate2()
     elif args.exp == "wu":
         # waringup_train()
@@ -412,15 +413,25 @@ if __name__ == "__main__":
         colbert_evaluate()
     elif args.exp == "er":
         er_train()
-        er_evaluate()
+        # er_evaluate()
     elif args.exp == "ocs":
         ocs_train()
-        ocs_evaluate()
+        # ocs_evaluate()
     elif args.exp == "mir":
         mir_train()
-        mir_evaluate()
+        # mir_evaluate()
     elif args.exp == "gss":
         gss_train()
-        gss_evaluate()
+        # gss_evaluate()
+    elif args.exp == "statistics":
+        res1 = average_field_length(
+            file_path="/home/work/retrieval/data/datasetM_large_share/train_session0_queries.jsonl",
+            field_name="query",
+        )
+        res2 = average_field_length(
+            file_path="/home/work/retrieval/data/datasetM_large_share/train_session0_docs.jsonl",
+            field_name="text",
+        )
+        print(f"resa {res1}, res2: {res2}")
     else:
         raise ValueError(f"Unsupported experiments {args.exp}")

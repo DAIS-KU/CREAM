@@ -232,7 +232,7 @@ def train(
 
     for session_number in range(start_session_number, end_sesison_number):
         ts = session_number
-        time_values_path = f"../data/loss/total_time_values_proposal_datasetM_large_share_k24_{session_number}.txt"
+        time_values_path = f"../data/loss/total_time_values_proposal_datasetM_large_share_z15_{session_number}.txt"
         print(f"Training Session {session_number}/{load_cluster}")
         start_time = time.time()
         stream = Stream(
@@ -259,13 +259,13 @@ def train(
         ).to(devices[-1])
         if session_number != 0:
             print("Load last session model.")
-            model_path = f"../data/model/proposal_datasetM_large_share_k24_session_{session_number-1}.pth"
+            model_path = f"../data/model/proposal_datasetM_large_share_z15_session_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/proposal_datasetM_large_share_k24_session_{session_number}.pth"
+        new_model_path = f"../data/model/proposal_datasetM_large_share_z15_session_{session_number}.pth"
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -274,20 +274,20 @@ def train(
             and session_number > 0
         ):
             with open(
-                f"../data/clusters_datasetM_large_share_k24_{session_number-1}.pkl",
+                f"../data/clusters_datasetM_large_share_z15_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last clusters.")
                 clusters = pickle.load(f)
             with open(
-                f"../data/prev_docs_datasetM_large_share_k24_{session_number-1}.pkl",
+                f"../data/prev_docs_datasetM_large_share_z15_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last docs.")
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetM_large_share_k24_{session_number-1}.pkl",
+                f"../data/random_vectors_datasetM_large_share_z15_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last random vectors.")
@@ -486,15 +486,15 @@ def train(
         write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
         with open(
-            f"../data/clusters_datasetM_large_share_k24_{session_number}.pkl", "wb"
+            f"../data/clusters_datasetM_large_share_z15_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(clusters, f)
         with open(
-            f"../data/prev_docs_datasetM_large_share_k24_{session_number}.pkl", "wb"
+            f"../data/prev_docs_datasetM_large_share_z15_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(prev_docs, f)
         with open(
-            f"../data/random_vectors_datasetM_large_share_k24_{session_number}.pkl",
+            f"../data/random_vectors_datasetM_large_share_z15_{session_number}.pkl",
             "wb",
         ) as f:
             pickle.dump(random_vectors, f)
@@ -557,7 +557,7 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number):
-    method = "proposal_datasetM_large_share_k24"
+    method = "proposal_datasetM_large_share_z15"
     print(f"Evaluate Session {session_number}")
     eval_query_path = (
         f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
@@ -617,8 +617,8 @@ def eval_rankings(session_number):
     eval_doc_count = len(eval_doc_data)
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
-    rankings_path = f"../data/rankings/proposal_datasetM_large_share_k24_{session_number}_with_cluster.txt"
-    eval_log_path = f"../data/evals/proposal_datasetM_large_share_k24_{session_number}_with_cluster.txt"
+    rankings_path = f"../data/rankings/proposal_datasetM_large_share_z15_{session_number}_with_cluster.txt"
+    eval_log_path = f"../data/evals/proposal_datasetM_large_share_z15_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = f"../data/rankings/proposal_datasetM_large_share_k24_session_{session_number}.txt"
+    rankings_path = f"../data/rankings/proposal_datasetM_large_share_z15_session_{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

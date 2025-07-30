@@ -617,8 +617,8 @@ def getitem(
     psg_ids = []
     encoded_passages = []
 
-    # pos_id = query["answer_pids"][0]
-    pos_id = query["cos_ans_pids"][0]
+    pos_id = query["answer_pids"][0]
+    # pos_id = query["cos_ans_pids"][0]
 
     pos_psg = docs[pos_id]["text"]
     psg_ids.append(pos_id)
@@ -629,8 +629,8 @@ def getitem(
     if filtered:
         neg_ids = get_candidates(session_number, bm25, qry, doc_ids)
     else:
-        # valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
-        valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
+        valid_neg_ids = list(set(doc_ids) - set(query["answer_pids"]))
+        # valid_neg_ids = list(set(doc_ids) - set(query["cos_ans_pids"]))
         neg_ids = random.sample(valid_neg_ids, negative_size)
 
     for neg_id in neg_ids:
@@ -654,8 +654,8 @@ def load_inputs(
     docs = load_train_docs()
     answer_doc_ids = set()
     for q in queries:
-        # answer_doc_ids.update(q["answer_pids"])
-        answer_doc_ids.update(q["cos_ans_pids"])
+        answer_doc_ids.update(q["answer_pids"])
+        # answer_doc_ids.update(q["cos_ans_pids"])
     answer_docs = {k: v for k, v in docs.items() if k in answer_doc_ids}
     session_docs.update(answer_docs)
     bm25 = build_bm25(list(session_docs.values())) if filtered else None

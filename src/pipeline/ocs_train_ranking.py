@@ -54,11 +54,11 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_ocs_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible):
-    query_data = (
-        f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
+    query_data = f"/home/work/retrieval/data/datasetM_large_share/train_session0_queries_cos.jsonl"
+    # query_data = (f"/home/work/retrieval/data/datasetM_large_share/train_session0_queries.jsonl")
+    doc_data = (
+        f"/home/work/retrieval/data/datasetM_large_share/train_session0_docs.jsonl"
     )
-    # query_data = (f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl")
-    doc_data = f"/home/work/retrieval/data/datasetL_large/train_session0_docs.jsonl"
     buffer_data = "../data"  # comp시에는 필요
     output_dir = "/home/work/retrieval/data/ocs_output"
     # bert_weight_path = "/mnt/DAIS_NAS/huijeong/model/base_model_lotte.pth" # .pth
@@ -168,20 +168,16 @@ def train(
     output_dir = "/home/work/retrieval/data/ocs_output"
     buffer = build_ocs_buffer(new_batch_size, mem_batch_size, mem_upsample, compatible)
     start_time = time.time()
-    time_values_path = (
-        f"../data/loss/total_time_ocs_datasetL_large_{session_number}.txt"
-    )
-    for session_number in range(6, session_count):
+    time_values_path = f"../data/loss/total_time_ocs_datasetM_large_share.txt"
+    for session_number in range(session_count):
 
         # if session_number != 9:
         # continue
 
         print(f"Train Session {session_number}")
-        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
-        # query_path = f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
-        query_path = (
-            f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
-        )
+        doc_path = f"/home/work/retrieval/data/datasetM_large_share/train_session{session_number}_docs.jsonl"
+        # query_path = f"/home/work/retrieval/data/datasetM_large_share/train_session0_queries.jsonl"
+        query_path = f"/home/work/retrieval/data/datasetM_large_share/train_session0_queries_cos.jsonl"
 
         inputs = prepare_inputs(
             session_number,
@@ -243,8 +239,8 @@ def evaluate(sesison_count=10):
         # continue
 
         print(f"Evaluate Session {session_number}")
-        eval_query_path = f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_queries.jsonl"
-        eval_doc_path = f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_docs.jsonl"
+        eval_query_path = f"/home/work/retrieval/data/datasetM_large_share/test_session{session_number}_queries.jsonl"
+        eval_doc_path = f"/home/work/retrieval/data/datasetM_large_share/test_session{session_number}_docs.jsonl"
         eval_query_data = read_jsonl(eval_query_path, True)
         eval_doc_data = read_jsonl(eval_doc_path, False)
 

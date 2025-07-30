@@ -45,3 +45,6 @@ from .cosine_term_correlation_answers import get_correlation_ans, get_cosine_rec
 
 from .colbert_train_ranking import train as colbert_train
 from .colbert_train_ranking import evaluate as colbert_evaluate
+
+
+from .statistics import average_field_length

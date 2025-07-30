@@ -16,6 +16,7 @@ from data import (
     prepare_inputs,
     read_jsonl,
     write_file,
+    write_line,
     read_jsonl_as_dict,
 )
 
@@ -65,11 +66,11 @@ def build_model(bert_weight_path=None, model_path=None):
 
 
 def build_mir_buffer(new_batch_size, mem_batch_size, compatible):
-    # query_data = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
+    # query_data = f"/home/work/retrieval/data/datasetM_large/train_session0_queries_cos.jsonl"
     query_data = (
-        f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
+        f"/home/work/retrieval/data/datasetM_large/train_session0_queries.jsonl"
     )
-    doc_data = f"/home/work/retrieval/data/datasetL_large/train_session0_docs.jsonl"
+    doc_data = f"/home/work/retrieval/data/datasetM_large/train_session0_docs.jsonl"
 
     # doc_data = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
     buffer_data = "./data"  # comp시에는 필요
@@ -175,9 +176,7 @@ def train(
     method = "mir"
     output_dir = "/home/work/retrieval/data/mir_output"
     start_time = time.time()
-    time_values_path = (
-        f"../data/loss/total_time_mir_datasetL_large_{session_number}.txt"
-    )
+    time_values_path = f"../data/loss/total_time_mir_datasetM_large.txt"
     for session_number in range(session_count):
         print(f"Train Session {session_number}")
         # session0에 대한 쿼리로만 학습(문서만 바뀜)
@@ -186,11 +185,11 @@ def train(
         # continue
 
         # doc_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_docs.jsonl"
-        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
+        doc_path = f"/home/work/retrieval/data/datasetM_large/train_session{session_number}_docs.jsonl"
         query_path = (
-            f"/home/work/retrieval/data/datasetL_large/train_session0_queries.jsonl"
+            f"/home/work/retrieval/data/datasetM_large/train_session0_queries.jsonl"
         )
-        # query_path = f"/home/work/retrieval/data/datasetL_large/train_session0_queries_cos.jsonl"
+        # query_path = f"/home/work/retrieval/data/datasetM_large/train_session0_queries_cos.jsonl"
 
         # if session_number < 3: # 수정
         #     # query_path = f"/mnt/DAIS_NAS/huijeong/sub/train_session{session_number}_queries.jsonl" # 수정
@@ -266,11 +265,11 @@ def evaluate(sesison_count=10):
         model_path = f"../data/model/{method}LS_session_{session_number}.pth"
         eval_query_path = (
             # f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_queries.jsonl"
-            f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_queries.jsonl"
+            f"/home/work/retrieval/data/datasetM_large/test_session{session_number}_queries.jsonl"
         )
         eval_doc_path = (
             # f"/mnt/DAIS_NAS/huijeong/sub/test_session{session_number}_docs.jsonl"
-            f"/home/work/retrieval/data/datasetL_large/test_session{session_number}_docs.jsonl"
+            f"/home/work/retrieval/data/datasetM_large/test_session{session_number}_docs.jsonl"
         )
 
         eval_query_data = read_jsonl(eval_query_path, True)

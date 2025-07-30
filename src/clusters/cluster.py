@@ -35,7 +35,7 @@ class Cluster:
         timestamp=0,
         batch_size=128,
         z1=8.0,
-        z2=0.25,  # lotte 0.25 msmarco 0.75
+        z2=0.15,  # lotte 0.25 msmarco 0.75
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
