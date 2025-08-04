@@ -1,1 +1,11 @@
-CREAM: Continual Retrieval on Dynamic Streaming Corpora with Adaptive Soft Memory
+# CREAM: Continual Retrieval on Dynamic Streaming Corpora with Adaptive Soft Memory
+- ablation
+    - ablation study implementations
+- buffer
+    - baselines 
+- clusters
+    - CREAM implementations
+- data, functions
+    - common utils
+- pipeline, prequential_pipeline
+    - integerated experiments
