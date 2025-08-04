@@ -168,7 +168,9 @@ class GSSGreedyUpdate(object):
                 offset = min(place_left, len(docids))
                 docids = docids[:offset]  # array
                 if len(buffer.buffer_qid2dids[qid]) == 0:
-                    batch_sample_memory_cos = torch.zeros(len(docids)) + 0.1  # 初始化score
+                    batch_sample_memory_cos = (
+                        torch.zeros(len(docids)) + 0.1
+                    )  # 初始化score
                 else:
                     mem_grads = self.get_rand_mem_grads(
                         buffer, model_temp, grad_dims, qid, docids_pos_lst[i], cur_q_lst

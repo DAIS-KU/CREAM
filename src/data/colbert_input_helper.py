@@ -10,7 +10,6 @@ from transformers import BertTokenizerFast
 tokenizer = BertTokenizerFast.from_pretrained(
     "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
 )
-# ColBERT 논문에 등장하는 [Q], [D] 두 토큰을 신규 등록
 special_tokens_dict = {"additional_special_tokens": ["[Q]", "[D]"]}
 num_new = tokenizer.add_special_tokens(special_tokens_dict)
 
@@ -20,13 +19,6 @@ def encode_query(
     tokenizer: BertTokenizerFast,
     Nq: int = 32,
 ) -> Dict[str, torch.Tensor]:
-    """
-    ColBERT용 쿼리 인코딩 함수
-    - [CLS] + [Q] + query tokens + [MASK]*padding
-    - 전체 길이 Nq + 2 (CLS, Q 포함)
-    """
-    num_special_tokens = 2  # [CLS], [Q]
-
     tokens = tokenizer.tokenize(query)
     tokens = tokens[: Nq - 2]  # 특수 토큰 포함 최대 Nq개로 제한
     pad_len = Nq - len(tokens)
@@ -46,12 +38,6 @@ def encode_document(
     tokenizer: BertTokenizerFast,
     Nd: int = 128,
 ) -> Dict[str, torch.Tensor]:
-    """
-    ColBERT용 문서 인코딩 함수
-    - [CLS] [D] <tokens> 구조
-    - 전체 길이 Nd로 강제 고정
-    - tokenizer.encode_plus로 자동 truncation + padding
-    """
     encoding = tokenizer.encode_plus(
         "[D] " + doc,
         add_special_tokens=True,  # adds [CLS], [SEP]

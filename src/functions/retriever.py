@@ -161,7 +161,9 @@ def get_top_k_documents_gpu_batch(
 
     def process(queries_token_embs, gpu_batch_indices, device):
         queries_token_embs = queries_token_embs.to(device)
-        all_regl_scores = [[] for _ in range(queries_token_embs.size(0))]  # 쿼리마다 별도로 저장
+        all_regl_scores = [
+            [] for _ in range(queries_token_embs.size(0))
+        ]  # 쿼리마다 별도로 저장
         for batch in gpu_batch_indices:
             start_idx, end_idx = batch[0], batch[-1] + 1
             print(f"{device}| Processing batch {start_idx}-{end_idx}")

@@ -84,7 +84,9 @@ def find_k_closest_clusters(
     if len(scores) == 0:
         print(f"prototypes: {len(prototypes)}")
     scores_tensor = torch.cat(scores, dim=1)  # (t_bsz, len(prototypes))
-    topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)  # 각 샘플별 k개 선택
+    topk_values, topk_indices = torch.topk(
+        scores_tensor, k, dim=1
+    )  # 각 샘플별 k개 선택
     # print(
     #     f"scores: {scores_tensor.shape}, topk_indices:{topk_indices.shape}"
     # )
@@ -109,7 +111,9 @@ def find_k_closest_clusters_for_sampling(
     prototype_batches = list(
         torch.chunk(prototype_tensor, num_devices)
     )  # 각 chunk는 Tensor
-    prototype_batches = [list(batch) for batch in prototype_batches]  # 각 batch를 리스트로 변환
+    prototype_batches = [
+        list(batch) for batch in prototype_batches
+    ]  # 각 batch를 리스트로 변환
 
     def process_on_device(device, batch_prototypes):
         device_scores = []
@@ -131,7 +135,9 @@ def find_k_closest_clusters_for_sampling(
             executor.map(process_on_device, devices, prototype_batches)
         )  # map 결과 순서 보장
     scores_tensor = torch.cat(scores, dim=1)
-    topk_values, topk_indices = torch.topk(scores_tensor, k, dim=1)  # 각 샘플별 k개 선택
+    topk_values, topk_indices = torch.topk(
+        scores_tensor, k, dim=1
+    )  # 각 샘플별 k개 선택
     bottomk_values, bottomk_indices = torch.topk(
         scores_tensor, k, dim=1, largest=False
     )  # 각 샘플별 k개 선택

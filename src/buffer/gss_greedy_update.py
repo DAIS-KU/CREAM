@@ -167,7 +167,9 @@ class GSSGreedyUpdate(object):
                 offset = min(place_left, len(docids))
                 docids = docids[:offset]  # array
                 if len(buffer.buffer_qid2dids[qid]) == 0:
-                    batch_sample_memory_cos = torch.zeros(len(docids)) + 0.1  # 初始化score
+                    batch_sample_memory_cos = (
+                        torch.zeros(len(docids)) + 0.1
+                    )  # 初始化score
                 else:
                     mem_grads = self.get_rand_mem_grads(
                         buffer, model_temp, grad_dims, qid, docids_pos_lst[i], cur_q_lst
@@ -348,6 +350,7 @@ class GSSGreedyUpdate(object):
             )
         return mem_grads
         """
+
     # 수정한 부분
     def get_rand_mem_grads(self, buffer, model_temp, grad_dims, qid, did_pos, q_lst):
         # 从memory中随机采mem_strength个batch，batch_size大小为gss_batch_size，计算他们的梯度

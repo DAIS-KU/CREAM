@@ -301,8 +301,12 @@ class DenseModel(EncoderModel):
         mask_expanded = attention_mask.unsqueeze(-1).expand(
             hidden_states.shape
         )  # (batch_size, seq_len, hidden_dim)
-        sum_hidden = (hidden_states * mask_expanded).sum(dim=1)  # 마스크된 부분 제외하고 합산
-        sum_mask = mask_expanded.sum(dim=1)  # 마스크된 개수 계산 (길이별로 다를 수 있음)
+        sum_hidden = (hidden_states * mask_expanded).sum(
+            dim=1
+        )  # 마스크된 부분 제외하고 합산
+        sum_mask = mask_expanded.sum(
+            dim=1
+        )  # 마스크된 개수 계산 (길이별로 다를 수 있음)
         pooled_output = sum_hidden / sum_mask  # 평균값 반환
         return F.normalize(pooled_output, p=2, dim=1)  # L2 정규화 적용
 
