@@ -1,5 +1,0 @@
-proposal_wo_term_session_4.pth filter=lfs diff=lfs merge=lfs -text
-proposal_wo_term_session_5.pth filter=lfs diff=lfs merge=lfs -text
-proposal_wo_term_session_6.pth filter=lfs diff=lfs merge=lfs -text
-proposal_wo_term_session_7.pth filter=lfs diff=lfs merge=lfs -text
-proposal_wo_term_session_8.pth filter=lfs diff=lfs merge=lfs -text
