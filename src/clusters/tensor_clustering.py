@@ -186,3 +186,58 @@ def kmeans_pp_use_tensor_key(X, k, max_iters, nbits, use_tensor_key=True):
 
     print(f"centroids : {len(centroids)}")
     return centroids, cluster_instances
+
+
+def kmeans_pp_use_tensor_key_random_vectors(
+    X, k, max_iters, nbits, use_tensor_key=True
+):
+    random_vectors = torch.randn(nbits, 768)
+    lsh = RandomProjectionLSH(
+        random_vectors=random_vectors,
+        embedding_dim=768,
+        use_tensor_key=use_tensor_key,
+    )
+    centroids = initialize_centroids_use_tensor_key(X, k, lsh)
+
+    for iter_num in range(max_iters):
+        print(f"Starting iteration {iter_num + 1} | centroids: #{len(centroids)}")
+        start_time = time.time()
+        clusters = defaultdict(list)
+        # X순서보장 필요
+        partitions = np.array_split(X, num_devices)
+        with ThreadPoolExecutor(max_workers=num_devices) as executor:
+            results = list(
+                executor.map(
+                    get_closest_clusters_use_tensor_key,
+                    [
+                        (partition, centroids, devices[idx])
+                        for idx, partition in enumerate(partitions)
+                    ],
+                )
+            )
+        closest_clusters = [
+            closest_cluster for result in results for closest_cluster in result
+        ]
+        unique_clusters = sorted(set(closest_clusters))
+        cluster_to_idx = {cluster: idx for idx, cluster in enumerate(unique_clusters)}
+        for i, closest_cluster in enumerate(closest_clusters):
+            clusters[cluster_to_idx[closest_cluster]].append(i)
+
+        centroids = []
+        for k in sorted(clusters.keys()):
+            cluster_indices = clusters[k]
+            print(f"clsuter {k} create new centroid.(instance {len(cluster_indices)})")
+            new_centroid = create_centroid_use_tensor_key(
+                X, cluster_indices, lsh, nbits
+            )
+            centroids.append(new_centroid)
+        end_time = time.time()
+        print(f"iter_num {iter_num} | execution_time: {end_time-start_time} sec.")
+
+    cluster_instances = defaultdict(list)
+    for k in sorted(clusters.keys()):
+        cluster_instances[k] = [X[idx] for idx in clusters[k]]
+        print(f"cluster {k} size: {len(cluster_instances[k])}")
+
+    print(f"centroids : {len(centroids)}")
+    return centroids, cluster_instances, random_vectors

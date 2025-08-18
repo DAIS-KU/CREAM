@@ -1,0 +1,87 @@
+nohup: ignoring input
+Running experiments: compare
+Start session: 0
+End session: 4
+Load cluster: False
+Use cluster warming up: none
+Use label: False
+Use weight: False
+Use tensor key: False
+Use nbits: 12
+Use max_iters: 3
+Use warmingup_rate: None
+Use warmingup_k: None
+Use cluster_min_size: 10
+Use required_doc_size: None
+Use stream sampling rate: None
+Use sampling size per query: None
+Number of Epochs: 1
+Include answer: False
+Evaluate Session 0
+Query count:180, Document count:60423
+Using 1 GPUs: [device(type='cuda', index=0)]
+RandomProjectionLSH use_tensor_key True
+Query-Document encoding started.
+Starting on cuda:0 with 180 queries and 60423 documents (batch size 1024)
+cuda:0 | Query encoding batch 0
+new_q_data | new_q_data:180, query_embeddings:180
+cuda:0 | Document encoding batch 0
+cuda:0 | Document encoding batch 1024
+cuda:0 | Document encoding batch 2048
+cuda:0 | Document encoding batch 3072
+cuda:0 | Document encoding batch 4096
+cuda:0 | Document encoding batch 5120
+cuda:0 | Document encoding batch 6144
+cuda:0 | Document encoding batch 7168
+cuda:0 | Document encoding batch 8192
+cuda:0 | Document encoding batch 9216
+cuda:0 | Document encoding batch 10240
+cuda:0 | Document encoding batch 11264
+cuda:0 | Document encoding batch 12288
+cuda:0 | Document encoding batch 13312
+cuda:0 | Document encoding batch 14336
+cuda:0 | Document encoding batch 15360
+cuda:0 | Document encoding batch 16384
+cuda:0 | Document encoding batch 17408
+cuda:0 | Document encoding batch 18432
+cuda:0 | Document encoding batch 19456
+cuda:0 | Document encoding batch 20480
+cuda:0 | Document encoding batch 21504
+cuda:0 | Document encoding batch 22528
+cuda:0 | Document encoding batch 23552
+cuda:0 | Document encoding batch 24576
+cuda:0 | Document encoding batch 25600
+cuda:0 | Document encoding batch 26624
+cuda:0 | Document encoding batch 27648
+cuda:0 | Document encoding batch 28672
+cuda:0 | Document encoding batch 29696
+cuda:0 | Document encoding batch 30720
+cuda:0 | Document encoding batch 31744
+cuda:0 | Document encoding batch 32768
+cuda:0 | Document encoding batch 33792
+cuda:0 | Document encoding batch 34816
+cuda:0 | Document encoding batch 35840
+cuda:0 | Document encoding batch 36864
+cuda:0 | Document encoding batch 37888
+cuda:0 | Document encoding batch 38912
+cuda:0 | Document encoding batch 39936
+cuda:0 | Document encoding batch 40960
+cuda:0 | Document encoding batch 41984
+cuda:0 | Document encoding batch 43008
+cuda:0 | Document encoding batch 44032
+cuda:0 | Document encoding batch 45056
+cuda:0 | Document encoding batch 46080
+cuda:0 | Document encoding batch 47104
+cuda:0 | Document encoding batch 48128
+cuda:0 | Document encoding batch 49152
+cuda:0 | Document encoding batch 50176
+cuda:0 | Document encoding batch 51200
+cuda:0 | Document encoding batch 52224
+cuda:0 | Document encoding batch 53248
+cuda:0 | Document encoding batch 54272
+cuda:0 | Document encoding batch 55296
+cuda:0 | Document encoding batch 56320
+cuda:0 | Document encoding batch 57344
+cuda:0 | Document encoding batch 58368
+cuda:0 | Document encoding batch 59392
+cuda:0 | Document encoding batch 60416

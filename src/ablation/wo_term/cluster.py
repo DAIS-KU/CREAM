@@ -23,8 +23,6 @@ class Cluster:
         centroid,
         cluster_docs,
         docs: dict,
-        use_tensor_key,
-        timestamp=0,
         batch_size=384,
         z1=8.0,
         z2=1.0,
@@ -33,8 +31,6 @@ class Cluster:
     ):
         self.prototype = centroid.cpu()
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
-        self.use_tensor_key = use_tensor_key
-        self.timestamp = timestamp
         self.batch_size = batch_size
         self.z1 = z1
         self.z2 = z2
@@ -179,7 +175,7 @@ class Cluster:
         # )
         return distance
 
-    def assign(self, doc_id, doc_embs, ts):
+    def assign(self, doc_id, doc_embs):
         # E_q (batch_size, qlen, 768)
         self.doc_ids.append(doc_id)
         distance = self.get_distance(doc_embs)
@@ -189,7 +185,6 @@ class Cluster:
             self.N + 1
         )
         self.N = len(self.doc_ids)
-        self.timestamp = ts
         # print(
         #     f"self.prototype:{self.prototype.device}, doc_embs:{doc_embs.device}, S1:{self.S1}, S2:{self.S2}, N:{self.N}"
         # )

@@ -15,12 +15,14 @@ class RandomProjectionLSH:
         self.use_tensor_key = use_tensor_key
         print(f"RandomProjectionLSH use_tensor_key {use_tensor_key}")
 
-    def _get_key(self, embeddings, device):
+    def _get_key(self, embeddings, device, is_list=True):
         random_vectors = self.random_vectors.to(device)
         projections = torch.matmul(embeddings, random_vectors.T)
         binary_vectors = (projections > 0).int()
         int_keys = torch.sum(binary_vectors * self.powers_of_two.to(device), dim=1)
-        return int_keys.tolist()
+        key= int_keys.tolist() if is_list else int(int_keys.cpu())
+        # print(f"Generated keys: {key}")
+        return key
 
     def _hash(self, embeddings, device):
         # print(f'embeddings :{embeddings.shape}')

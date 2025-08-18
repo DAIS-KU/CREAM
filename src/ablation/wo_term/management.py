@@ -17,16 +17,14 @@ from functions import (
 from .cluster import Cluster
 from .clustering import kmeans_mean_pooling
 
-tokenizer = BertTokenizer.from_pretrained(
-    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-)
+tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 MAX_SCORE = 1.0
 num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
 def initialize(
-    model, stream_docs, docs, k, max_iters, use_tensor_key=True
+    model, stream_docs, docs, k, max_iters
 ) -> List[Cluster]:
     enoded_stream_docs = encode_cluster_data_mean_pooling(
         documents_data=stream_docs,
@@ -40,7 +38,7 @@ def initialize(
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
             clusters.append(
-                Cluster(model, centroid, cluster_instances[cid], docs, use_tensor_key)
+                Cluster(model, centroid, cluster_instances[cid], docs)
             )
     return clusters
 
@@ -51,7 +49,6 @@ def find_k_closest_clusters(
     clusters: List[Cluster],
     k,
     device,
-    use_tensor_key,
     batch_size=8,
 ) -> List[int]:
     prototypes = [cluster.prototype for cluster in clusters]  # (num_clusters, dim)
@@ -236,6 +233,62 @@ def assign_instance_or_add_cluster(
     return clusters
 
 
+def assign_instance_or_add_cluster_doc2cluster(
+    model,
+    clusters: List[Cluster],
+    stream_docs,
+    docs: dict,
+    doc2cluster,
+    cluster_min_size=0,
+):
+    print("assign_instance_or_add_cluster_doc2cluster started.")
+
+    batch_cnt = min(num_devices, len(stream_docs))
+    print(f"assign_instance_or_add_cluster_doc2cluster | batch_cnt: {batch_cnt} | num_devices: {num_devices}, stream_docs:{len(stream_docs)}")
+    batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
+
+    def process_batch(batch, device):
+        print(f"ㄴ Batch {len(batch)} starts on {device}.")
+        temp_model = deepcopy(model).to(device)
+        doc_ids = [doc["doc_id"] for doc in batch]
+        batch_embs = torch.stack([doc["EMB"] for doc in batch], dim=0)
+        # print(f"assign_instance_or_add_cluster | batch_embs: {batch_embs.shape}")
+        batch_closest_ids = find_k_closest_clusters(
+            temp_model, batch_embs, clusters, 1, device
+        )
+        for i, doc in enumerate(batch):
+            doc_embs = batch_embs[i]
+            if len(clusters) == 0:
+                print(f"Empty Clusters")
+                clusters.append(Cluster(temp_model, doc_embs, [doc], docs))
+            else:
+                closest_cluster_id = batch_closest_ids[i][0]
+                closest_cluster = clusters[closest_cluster_id]
+                s1, s2, n = closest_cluster.get_statistics()
+                closest_distance = closest_cluster.get_distance(doc_embs)
+                closest_boundary = closest_cluster.get_boundary()
+                if n <= cluster_min_size or closest_distance <= closest_boundary:
+                    closest_cluster.assign(doc_ids[i], doc_embs)
+                    doc2cluster[doc_ids[i]] = closest_cluster_id
+                else:
+                    print(f"closest_cluster: {s1}, {s2}, {n}")
+                    print(
+                        f"closest_distance: {closest_distance}, closest_boundary:{closest_boundary}"
+                    )
+                    clusters.append(Cluster(temp_model, doc_embs, [doc], docs))
+                    doc2cluster[doc_ids[i]] = len(clusters) - 1
+
+    with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
+        futures = []
+        for i, batch in enumerate(batches):
+            device = devices[i % batch_cnt]
+            futures.append(executor.submit(process_batch, batch, device))
+        for future in futures:
+            future.result()
+    print(f"assign_instance_or_add_cluster_doc2cluster finished.({len(clusters)})")
+    return clusters, doc2cluster
+
+
 def evict_clusters(
     model, docs: dict, clusters: List[Cluster], ts, required_doc_size
 ) -> List[Cluster]:
@@ -332,7 +385,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, use_tensor_key, k)
             print(f" ㄴ {i}th minibatch({(i+1)*batch_size}/{len(batch)})")
             mini_batch_embs = torch.stack([doc["EMB"] for doc in mini_batch], dim=1)
             mini_batch_closest_ids = find_k_closest_clusters(
-                temp_model, mini_batch_embs, clusters, 1, device, use_tensor_key
+                temp_model, mini_batch_embs, clusters, 1, device
             )
             for j in range(len(mini_batch_closest_ids)):
                 closest_cluster_id = mini_batch_closest_ids[j][0]
@@ -353,9 +406,7 @@ def retrieve_top_k_docs_from_cluster(model, stream, clusters, use_tensor_key, k)
             cluster_docids_dict[cluster_id].extend(doc_ids)
     result = {}
     embs = torch.stack([q["EMB"] for q in stream.queries], dim=1)
-    batch_closest_ids = find_k_closest_clusters(
-        model, embs, clusters, 1, devices[-1], use_tensor_key
-    )
+    batch_closest_ids = find_k_closest_clusters(model, embs, clusters, 1, devices[-1])
     for i, query in enumerate(stream.queries):
         print(f"Retrieval {i}th query.")
         closest_cluster_id = batch_closest_ids[i][0]

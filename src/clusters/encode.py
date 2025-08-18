@@ -16,44 +16,10 @@ from buffer import (
 from clusters import RandomProjectionLSH
 from functions import get_passage_embeddings
 
-tokenizer = BertTokenizer.from_pretrained(
-    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-)
+tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 
 
-def _renew_queries_with_text(
-    model, lsh, query_batch, device, batch_size=3072, max_length=256
-):
-    torch.cuda.set_device(device)
-    query_texts = [q["query"] for q in query_batch]
-    query_ids = [q["qid"] for q in query_batch]
-    query_embeddings, query_hashes, query_decoded_texts = [], [], []
-    for i in range(0, len(query_texts), batch_size):
-        print(f"{device} | Query encoding batch {i}")
-        query_batch_text = query_texts[i : i + batch_size]
-        (
-            query_batch_embeddings,
-            query_batch_decoded_texts,
-        ) = get_passage_embeddings_with_text(
-            model, query_batch_text, device, max_length
-        )
-        for query_batch_embedding in query_batch_embeddings:
-            query_embeddings.append(query_batch_embedding.cpu())
-            query_hashes.append(lsh.encode(query_batch_embedding))
-        # print(f'query_hashes: {query_hashes[-1][list(query_hashes[-1].keys())[-1]].device}, query_embeddings: {query_embeddings[-1].device}')
-        query_decoded_texts.extend(query_batch_decoded_texts)
-
-    new_q_data = {
-        qid: {"qid": qid, "query": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
-        for qid, text, maps, emb in zip(
-            query_ids, query_decoded_texts, query_hashes, query_embeddings
-        )
-    }
-    del query_ids, query_decoded_texts, query_embeddings, query_hashes
-    return new_q_data
-
-
-def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=256):
+def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=256):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
     query_ids = [q["qid"] for q in query_batch]
@@ -73,7 +39,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=
             "doc_id": qid,
             "text": text,
             "TOKEN_EMBS": emb,
-            "MEAN_EMB": F.normalize(emb.mean(dim=0), dim=0),
+            "LSH": lsh.encode(emb),
             "is_query": True,
             "answer_pids": pids,
         }
@@ -89,35 +55,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=
     return new_q_data
 
 
-def _renew_docs_with_text(
-    model, lsh, document_batch, device, batch_size=3072, max_length=2
-):
-    document_texts = [d["text"] for d in document_batch]
-    document_ids = [d["doc_id"] for d in document_batch]
-    document_embeddings, document_hashes, document_decoded_texts = [], [], []
-    for i in range(0, len(document_texts), batch_size):
-        print(f"{device} | Document encoding batch {i}")
-        doc_batch_text = document_texts[i : i + batch_size]
-        (
-            doc_batch_embeddings,
-            doc_batch_decoded_texts,
-        ) = get_passage_embeddings_with_text(model, doc_batch_text, device, max_length)
-        for doc_batch_embedding in doc_batch_embeddings:
-            document_embeddings.append(doc_batch_embedding.cpu())
-            document_hashes.append(lsh.encode(doc_batch_embedding))
-        document_decoded_texts.extend(doc_batch_decoded_texts)
-
-    new_d_data = {
-        doc_id: {"doc_id": doc_id, "text": text, "LSH_MAPS": maps, "TOKEN_EMBS": emb}
-        for doc_id, text, maps, emb in zip(
-            document_ids, document_decoded_texts, document_hashes, document_embeddings
-        )
-    }
-    del document_ids, document_decoded_texts, document_embeddings, document_hashes
-    return new_d_data
-
-
-def _renew_docs(model, lsh, document_batch, device, batch_size=3072, max_length=256):
+def _renew_docs(model, lsh, document_batch, device, batch_size=1024, max_length=256):
     torch.cuda.set_device(device)
     document_texts = [d["text"] for d in document_batch]
     document_ids = [d["doc_id"] for d in document_batch]
@@ -137,7 +75,7 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=3072, max_length=
             "doc_id": doc_id,
             "text": text,
             "TOKEN_EMBS": emb,
-            "MEAN_EMB": F.normalize(emb.mean(dim=0), dim=0),
+            "LSH": lsh.encode(emb),
             "is_query": False,
             "answer_pids": [],
         }
@@ -159,7 +97,7 @@ def _renew_data(
     device,
     renew_q=True,
     renew_d=True,
-    batch_size=3072,
+    batch_size=1024,
     max_length=256,
 ):
     torch.cuda.set_device(device)
@@ -196,9 +134,9 @@ def renew_data(
     models, hashes = [], []
     random_vectors = torch.randn(nbits, embedding_dim)
     for device in devices:
-        model = BertModel.from_pretrained(
-            "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-        ).to(device)
+        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+            device
+        )
         if model_path is not None:
             print("Load model in clusters.encoder.")
             model.load_state_dict(torch.load(model_path, map_location="cuda:0"))

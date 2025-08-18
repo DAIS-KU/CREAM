@@ -150,8 +150,7 @@ class Stream:
             )
 
     def read_filtered_docs(self, session_number):
-        # filtered_doc_path = f"/home/work/retrieval/data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
-        filtered_doc_path = f"/home/work/retrieval/data/datasetM_large_share/train_session{session_number}_docs_filtered.jsonl"
+        filtered_doc_path = f"/home/work/.default/huijeong/data/msmarco_session/train_session{session_number}_docs_filtered.jsonl"
         print(f"Read from: {filtered_doc_path}")
         filtered_doc_list = read_jsonl(filtered_doc_path, is_query=False)
         return filtered_doc_list

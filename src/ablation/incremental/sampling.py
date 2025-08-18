@@ -14,9 +14,7 @@ from clusters import (
     calculate_S_qd_regl_batch_batch,
 )
 
-tokenizer = BertTokenizer.from_pretrained(
-    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-)
+tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 
 
 def preprocess(corpus, max_length=256):

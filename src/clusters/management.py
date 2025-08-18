@@ -20,7 +20,7 @@ from .cluster import Cluster
 from .clustering import kmeans_pp
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
-from .tensor_clustering import kmeans_pp_use_tensor_key
+from .tensor_clustering import kmeans_pp_use_tensor_key, kmeans_pp_use_tensor_key_random_vectors
 from data import BM25Okapi, preprocess
 
 num_devices = torch.cuda.device_count()
@@ -55,6 +55,32 @@ def initialize(
             )
     return clusters
 
+
+def initialize_doc2cluster(docs, k, nbits, max_iters, use_tensor_key=True):
+    _, encoded_docs = renew_data(
+        queries=None,
+        documents=list(docs.values()),
+        renew_q=False,
+        renew_d=True,
+        nbits=nbits,
+        use_tensor_key=use_tensor_key,
+        model_path=None,
+    )
+    centroids, cluster_instances, random_vectors = (
+        kmeans_pp_use_tensor_key_random_vectors(
+            list(encoded_docs.values()), k, max_iters, nbits
+        )
+    )
+    clusters, doc2cluster = [], {}
+    for cid, centroid in enumerate(centroids):
+        if len(cluster_instances[cid]):
+            print(f"Create {len(clusters)}th Cluster.")
+            clusters.append(
+                Cluster(centroid, cluster_instances[cid], encoded_docs, use_tensor_key)
+            )
+            for doc in cluster_instances[cid]:
+                doc2cluster[doc["doc_id"]] = cid
+    return clusters, doc2cluster, random_vectors
 
 # tensor_clustering.get_closest_clusters_use_tensor_key
 def find_k_closest_clusters(
@@ -220,83 +246,79 @@ def assign_instance_or_add_cluster(
     return clusters
 
 
-# def assign_instance_or_add_cluster(
-#     lsh,
-#     clusters,
-#     stream_docs,
-#     docs,
-#     ts,
-#     use_tensor_key,
-#     cluster_min_size,
-# ):
-#     print("assign_instance_or_add_cluster started.")
+def assign_instance_or_add_cluster_doc2cluster(
+    lsh,
+    clusters,
+    stream_docs,
+    docs,
+    ts,
+    use_tensor_key,
+    doc2cluster,
+    cluster_min_size=0,
+    batch_size=128,
+):
+    print("assign_instance_or_add_cluster started.")
 
-#     batch_cnt = min(num_devices, len(stream_docs))
-#     batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
-#     lock = threading.Lock()
+    batch_cnt = min(num_devices, len(stream_docs))
+    # batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
+    batches = [
+        stream_docs[i : i + batch_size] for i in range(0, len(stream_docs), batch_size)
+    ]
+    lock = threading.Lock()
 
-#     def process_batch(batch, device):
-#         print(f"ㄴ Batch {len(batch)} starts on {device}.")
+    def process_batch(batch, device):
+        print(f"ㄴ Batch {len(batch)} starts on {device}.")
 
-#         doc_ids = [doc["doc_id"] for doc in batch]
-#         batch_embs = [docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids]
-#         batch_embs_tensor = torch.stack(batch_embs).to(device)  # (B, L, D)
+        # 1) 배치 임베딩 & 해시
+        doc_ids = [doc["doc_id"] for doc in batch]
+        batch_embs = [docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids]
+        batch_embs_tensor = torch.stack(batch_embs).to(device)  # (B, L, D)
+        batch_hashes = lsh.encode_batch(
+            batch_embeddings=batch_embs_tensor, is_sum=False
+        )  # (B, hash_size, D)
 
-#         # 배치 해시 인코딩
-#         batch_hashes = lsh.encode_batch(
-#             batch_embeddings=batch_embs_tensor, is_sum=False
-#         )  # (B, hash_size, D)
+        # 2) 배치-클러스터 유사도 계산 (벡터화)
+        batch_closest_distances, batch_closest_ids = find_k_closest_clusters(
+            batch_embs_tensor, clusters, 1, device, use_tensor_key, return_distance=True
+        )  # (B, 1)
 
-#         # 배치 클러스터 유사도 계산
-#         batch_closest_distances, batch_closest_ids = find_k_closest_clusters(
-#             batch_embs_tensor, clusters, 1, device, lsh.use_tensor_key, return_distance=True
-#         )  # (B, 1)
+        # 3) 로컬에 할당 결과 수집
+        local_assigns = defaultdict(list)
+        local_new = []
 
-#         for i, doc in enumerate(batch):
-#             doc_embs = batch_embs_tensor[i]
-#             doc_hash = batch_hashes[i]
+        for i, doc in enumerate(batch):
+            cid = batch_closest_ids[i][0]
+            closest_distance = batch_closest_distances[i][0]
+            closest_cluster = clusters[cid]
+            closest_boundary = closest_cluster.get_boundary()
+            n = len(closest_cluster.get_only_docids(docs, False))
 
-#             if len(clusters) == 0:
-#                 with lock:
-#                     clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
-#                 continue
+            if n <= cluster_min_size or closest_distance <= closest_boundary:
+                local_assigns[cid].append(
+                    (doc_ids[i], batch_embs_tensor[i], batch_hashes[i])
+                )
+                doc2cluster[doc["doc_id"]] = cid
+            else:
+                local_new.append((batch_hashes[i], doc))
 
-#             closest_cluster_id = batch_closest_ids[i][0]
-#             closest_cluster = clusters[closest_cluster_id]
-#             # closest_distance = closest_cluster.get_distance(doc_embs)
-#             closest_distance = batch_closest_distances[i][0]
-#             # print(f"closest_cluster_id:{closest_cluster_id}, closest_distance: {closest_distance}")
-#             closest_boundary = closest_cluster.get_boundary()
-#             mean, std, n = (
-#                 closest_cluster.calculate_mean(),
-#                 closest_cluster.calculate_rms(),
-#                 len(closest_cluster.get_only_docids(docs, False)),
-#             )
+        # 4) 락 한 번만 걸고 글로벌 clusters 반영
+        with lock:
+            for cid, items in local_assigns.items():
+                for doc_id, emb, hsh in items:
+                    clusters[cid].assign(doc_id, emb, hsh, ts)
+            for hsh, doc in local_new:
+                clusters.append(Cluster(hsh, [doc], docs, use_tensor_key, ts))
 
-#             if n <= cluster_min_size or closest_distance <= closest_boundary:
-#                 with lock:
-#                     closest_cluster.assign(doc_ids[i], doc_embs, doc_hash, ts)
-#             else:
-#                 with lock:
-#                     # print(
-#                     #     f"closest_cluster: {mean}, {std} | N: {n}, "
-#                     #     f"doc_ids#:{len(closest_cluster.doc_ids)}, only docs#: {len(closest_cluster.get_only_docids(docs))}"
-#                     # )
-#                     print(
-#                         f"closest_distance: {closest_distance}, closest_boundary: {closest_boundary}"
-#                     )
-#                     clusters.append(Cluster(doc_hash, [doc], docs, use_tensor_key, ts))
+    with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
+        futures = []
+        for i, batch in enumerate(batches):
+            device = devices[i % batch_cnt]
+            futures.append(executor.submit(process_batch, batch, device))
+        for future in futures:
+            future.result()
 
-#     with ThreadPoolExecutor(max_workers=batch_cnt) as executor:
-#         futures = []
-#         for i, batch in enumerate(batches):
-#             device = devices[i % batch_cnt]
-#             futures.append(executor.submit(process_batch, batch, device))
-#         for future in futures:
-#             future.result()
-
-#     print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
-#     return clusters
+    print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
+    return clusters
 
 
 def get_samples_top_bottom_3(

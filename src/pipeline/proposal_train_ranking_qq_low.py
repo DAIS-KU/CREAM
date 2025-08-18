@@ -12,19 +12,12 @@ from clusters import (
     Cluster,
     RandomProjectionLSH,
     DiversityBufferManager,
-    GreedyDiversityBufferManager,
     assign_instance_or_add_cluster,
     clear_invalid_clusters,
     evict_clusters,
-    get_samples_top1_farthest_bottom6,
-    get_samples_top_and_farthest3,
     initialize,
-    make_query_psuedo_answers,
     renew_data,
-    retrieve_top_k_docs_from_cluster,
     clear_unused_documents,
-    deep_copy_tensor_dict,
-    compare_tensor_dicts,
     build_cluster_cache_table_by_cosine,
     get_samples_top_and_farthest3_with_cache,
     get_samples_top_bottom_3_with_cache,
@@ -32,15 +25,12 @@ from clusters import (
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
     InfoNCELoss,
-    InfoNCETermLoss,
     evaluate_dataset,
     get_top_k_documents,
 )
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained(
-    "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-)
+tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -257,9 +247,9 @@ def train(
         )
         write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
 
-        model = BertModel.from_pretrained(
-            "/home/work/retrieval/bert-base-uncased/bert-base-uncased"
-        ).to(devices[-1])
+        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+            devices[-1]
+        )
         if session_number != 0:
             print("Load last session model.")
             model_path = f"../data/model/proposal_datasetL_large_share_k24_session_{session_number-1}.pth"
