@@ -18,70 +18,599 @@ Use sampling size per query: None
 Number of Epochs: 1
 Include answer: False
 Evaluate Session 0
-Query count:180, Document count:60423
+Query count:60, Document count:11266
 Using 1 GPUs: [device(type='cuda', index=0)]
 RandomProjectionLSH use_tensor_key True
 Query-Document encoding started.
-Starting on cuda:0 with 180 queries and 60423 documents (batch size 1024)
+Starting on cuda:0 with 60 queries and 11266 documents (batch size 3072)
 cuda:0 | Query encoding batch 0
-new_q_data | new_q_data:180, query_embeddings:180
+new_q_data | new_q_data:60, query_embeddings:60
 cuda:0 | Document encoding batch 0
-cuda:0 | Document encoding batch 1024
-cuda:0 | Document encoding batch 2048
 cuda:0 | Document encoding batch 3072
-cuda:0 | Document encoding batch 4096
-cuda:0 | Document encoding batch 5120
 cuda:0 | Document encoding batch 6144
-cuda:0 | Document encoding batch 7168
-cuda:0 | Document encoding batch 8192
 cuda:0 | Document encoding batch 9216
-cuda:0 | Document encoding batch 10240
-cuda:0 | Document encoding batch 11264
-cuda:0 | Document encoding batch 12288
-cuda:0 | Document encoding batch 13312
-cuda:0 | Document encoding batch 14336
-cuda:0 | Document encoding batch 15360
-cuda:0 | Document encoding batch 16384
-cuda:0 | Document encoding batch 17408
-cuda:0 | Document encoding batch 18432
-cuda:0 | Document encoding batch 19456
-cuda:0 | Document encoding batch 20480
-cuda:0 | Document encoding batch 21504
-cuda:0 | Document encoding batch 22528
-cuda:0 | Document encoding batch 23552
-cuda:0 | Document encoding batch 24576
-cuda:0 | Document encoding batch 25600
-cuda:0 | Document encoding batch 26624
-cuda:0 | Document encoding batch 27648
-cuda:0 | Document encoding batch 28672
-cuda:0 | Document encoding batch 29696
-cuda:0 | Document encoding batch 30720
-cuda:0 | Document encoding batch 31744
-cuda:0 | Document encoding batch 32768
-cuda:0 | Document encoding batch 33792
-cuda:0 | Document encoding batch 34816
-cuda:0 | Document encoding batch 35840
-cuda:0 | Document encoding batch 36864
-cuda:0 | Document encoding batch 37888
-cuda:0 | Document encoding batch 38912
-cuda:0 | Document encoding batch 39936
-cuda:0 | Document encoding batch 40960
-cuda:0 | Document encoding batch 41984
-cuda:0 | Document encoding batch 43008
-cuda:0 | Document encoding batch 44032
-cuda:0 | Document encoding batch 45056
-cuda:0 | Document encoding batch 46080
-cuda:0 | Document encoding batch 47104
-cuda:0 | Document encoding batch 48128
-cuda:0 | Document encoding batch 49152
-cuda:0 | Document encoding batch 50176
-cuda:0 | Document encoding batch 51200
-cuda:0 | Document encoding batch 52224
-cuda:0 | Document encoding batch 53248
-cuda:0 | Document encoding batch 54272
-cuda:0 | Document encoding batch 55296
-cuda:0 | Document encoding batch 56320
-cuda:0 | Document encoding batch 57344
-cuda:0 | Document encoding batch 58368
-cuda:0 | Document encoding batch 59392
-cuda:0 | Document encoding batch 60416
+new_d_data | new_d_data:11266, document_embeddings:11266
+Query-Document encoding ended.(39.935099601745605 sec.)
+Spend 40.58938813209534 seconds for encoding.
+Using GPUs: [device(type='cuda', index=0)]
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 0 ~ 9 retrieving is done.
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 10 ~ 19 retrieving is done.
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 20 ~ 29 retrieving is done.
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 30 ~ 39 retrieving is done.
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 40 ~ 49 retrieving is done.
+cuda:0| Processing batch 0-128
+cuda:0| Processing batch 128-256
+cuda:0| Processing batch 256-384
+cuda:0| Processing batch 384-512
+cuda:0| Processing batch 512-640
+cuda:0| Processing batch 640-768
+cuda:0| Processing batch 768-896
+cuda:0| Processing batch 896-1024
+cuda:0| Processing batch 1024-1152
+cuda:0| Processing batch 1152-1280
+cuda:0| Processing batch 1280-1408
+cuda:0| Processing batch 1408-1536
+cuda:0| Processing batch 1536-1664
+cuda:0| Processing batch 1664-1792
+cuda:0| Processing batch 1792-1920
+cuda:0| Processing batch 1920-2048
+cuda:0| Processing batch 2048-2176
+cuda:0| Processing batch 2176-2304
+cuda:0| Processing batch 2304-2432
+cuda:0| Processing batch 2432-2560
+cuda:0| Processing batch 2560-2688
+cuda:0| Processing batch 2688-2816
+cuda:0| Processing batch 2816-2944
+cuda:0| Processing batch 2944-3072
+cuda:0| Processing batch 3072-3200
+cuda:0| Processing batch 3200-3328
+cuda:0| Processing batch 3328-3456
+cuda:0| Processing batch 3456-3584
+cuda:0| Processing batch 3584-3712
+cuda:0| Processing batch 3712-3840
+cuda:0| Processing batch 3840-3968
+cuda:0| Processing batch 3968-4096
+cuda:0| Processing batch 4096-4224
+cuda:0| Processing batch 4224-4352
+cuda:0| Processing batch 4352-4480
+cuda:0| Processing batch 4480-4608
+cuda:0| Processing batch 4608-4736
+cuda:0| Processing batch 4736-4864
+cuda:0| Processing batch 4864-4992
+cuda:0| Processing batch 4992-5120
+cuda:0| Processing batch 5120-5248
+cuda:0| Processing batch 5248-5376
+cuda:0| Processing batch 5376-5504
+cuda:0| Processing batch 5504-5632
+cuda:0| Processing batch 5632-5760
+cuda:0| Processing batch 5760-5888
+cuda:0| Processing batch 5888-6016
+cuda:0| Processing batch 6016-6144
+cuda:0| Processing batch 6144-6272
+cuda:0| Processing batch 6272-6400
+cuda:0| Processing batch 6400-6528
+cuda:0| Processing batch 6528-6656
+cuda:0| Processing batch 6656-6784
+cuda:0| Processing batch 6784-6912
+cuda:0| Processing batch 6912-7040
+cuda:0| Processing batch 7040-7168
+cuda:0| Processing batch 7168-7296
+cuda:0| Processing batch 7296-7424
+cuda:0| Processing batch 7424-7552
+cuda:0| Processing batch 7552-7680
+cuda:0| Processing batch 7680-7808
+cuda:0| Processing batch 7808-7936
+cuda:0| Processing batch 7936-8064
+cuda:0| Processing batch 8064-8192
+cuda:0| Processing batch 8192-8320
+cuda:0| Processing batch 8320-8448
+cuda:0| Processing batch 8448-8576
+cuda:0| Processing batch 8576-8704
+cuda:0| Processing batch 8704-8832
+cuda:0| Processing batch 8832-8960
+cuda:0| Processing batch 8960-9088
+cuda:0| Processing batch 9088-9216
+cuda:0| Processing batch 9216-9344
+cuda:0| Processing batch 9344-9472
+cuda:0| Processing batch 9472-9600
+cuda:0| Processing batch 9600-9728
+cuda:0| Processing batch 9728-9856
+cuda:0| Processing batch 9856-9984
+cuda:0| Processing batch 9984-10112
+cuda:0| Processing batch 10112-10240
+cuda:0| Processing batch 10240-10368
+cuda:0| Processing batch 10368-10496
+cuda:0| Processing batch 10496-10624
+cuda:0| Processing batch 10624-10752
+cuda:0| Processing batch 10752-10880
+cuda:0| Processing batch 10880-11008
+cuda:0| Processing batch 11008-11136
+cuda:0| Processing batch 11136-11264
+cuda:0| Processing batch 11264-11266
+# 50 ~ 59 retrieving is done.
+Spend 807.0536639690399 seconds for retrieval.
+QID domain0-639073 is totally wrong~!
+QID domain0-684373 is totally wrong~!
+QID domain0-653512 is totally wrong~!
+QID domain0-676495 is totally wrong~!
+QID domain0-795671 is totally wrong~!
+QID domain0-705506 is totally wrong~!
+QID domain0-644202 is totally wrong~!
+QID domain0-259158 is totally wrong~!
+QID domain0-438407 is totally wrong~!
+QID domain0-745090 is totally wrong~!
+QID domain0-495431 is totally wrong~!
+QID domain0-864938 is totally wrong~!
+QID domain0-715379 is totally wrong~!
+QID domain0-629549 is totally wrong~!
+QID domain0-642475 is totally wrong~!
+QID domain0-336831 is totally wrong~!
+QID domain0-684974 is totally wrong~!
+QID domain0-857954 is totally wrong~!
+QID domain0-719666 is totally wrong~!
+QID domain1-615868 is totally wrong~!
+QID domain1-1069411 is totally wrong~!
+QID domain1-539395 is totally wrong~!
+QID domain1-492524 is totally wrong~!
+QID domain1-913252 is totally wrong~!
+QID domain1-905936 is totally wrong~!
+QID domain1-892802 is totally wrong~!
+# query: 60 | answers: 61 | proportion: 0.5%
+Avg Success@5: 56.7%
+Avg Recall@10: 69.2%
+
+[domain0]
+  # query: 30 | answers: 31 | proportion: 0.3%
+  Avg Success@5: 36.7%
+  Avg Recall@10: 41.7%
+
+[domain1]
+  # query: 30 | answers: 30 | proportion: 0.3%
+  Avg Success@5: 76.7%
+  Avg Recall@10: 96.7%
+

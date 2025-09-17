@@ -8,6 +8,7 @@ import torch
 from transformers import BertModel, BertTokenizer
 
 from clusters import (
+    Cluster,
     Stream,
     RandomProjectionLSH,
     assign_instance_or_add_cluster_doc2cluster,
@@ -50,17 +51,20 @@ def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):
     success_cnt = 0
     recall_vals = []
 
-    for q in list(queries.values()):
+    for q in queries:
         q_emb = q["TOKEN_EMBS"]
         ans_pids = q["answer_pids"]
         closest = find_k_closest_clusters(
             token_embs=[q_emb],
             clusters=clusters,
-            k=1,
+            k=3,
             device=devices[-1],
             use_tensor_key=True,
-        )[0][0]
-        docs_in_c = cluster_docs[closest]
+        )[0]
+        docs_in_c= set()
+        docs_in_c.update(cluster_docs[closest[0]])
+        docs_in_c.update(cluster_docs[closest[1]])
+        docs_in_c.update(cluster_docs[closest[2]])
 
         hits = sum(1 for pid in ans_pids if pid in docs_in_c)
         rels = len(ans_pids)  # > 0 (가정)
@@ -89,18 +93,30 @@ def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):
     }
     return summary
 
+def get_sse(docs, clusters:List[Cluster]):
+    SSE = 0.0
+    for cluster in clusters:
+        SSE += cluster.get_sse(docs)
+    return SSE
+
+
 def streaming_lsh_evaluation(
     start_session_number=0,
     end_session_number=10,
     load_cluster=False,
     sampling_rate=None,
     sampling_size_per_query=30,
+    num_epochs=1,
+    batch_size=32,
     warmingup_rate=0.2,
     positive_k=1,
     negative_k=6,
+    cluster_min_size=10,
     nbits=12,
     max_iters=3,
     init_k=None,
+    use_label=False,
+    use_weight=False,
     use_tensor_key=False,
     warming_up_method=None,
     required_doc_size=None,
@@ -115,6 +131,7 @@ def streaming_lsh_evaluation(
         random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
     )
     prev_docs, clusters, doc2cluster = None, [], {}
+    sse_path = f"/home/work/.default/huijeong/data/sse/nbits_{nbits}_lotte.txt"
 
     for session_number in range(start_session_number, end_session_number):
         ts = session_number
@@ -190,6 +207,9 @@ def streaming_lsh_evaluation(
                     )
                     initial_size = len(stream.stream_docs[0])
                     batch_start = 1
+                    lsh = RandomProjectionLSH(
+                        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
+                    )
                 else:
                     raise NotImplementedError(
                         f"Unsupported warming_up_method: {warming_up_method}"
@@ -225,8 +245,11 @@ def streaming_lsh_evaluation(
         )
         write_line(time_values_path, f"Assign({total_assign_time}sec)\n", "a")
 
-        summary = evaluate_success_recall(stream.queries, clusters, doc2cluster, verbose=False)
-        print(f"Evaluation Summary: {summary}")
+        # summary = evaluate_success_recall(stream.queries, clusters, doc2cluster, verbose=False)
+        # print(f"Evaluation Summary: {summary}")
+        summary = get_sse(stream.docs, clusters)
+        print(f"Session {session_number} | SSE: {summary}")
+        write_line(sse_path, f"Session {session_number} | SSE: {summary}\n", "a")
 
         # Remain only trainable clusters
         clusters = clear_invalid_clusters(clusters, stream.docs, required_doc_size)

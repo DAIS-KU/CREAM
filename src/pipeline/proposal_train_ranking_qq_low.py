@@ -191,7 +191,7 @@ def streaming_train(
 
 def train(
     start_session_number=0,
-    end_sesison_number=10,
+    end_session_number=10,
     load_cluster=False,
     sampling_rate=None,
     sampling_size_per_query=30,
@@ -223,7 +223,7 @@ def train(
     prev_docs, clusters, query_result = None, [], {}
     diversity_buffer_manager = DiversityBufferManager()
 
-    for session_number in range(start_session_number, end_sesison_number):
+    for session_number in range(start_session_number, end_session_number):
         ts = session_number
         time_values_path = f"../data/loss/total_time_values_proposal_datasetL_large_share_k24_{session_number}.txt"
         print(f"Training Session {session_number}/{load_cluster}")

@@ -28,11 +28,11 @@ def sampling_negs(pos_ids, doc_ids):
     return neg_ids
 
 
-def generate_pooling_data(qnt=20):
-    source_path = "/home/work/.default/huijeong/data/msmarco"
+def generate_pooling_data(qnt=200):
+    source_path = "/home/work/.default/huijeong/data/lotte"
     dest_path = "/home/work/.default/huijeong/data/pooled"
-    # domains = ["technology", "writing", "science", "recreation", "lifestyle"]
-    domains = ["domain0", "domain1", "domain2", "domain3", "domain4"]
+    domains = ["technology", "writing", "science", "recreation", "lifestyle"]
+    # domains = ["domain0", "domain1", "domain2", "domain3", "domain4"]
     pooled_query_path = f"{dest_path}/pooled_queries.jsonl"
     pooled_docs_path = f"{dest_path}/pooled_docs.jsonl"
     pooled_queries = []
@@ -79,7 +79,7 @@ import numpy as np
 
 
 def get_mean_pooling_success_recall(k=5):
-    path = "/home/work/.default/huijeong/data/msmarco_session"
+    path = "/home/work/.default/huijeong/data/lotte_session"
     queries = read_jsonl_as_dict(f"{path}/test_session0_queries.jsonl", "qid")
     docs = read_jsonl(f"{path}/train_session0_docs.jsonl", False)
     new_q_data, new_d_data = renew_data_mean_pooling(
@@ -127,10 +127,10 @@ def _evaluate(nbits, session_number):
     method = f"lsh_msmarco_{nbits}"
     print(f"Evaluate Session {session_number}")
     eval_query_path = (
-        f"/home/work/.default/huijeong/data/msmarco_session/test_session{session_number}_queries.jsonl"
+        f"/home/work/.default/huijeong/data/lotte_session/test_session{session_number}_queries.jsonl"
     )
     eval_doc_path = (
-        f"/home/work/.default/huijeong/data/msmarco_session/train_session{session_number}_docs.jsonl"
+        f"/home/work/.default/huijeong/data/lotte_session/train_session{session_number}_docs.jsonl"
     )
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -167,18 +167,18 @@ def _evaluate(nbits, session_number):
 
 
 def compare(generate_data=False):
-    if generate_data:
-        generate_pooling_data()
+    # if generate_data:
+    #     generate_pooling_data()
     # summary = get_mean_pooling_success_recall(k=10)
     # print(f"summary(mean): {summary}\n")
 
     # evaluate(nbits=0)
 
-    # evaluate(nbits=3)
+    evaluate(nbits=3)
 
-    # evaluate(nbits=6)
+    evaluate(nbits=6)
 
-    # evaluate(nbits=9)
+    evaluate(nbits=9)
 
     evaluate(nbits=12)
 

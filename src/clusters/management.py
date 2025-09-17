@@ -56,19 +56,21 @@ def initialize(
     return clusters
 
 
-def initialize_doc2cluster(docs, k, nbits, max_iters, use_tensor_key=True):
-    _, encoded_docs = renew_data(
-        queries=None,
-        documents=list(docs.values()),
-        renew_q=False,
-        renew_d=True,
-        nbits=nbits,
-        use_tensor_key=use_tensor_key,
-        model_path=None,
-    )
+def initialize_doc2cluster(stream_docs, docs, k, nbits, max_iters, use_tensor_key=True):
+    # _, encoded_docs = renew_data(
+    #     queries=None,
+    #     documents=list(docs.values()),
+    #     renew_q=False,
+    #     renew_d=True,
+    #     nbits=nbits,
+    #     use_tensor_key=use_tensor_key,
+    #     model_path=None,
+    # )
+    enoded_stream_docs = stream_docs
     centroids, cluster_instances, random_vectors = (
         kmeans_pp_use_tensor_key_random_vectors(
-            list(encoded_docs.values()), k, max_iters, nbits
+            enoded_stream_docs, k, max_iters, nbits
+            # list(encoded_docs.values()), k, max_iters, nbits
         )
     )
     clusters, doc2cluster = [], {}
@@ -76,7 +78,7 @@ def initialize_doc2cluster(docs, k, nbits, max_iters, use_tensor_key=True):
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
             clusters.append(
-                Cluster(centroid, cluster_instances[cid], encoded_docs, use_tensor_key)
+                Cluster(centroid, cluster_instances[cid], docs, use_tensor_key)
             )
             for doc in cluster_instances[cid]:
                 doc2cluster[doc["doc_id"]] = cid
@@ -278,6 +280,7 @@ def assign_instance_or_add_cluster_doc2cluster(
         )  # (B, hash_size, D)
 
         # 2) 배치-클러스터 유사도 계산 (벡터화)
+        # print(f"clusters: {type(clusters)}, clusters[0]: {type(clusters[0])}")
         batch_closest_distances, batch_closest_ids = find_k_closest_clusters(
             batch_embs_tensor, clusters, 1, device, use_tensor_key, return_distance=True
         )  # (B, 1)
@@ -318,7 +321,7 @@ def assign_instance_or_add_cluster_doc2cluster(
             future.result()
 
     print(f"assign_instance_or_add_cluster finished.({len(clusters)})")
-    return clusters
+    return clusters, doc2cluster
 
 
 def get_samples_top_bottom_3(
@@ -570,8 +573,7 @@ def evict_clusters(
     model.eval()
     remaining_clusters = []
     for cluster in clusters:
-        is_updated = 1 if cluster.timestamp >= ts else 0
-        is_alive = cluster.evict(model, lsh, docs, required_doc_size, is_updated)
+        is_alive = cluster.evict(model, lsh, docs, required_doc_size)
         if is_alive:
             remaining_clusters.append(cluster)
     # stride. 순서 보장 필요X

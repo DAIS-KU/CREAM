@@ -42,6 +42,25 @@ def initialize(
             )
     return clusters
 
+def initialize_doc2cluster(model, stream_docs, docs, k, max_iters) -> List[Cluster]:
+    enoded_stream_docs = encode_cluster_data_mean_pooling(
+        documents_data=stream_docs,
+        model=model,
+    )
+    enoded_stream_docs = list(enoded_stream_docs.values())
+    centroids, cluster_instances = kmeans_mean_pooling(enoded_stream_docs, k, max_iters)
+
+    clusters, doc2cluster = [], {}
+    for cid, centroid in enumerate(centroids):
+        if len(cluster_instances[cid]):
+            print(f"Create {len(clusters)}th Cluster.")
+            clusters.append(
+                Cluster(model, centroid, cluster_instances[cid], docs)
+            )
+            for doc in cluster_instances[cid]:
+                doc2cluster[doc["doc_id"]] = cid
+    return clusters, doc2cluster
+
 
 def find_k_closest_clusters(
     model,
@@ -300,8 +319,7 @@ def evict_clusters(
         local_model = deepcopy(model).to(device)
         local_result = []
         for cluster in cluster_chunk:
-            is_updated = 1 if cluster.timestamp >= ts else 0
-            is_alive = cluster.evict(local_model, docs, required_doc_size, is_updated)
+            is_alive = cluster.evict(local_model, docs, required_doc_size)
             if is_alive:
                 local_result.append(cluster)
         return local_result

@@ -9,14 +9,14 @@ device_count = torch.cuda.device_count()
 
 
 def get_top_k_documents_gpu_cosine(
-    new_q_data, docs, query_id, k, devices, batch_size=512
+    new_q_data, docs, query_id, k, devices, batch_size=2048
 ):
     query_data_item = new_q_data[query_id]
     query_emb = query_data_item["EMB"]
     return get_top_k_documents_cosine(query_emb, docs, k, devices)
 
 
-def get_top_k_documents_cosine(query_emb, docs, k, devices, batch_size=512):
+def get_top_k_documents_cosine(query_emb, docs, k, devices, batch_size=2048):
     docs_cnt = len(docs)
     num_gpus = len(devices)
     batch_indices = [
@@ -60,7 +60,7 @@ def get_top_k_documents_cosine(query_emb, docs, k, devices, batch_size=512):
     return top_k_doc_ids
 
 
-def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=512):
+def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=2048):
     device_count = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(device_count)]
     print(f"Using GPUs: {devices}")
@@ -76,7 +76,7 @@ def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=512):
     return results
 
 
-# def get_top_k_documents_gpu(new_q_data, docs, query_id, k, devices, batch_size=512):
+# def get_top_k_documents_gpu(new_q_data, docs, query_id, k, devices, batch_size=2048):
 #     query_data_item = new_q_data[query_id]
 #     query_token_embs = query_data_item["TOKEN_EMBS"]
 
@@ -126,7 +126,7 @@ def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=512):
 #     return top_k_regl_doc_ids
 
 
-# def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=512):
+# def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=2048):
 #     device_count = torch.cuda.device_count()
 #     devices = [torch.device(f"cuda:{i}") for i in range(device_count)]
 #     print(f"Using GPUs: {devices}")
@@ -143,7 +143,7 @@ def get_top_k_documents_by_cosine(new_q_data, new_d_data, k=10, batch_size=512):
 
 
 def get_top_k_documents_gpu_batch(
-    new_q_data_batch, docs, query_ids, k, devices, batch_size=512
+    new_q_data_batch, docs, query_ids, k, devices, batch_size=2048
 ):
     queries_token_embs = [
         new_q_data_batch[qid]["TOKEN_EMBS"].to(devices[-1]) for qid in query_ids
@@ -210,7 +210,7 @@ def get_top_k_documents_gpu_batch(
     return top_k_results
 
 
-def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=512, qbatch_size=10):
+def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=2048, qbatch_size=10):
     device_count = torch.cuda.device_count()
     devices = [torch.device(f"cuda:{i}") for i in range(device_count)]
     print(f"Using GPUs: {devices}")
@@ -218,7 +218,6 @@ def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=512, qbatch_siz
     query_ids = list(new_q_data.keys())
     results = {}
     for i in range(0, len(query_ids), qbatch_size):
-        print(f"# {i} ~ {i+len(batch_query_ids)-1} retrieving starts.")
         batch_query_ids = query_ids[i : i + qbatch_size]
         batch_q_data = {qid: new_q_data[qid] for qid in batch_query_ids}
         batch_results = get_top_k_documents_gpu_batch(

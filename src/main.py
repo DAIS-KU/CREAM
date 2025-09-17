@@ -10,7 +10,7 @@ from pipeline import (
     lsh_clustering_evaluation,
     statistics_summary,
     streaming_lsh_evaluation,
-    # streaming_mean_evaluation,
+    streaming_mean_evaluation,
 )
 import torch
 
@@ -227,30 +227,30 @@ if __name__ == "__main__":
     print(f"Number of Epochs: {args.num_epochs}")
     print(f"Include answer: {args.include_answer}")
     if args.exp == "proposal_qq_low":
-        # qq_low_train(
-        #     start_session_number=args.start,
-        #     end_sesison_number=args.end,
-        #     load_cluster=args.load_cluster,
-        #     num_epochs=args.num_epochs,
-        #     batch_size=args.batch_size,
-        #     negative_k=args.negative_k,
-        #     use_label=args.use_label,
-        #     use_weight=args.use_weight,
-        #     use_tensor_key=args.use_tensor_key,
-        #     max_iters=args.mi,
-        #     warmingup_rate=args.wr,
-        #     init_k=args.init_k,
-        #     cluster_min_size=args.cmnsz,
-        #     sampling_rate=args.sr,
-        #     sampling_size_per_query=args.sspq,
-        #     nbits=args.nbits,
-        #     warming_up_method=args.warming_up_method,
-        #     required_doc_size=args.rdsz,
-        #     include_answer=args.include_answer,
-        # )
+        qq_low_train(
+            start_session_number=args.start,
+            end_session_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
+        )
         qq_low_evaluate()
     elif args.exp == "compare":
-        compare(generate_data=False)
+        compare(generate_data=True)
     # elif args.exp == "mean_clustering":
     #     mean_clustering_evaluation()
     # elif args.exp == "lsh_clustering":
@@ -258,6 +258,45 @@ if __name__ == "__main__":
     elif args.exp == "statistics":
         statistics_summary()
     elif args.exp == "streaming_lsh":
-        streaming_lsh_evaluation(nbits=args.nbits)
-    # elif args.exp == "streaming_mean":
-    #     streaming_mean_evaluation(dataset=args.dataset)
+        streaming_lsh_evaluation(
+            start_session_number=args.start,
+            end_session_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+            include_answer=args.include_answer,
+        )
+    elif args.exp == "streaming_mean":
+        streaming_mean_evaluation(
+            start_session_number=args.start,
+            end_session_number=args.end,
+            load_cluster=args.load_cluster,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            negative_k=args.negative_k,
+            use_label=args.use_label,
+            use_weight=args.use_weight,
+            use_tensor_key=args.use_tensor_key,
+            max_iters=args.mi,
+            warmingup_rate=args.wr,
+            init_k=args.init_k,
+            cluster_min_size=args.cmnsz,
+            sampling_rate=args.sr,
+            sampling_size_per_query=args.sspq,
+            nbits=args.nbits,
+            warming_up_method=args.warming_up_method,
+            required_doc_size=args.rdsz,
+        )

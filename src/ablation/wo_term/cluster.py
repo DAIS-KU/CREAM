@@ -25,7 +25,7 @@ class Cluster:
         docs: dict,
         batch_size=384,
         z1=8.0,
-        z2=1.0,
+        z2=0.25,
         a=1.0,
         u=0.2,
     ):
@@ -190,7 +190,7 @@ class Cluster:
         # )
         # print(f"assign | {self.get_statistics()} | prototype is nan {torch.isnan(self.prototype).any()}")
 
-    def evict(self, model, docs: dict, required_doc_size, is_updated) -> bool:
+    def evict(self, model, docs: dict, required_doc_size) -> bool:
         before_d_n = len(self.doc_ids)
         temp_docids, temp_qids = [], self.get_only_qids(docs)
         temp_prototype = torch.zeros_like(self.prototype)

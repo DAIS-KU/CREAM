@@ -35,7 +35,7 @@ class Cluster:
         timestamp=0,
         batch_size=128,
         z1=8.0,
-        z2=0.15,  # lotte 0.25 msmarco 0.75
+        z2=0.25,  # lotte 0.25 msmarco 0.75
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
@@ -202,8 +202,7 @@ class Cluster:
         model,
         lsh: RandomProjectionLSH,
         docs: dict,
-        required_doc_size,
-        is_updated,
+        required_doc_size
     ) -> bool:
         temp_docids, temp_qids = [], self.get_only_qids(docs)
         # temp_docids, temp_qids = [], []
@@ -527,3 +526,49 @@ class Cluster:
         selected = [doc_id for doc_id, _ in docids_and_scores[:k]]
         r = docids_and_scores[-1][1]
         return r, selected
+
+    def get_sse(self, docs: dict):
+        partition = min(len(self.doc_ids), num_devices)
+        doc_ids = self.get_only_docids(docs)
+        did_batches = [doc_ids[i::partition] for i in range(partition)]
+        q_ids = self.get_only_qids(docs)
+        qid_batches = [q_ids[i::partition] for i in range(partition)]
+
+        def process_batch(
+            id_batch,
+            device,
+        ):
+            SSE = 0.0
+            for i in range(0, len(id_batch), self.batch_size):
+                batch_token_embs = torch.stack(
+                    [
+                        docs[doc_id]["TOKEN_EMBS"]
+                        for doc_id in id_batch[i : i + self.batch_size]
+                    ],
+                    dim=0,
+                ).squeeze(1)
+                if batch_token_embs.dim() == 2:
+                    batch_token_embs = batch_token_embs.unsqueeze(0)
+                score = calculate_S_qd_regl_batch(
+                    batch_token_embs, self.prototype.unsqueeze(0), device
+                )
+                x_dist = MAX_SCORE - score
+                SSE += torch.sum(x_dist**2).item()
+            return SSE
+
+        results = []
+        with ThreadPoolExecutor(max_workers=partition) as executor:
+            futures = {
+                executor.submit(process_batch, did_batches[i], devices[i]): i
+                for i in range(partition)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+            futures = {
+                executor.submit(process_batch, qid_batches[i], devices[i]): i
+                for i in range(partition)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+        SSE = sum(r for r in results)
+        return SSE

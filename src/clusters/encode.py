@@ -19,7 +19,7 @@ from functions import get_passage_embeddings
 tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 
 
-def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=256):
+def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=256):
     torch.cuda.set_device(device)
     query_texts = [q["query"] for q in query_batch]
     query_ids = [q["qid"] for q in query_batch]
@@ -39,7 +39,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=
             "doc_id": qid,
             "text": text,
             "TOKEN_EMBS": emb,
-            "LSH": lsh.encode(emb),
+            # "LSH": lsh.encode(emb),
             "is_query": True,
             "answer_pids": pids,
         }
@@ -55,14 +55,14 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=1024, max_length=
     return new_q_data
 
 
-def _renew_docs(model, lsh, document_batch, device, batch_size=1024, max_length=256):
+def _renew_docs(model, lsh, document_batch, device, batch_size=3072, max_length=256):
     torch.cuda.set_device(device)
     document_texts = [d["text"] for d in document_batch]
     document_ids = [d["doc_id"] for d in document_batch]
     document_embeddings, document_hashes = [], []
     for i in range(0, len(document_texts), batch_size):
-        print(f"{device} | Document encoding batch {i}")
         doc_batch_text = document_texts[i : i + batch_size]
+        print(f"{device} | Document encoding batch {i}")
         doc_batch_embeddings = get_passage_embeddings(
             model, doc_batch_text, device, max_length
         )
@@ -75,7 +75,7 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=1024, max_length=
             "doc_id": doc_id,
             "text": text,
             "TOKEN_EMBS": emb,
-            "LSH": lsh.encode(emb),
+            # "LSH": lsh.encode(emb),
             "is_query": False,
             "answer_pids": [],
         }
@@ -97,7 +97,7 @@ def _renew_data(
     device,
     renew_q=True,
     renew_d=True,
-    batch_size=1024,
+    batch_size=3072,
     max_length=256,
 ):
     torch.cuda.set_device(device)
