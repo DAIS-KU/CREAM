@@ -16,7 +16,7 @@ from clusters import (
     evict_clusters,
     initialize_doc2cluster,
     clear_unused_documents,
-    find_k_closest_clusters
+    find_k_closest_clusters,
 )
 from data import write_line
 
@@ -42,6 +42,7 @@ def encode_texts(model, texts, max_length=256):
     embedding = outputs[:, 0, :]  # [CLS]만 사용
     return embedding
 
+
 def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):
     cluster_docs = {}
     for doc_id, c_id in doc2cluster.items():
@@ -61,7 +62,7 @@ def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):
             device=devices[-1],
             use_tensor_key=True,
         )[0]
-        docs_in_c= set()
+        docs_in_c = set()
         docs_in_c.update(cluster_docs[closest[0]])
         docs_in_c.update(cluster_docs[closest[1]])
         docs_in_c.update(cluster_docs[closest[2]])
@@ -93,7 +94,8 @@ def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):
     }
     return summary
 
-def get_sse(docs, clusters:List[Cluster]):
+
+def get_sse(docs, clusters: List[Cluster]):
     SSE = 0.0
     for cluster in clusters:
         SSE += cluster.get_sse(docs)
@@ -140,8 +142,8 @@ def streaming_lsh_evaluation(
         start_time = time.time()
         stream = Stream(
             session_number=session_number,
-            query_path=f"/home/work/.default/huijeong/data/msmarco_session/train_session{session_number}_queries.jsonl",
-            doc_path=f"/home/work/.default/huijeong/data/msmarco_session/train_session{session_number}_docs.jsonl",
+            query_path=f"/home/work/.default/huijeong/data/lotte_session/train_session{session_number}_queries.jsonl",
+            doc_path=f"/home/work/.default/huijeong/data/lotte_session/train_session{session_number}_docs_filtered.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
@@ -208,7 +210,9 @@ def streaming_lsh_evaluation(
                     initial_size = len(stream.stream_docs[0])
                     batch_start = 1
                     lsh = RandomProjectionLSH(
-                        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=use_tensor_key
+                        random_vectors=random_vectors,
+                        embedding_dim=768,
+                        use_tensor_key=use_tensor_key,
                     )
                 else:
                     raise NotImplementedError(

@@ -29,18 +29,22 @@ class BucketManager:
             x = emb
             if self.store_normalized:
                 x = F.normalize(x, dim=-1)
-            x = x.detach().to('cpu' if self.store_on_cpu else emb.device, dtype=self.dtype)
+            x = x.detach().to(
+                "cpu" if self.store_on_cpu else emb.device, dtype=self.dtype
+            )
             self.buckets[bid].append(x)
 
     def print_bucket_size(self):
-        total=0
+        total = 0
         for bid, embs in self.buckets.items():
             total += len(embs)
             print(f"Bucket {bid} has {len(embs)} token embeddings.")
         print(f"Total token embeddings across all buckets: {total}")
 
     @torch.no_grad()
-    def get_topk_sim(self, bid, query_token_emb: torch.Tensor, k=10, chunk_size=4096, device=None):
+    def get_topk_sim(
+        self, bid, query_token_emb: torch.Tensor, k=10, chunk_size=4096, device=None
+    ):
         """
         동일 버킷(bid)의 문서 토큰들과 쿼리 토큰(query_token_emb) 간 코사인 유사도 top-k 평균
         - 버킷 벡터가 너무 많을 때 chunk_size로 나눠 처리
@@ -59,11 +63,11 @@ class BucketManager:
         running_topk = None
         n = len(embs)
         for i in range(0, n, chunk_size):
-            chunk = torch.stack(embs[i:i + chunk_size], dim=0)  # [C, D] (CPU)
+            chunk = torch.stack(embs[i : i + chunk_size], dim=0)  # [C, D] (CPU)
             if not self.store_normalized:
                 chunk = F.normalize(chunk, dim=-1)
             chunk = chunk.to(device, non_blocking=True)  # GPU 올려 연산
-            sims = torch.mv(chunk, q)                    # [C]
+            sims = torch.mv(chunk, q)  # [C]
 
             if running_topk is None:
                 running_topk = sims if sims.numel() <= k else torch.topk(sims, k).values
@@ -87,7 +91,7 @@ def encode_token_embs(
     device,
     batch_size=256,
     max_length=256,
-    exclude_special_tokens=True
+    exclude_special_tokens=True,
 ):
     """
     입력 문장 리스트 → 각 문장에 대해 스페셜/패딩 제외 토큰 임베딩 리스트 반환
@@ -96,17 +100,17 @@ def encode_token_embs(
     all_token_embs_per_text = []
 
     for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i + batch_size]
+        batch_texts = texts[i : i + batch_size]
         enc = tokenizer(
             batch_texts,
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=max_length
+            max_length=max_length,
         ).to(device)
 
         with torch.no_grad():
-            out = model(**enc)                 # last_hidden_state: [B, L, H]
+            out = model(**enc)  # last_hidden_state: [B, L, H]
             hidden = out.last_hidden_state
             attn = enc["attention_mask"].bool()
 
@@ -118,8 +122,8 @@ def encode_token_embs(
         for b in range(B):
             # 유효 토큰 (패딩 제거)
             mask = attn[b]  # [L]
-            token_ids = input_ids[b][mask]   # [L_valid]
-            token_embs = hidden[b][mask]     # [L_valid, H]
+            token_ids = input_ids[b][mask]  # [L_valid]
+            token_embs = hidden[b][mask]  # [L_valid, H]
 
             if exclude_special_tokens and (cls_id is not None) and (sep_id is not None):
                 keep = (token_ids != cls_id) & (token_ids != sep_id)
@@ -149,8 +153,7 @@ def build_document_buckets(
     문서 파일(JSONL, {"text": ...})의 모든 토큰 임베딩을 LSH 버킷에 저장.
     """
     bucket_manager = BucketManager(
-        store_normalized=bucket_store_normalized,
-        store_on_cpu=bucket_store_on_cpu
+        store_normalized=bucket_store_normalized, store_on_cpu=bucket_store_on_cpu
     )
 
     buffer = []
@@ -163,8 +166,12 @@ def build_document_buckets(
 
             if len(buffer) >= batch_size:
                 token_embs_per_text = encode_token_embs(
-                    buffer, model, tokenizer, device,
-                    batch_size=batch_size, max_length=max_length
+                    buffer,
+                    model,
+                    tokenizer,
+                    device,
+                    batch_size=batch_size,
+                    max_length=max_length,
                 )
                 for token_list in token_embs_per_text:
                     for tok_emb in token_list:
@@ -179,8 +186,12 @@ def build_document_buckets(
         # 잔여 처리
         if buffer:
             token_embs_per_text = encode_token_embs(
-                buffer, model, tokenizer, device,
-                batch_size=batch_size, max_length=max_length
+                buffer,
+                model,
+                tokenizer,
+                device,
+                batch_size=batch_size,
+                max_length=max_length,
             )
             for token_list in token_embs_per_text:
                 for tok_emb in token_list:
@@ -200,7 +211,7 @@ def compute_query_similarity(
     batch_size=256,
     max_length=256,
     k=10,
-    chunk_size=4096
+    chunk_size=4096,
 ):
     """
     질의 파일(JSONL, {"query": ...})의 각 질의에 대해:
@@ -219,14 +230,20 @@ def compute_query_similarity(
 
             if len(buffer) >= batch_size:
                 token_embs_per_text = encode_token_embs(
-                    buffer, model, tokenizer, device,
-                    batch_size=batch_size, max_length=max_length
+                    buffer,
+                    model,
+                    tokenizer,
+                    device,
+                    batch_size=batch_size,
+                    max_length=max_length,
                 )
 
                 for token_list in token_embs_per_text:
                     token_scores = []
                     for q_tok_emb in token_list:
-                        bid = lsh._get_key(q_tok_emb.unsqueeze(0), device, is_list=False)
+                        bid = lsh._get_key(
+                            q_tok_emb.unsqueeze(0), device, is_list=False
+                        )
                         avg_sim = bucket_manager.get_topk_sim(
                             bid, q_tok_emb, k=k, chunk_size=chunk_size, device=device
                         )
@@ -244,8 +261,12 @@ def compute_query_similarity(
         # 잔여 처리
         if buffer:
             token_embs_per_text = encode_token_embs(
-                buffer, model, tokenizer, device,
-                batch_size=batch_size, max_length=max_length
+                buffer,
+                model,
+                tokenizer,
+                device,
+                batch_size=batch_size,
+                max_length=max_length,
             )
             for token_list in token_embs_per_text:
                 token_scores = []
@@ -261,7 +282,9 @@ def compute_query_similarity(
 
     if similarities:
         overall_avg = sum(similarities) / len(similarities)
-        print(f"Overall Avg similarity across all queries (token-based): {overall_avg:.4f}")
+        print(
+            f"Overall Avg similarity across all queries (token-based): {overall_avg:.4f}"
+        )
     else:
         print("No valid similarities computed.")
 
@@ -276,34 +299,39 @@ def get_bucket_sim(
     k=10,
     chunk_size=4096,
     bucket_store_normalized=True,
-    bucket_store_on_cpu=True
+    bucket_store_on_cpu=True,
 ):
     # 디바이스 설정
     num_gpus = torch.cuda.device_count()
-    devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)] if num_gpus > 0 else [torch.device("cpu")]
+    devices = (
+        [torch.device(f"cuda:{i}") for i in range(num_gpus)]
+        if num_gpus > 0
+        else [torch.device("cpu")]
+    )
     device = devices[-1]
 
     # 토크나이저/모델 (로컬 경로)
-    tokenizer = BertTokenizer.from_pretrained('/home/work/.default/huijeong/bert_local')
-    model = BertModel.from_pretrained('/home/work/.default/huijeong/bert_local')
+    tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
+    model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local")
     model.eval().to(device)
 
     # LSH 랜덤 투영 벡터 (키 생성용) — CPU 텐서로 두고, 내부에서 필요 시 이동
     random_vectors = torch.randn(nbits, 768)  # [nbits, dim]
     lsh = RandomProjectionLSH(
-        random_vectors=random_vectors,
-        embedding_dim=768,
-        use_tensor_key=True
+        random_vectors=random_vectors, embedding_dim=768, use_tensor_key=True
     )
 
     # 문서 버킷 생성 (토큰 임베딩 저장)
     doc_buckets = build_document_buckets(
         "/home/work/.default/huijeong/data/msmarco_session/train_session0_docs_filtered.jsonl",
-        model, tokenizer, lsh, device,
+        model,
+        tokenizer,
+        lsh,
+        device,
         batch_size=batch_size,
         max_length=max_length,
         bucket_store_normalized=bucket_store_normalized,
-        bucket_store_on_cpu=bucket_store_on_cpu
+        bucket_store_on_cpu=bucket_store_on_cpu,
     )
 
     doc_buckets.print_bucket_size()
@@ -311,9 +339,13 @@ def get_bucket_sim(
     # 질의-문서 유사도 계산 (토큰 기준)
     compute_query_similarity(
         "/home/work/.default/huijeong/data/msmarco_session/train_session0_queries.jsonl",
-        model, tokenizer, lsh, doc_buckets, device,
+        model,
+        tokenizer,
+        lsh,
+        doc_buckets,
+        device,
         batch_size=batch_size,
         max_length=max_length,
         k=k,
-        chunk_size=chunk_size
+        chunk_size=chunk_size,
     )

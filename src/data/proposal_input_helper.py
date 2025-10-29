@@ -45,17 +45,17 @@ def prefilter(queries, docs, sampling_size_per_query):
 
 
 def make_prestream_docs(
-    start_session_number=1, end_sesison_number=3, sampling_size_per_query=50
+    start_session_number=1, end_sesison_number=10, sampling_size_per_query=50
 ):
     for session_number in range(start_session_number, end_sesison_number):
-        query_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_queries.jsonl"
-        doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs.jsonl"
+        query_path = f"/home/work/.default/huijeong/cream/data/datasetN_large/train_session{session_number}_queries.jsonl"
+        doc_path = f"/home/work/.default/huijeong/cream/data/ChricinclingAmericaQA/splited/train_docs_{session_number}.jsonl"
         queries = read_jsonl(query_path, True)
         docs = read_jsonl_as_dict(doc_path, id_field="doc_id")
         print(f"queries:{len(queries)}, docs:{len(docs)}")
 
         filtered_doc_list = prefilter(queries, docs, sampling_size_per_query)
-        filtered_doc_path = f"/home/work/retrieval/data/datasetL_large/train_session{session_number}_docs_filtered.jsonl"
+        filtered_doc_path = f"/home/work/.default/huijeong/cream/data/datasetN_large/train_session{session_number}_docs_filtered.jsonl"
         save_dicts_to_jsonl(filtered_doc_list, filtered_doc_path)
 
 

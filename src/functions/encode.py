@@ -76,7 +76,10 @@ def process_batch(
 
         item_ids = [item[id_field] for item in batch_chunk]
         texts = [item[text_field] for item in batch_chunk]
-        answer_pids=[item['answer_pids'] if item.get('answer_pids') else [] for item in batch_chunk]
+        answer_pids = [
+            item["answer_pids"] if item.get("answer_pids") else []
+            for item in batch_chunk
+        ]
 
         encoded_input = tokenizer(
             texts, padding=True, truncation=True, max_length=256, return_tensors="pt"
@@ -90,7 +93,9 @@ def process_batch(
             model_output = encode_mean_pooling(model, encoded_input)
             # [batch_size, emb_dim]
 
-        for item_id, text, emb, ans_pids in zip(item_ids, texts, model_output.cpu(), answer_pids):
+        for item_id, text, emb, ans_pids in zip(
+            item_ids, texts, model_output.cpu(), answer_pids
+        ):
             results[item_id] = {
                 "doc_id": item_id,
                 "text": text,

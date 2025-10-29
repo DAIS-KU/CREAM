@@ -35,7 +35,7 @@ class Cluster:
         timestamp=0,
         batch_size=128,
         z1=8.0,
-        z2=0.25,  # lotte 0.25 msmarco 0.75
+        z2=0.5,  # lotte 0.25 msmarco 0.75
     ):
         self.prototype = centroid
         self.doc_ids = [d["doc_id"] for d in cluster_docs]
@@ -202,12 +202,20 @@ class Cluster:
         model,
         lsh: RandomProjectionLSH,
         docs: dict,
-        required_doc_size
+        required_doc_size,
+        sampled=False,
+        sample_rate=0.0,
+        keep_doc_ids=None,
     ) -> bool:
-        temp_docids, temp_qids = [], self.get_only_qids(docs)
-        # temp_docids, temp_qids = [], []
+        temp_docids, temp_qids = [], []
         temp_prototype = torch.zeros_like(self.prototype)
-        doc_ids = self.get_only_docids(docs)
+        if keep_doc_ids:
+            doc_ids = set(self.get_only_docids(docs)) - set(keep_doc_ids)
+            doc_ids = list(doc_ids)
+            temp_qids = set(self.get_only_qids(docs)) - set(keep_doc_ids)
+            temp_qids = list(temp_qids)
+        else:
+            doc_ids = self.get_only_docids(docs)
         doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids])
         before_d_n, before_q_n = len(doc_ids), len(temp_qids)
         mean, std, z1, z2 = (
@@ -231,27 +239,48 @@ class Cluster:
             selected_indices = torch.nonzero(mask, as_tuple=False).squeeze(dim=1)
             if selected_indices.numel() > 0:
                 with torch.no_grad():
-                    selected_doc_ids = [
-                        batch_doc_ids[i] for i in selected_indices.tolist()
-                    ]
-                    selected_texts = [
-                        docs[doc_id]["text"] for doc_id in selected_doc_ids
-                    ]
-                    new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-                    # selected_doc_embs = batch_doc_embs[selected_indices]
-                    temp_docids.extend(selected_doc_ids)
-                    # temp_prototype += lsh.encode_batch(selected_doc_embs)
-                    temp_prototype += lsh.encode_batch(new_doc_embs)
-                    # selected_doc_ids = [batch_doc_ids[i] for i in selected_indices.tolist()]
-                    # selected_doc_cnt = int(len(selected_doc_ids) * (1 / (1 + np.exp(-z2))))
-                    # if selected_doc_cnt:
-                    #     selected_doc_ids = random.sample(selected_doc_ids, selected_doc_cnt)
-                    #     selected_doc_embs = batch_doc_embs[selected_indices]
-                    #     selected_texts = [docs[doc_id]["text"] for doc_id in selected_doc_ids]
-                    #     new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-                    # temp_docids.extend(selected_doc_ids)
-                    # temp_prototype += lsh.encode_batch(selected_doc_embs)
-                    #     temp_prototype += lsh.encode_batch(new_doc_embs)  # (B, L, D) -> (B, hash_size, D)
+                    if sampled:
+                        selected_doc_ids = [
+                            batch_doc_ids[i] for i in selected_indices.tolist()
+                        ]
+                        selected_doc_cnt = int(len(selected_doc_ids) * sample_rate)
+                        if selected_doc_cnt:
+                            selected_doc_ids = random.sample(
+                                selected_doc_ids, selected_doc_cnt
+                            )
+                            selected_doc_embs = batch_doc_embs[selected_indices]
+                            selected_texts = [
+                                docs[doc_id]["text"] for doc_id in selected_doc_ids
+                            ]
+                            new_doc_embs = get_passage_embeddings(
+                                model, selected_texts
+                            ).cpu()
+                        temp_docids.extend(selected_doc_ids)
+                        temp_prototype += lsh.encode_batch(selected_doc_embs)
+                    else:
+                        # selected_doc_embs = batch_doc_embs[selected_indices]
+                        # temp_prototype += lsh.encode_batch(selected_doc_embs)
+                        selected_doc_ids = [
+                            batch_doc_ids[i] for i in selected_indices.tolist()
+                        ]
+                        selected_texts = [
+                            docs[doc_id]["text"] for doc_id in selected_doc_ids
+                        ]
+                        new_doc_embs = get_passage_embeddings(
+                            model, selected_texts
+                        ).cpu()
+                        temp_docids.extend(selected_doc_ids)
+                        temp_prototype += lsh.encode_batch(new_doc_embs)
+        if keep_doc_ids:
+            keep_doc_embs = torch.stack(
+                [docs[doc_id]["TOKEN_EMBS"] for doc_id in keep_doc_ids]
+            )
+            for i in range(0, len(doc_ids), self.batch_size):
+                batch_doc_ids = doc_ids[i : i + self.batch_size]
+                selected_texts = [docs[doc_id]["text"] for doc_id in batch_doc_ids]
+                new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
+                temp_docids.extend(selected_doc_ids)
+                temp_prototype += lsh.encode_batch(new_doc_embs)
 
         after_d_n = len(temp_docids)
         if after_d_n <= required_doc_size:

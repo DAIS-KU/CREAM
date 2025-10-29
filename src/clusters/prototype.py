@@ -20,7 +20,7 @@ class RandomProjectionLSH:
         projections = torch.matmul(embeddings, random_vectors.T)
         binary_vectors = (projections > 0).int()
         int_keys = torch.sum(binary_vectors * self.powers_of_two.to(device), dim=1)
-        key= int_keys.tolist() if is_list else int(int_keys.cpu())
+        key = int_keys.tolist() if is_list else int(int_keys.cpu())
         # print(f"Generated keys: {key}")
         return key
 

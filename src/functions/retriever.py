@@ -168,8 +168,9 @@ def get_top_k_documents_gpu_batch(
             start_idx, end_idx = batch[0], batch[-1] + 1
             print(f"{device}| Processing batch {start_idx}-{end_idx}")
             combined_embs = torch.stack(
-                [doc["LSH"].to(device) for doc in docs[start_idx:end_idx]], dim=0
-                # [doc["TOKEN_EMBS"].to(device) for doc in docs[start_idx:end_idx]], dim=0
+                # [doc["LSH"].to(device) for doc in docs[start_idx:end_idx]], dim=0
+                [doc["TOKEN_EMBS"].to(device) for doc in docs[start_idx:end_idx]],
+                dim=0,
             )  # (batch_size, seqlen, hidden)
             regl_score = calculate_S_qd_regl_batch_batch(
                 queries_token_embs, combined_embs, device
@@ -222,6 +223,97 @@ def get_top_k_documents(new_q_data, new_d_data, k=10, batch_size=2048, qbatch_si
         batch_q_data = {qid: new_q_data[qid] for qid in batch_query_ids}
         batch_results = get_top_k_documents_gpu_batch(
             batch_q_data, docs, batch_query_ids, k, devices, batch_size
+        )
+        results.update(batch_results)
+        print(f"# {i} ~ {i+len(batch_query_ids)-1} retrieving is done.")
+    return results
+
+
+def get_top_k_documents_gpu_batch_partitioned(
+    new_q_data_batch, d_list, query_ids, k, devices, batch_size=2048
+):
+    queries_token_embs = [
+        new_q_data_batch[qid]["TOKEN_EMBS"].to(devices[-1]) for qid in query_ids
+    ]
+    queries_token_embs = torch.stack(
+        queries_token_embs, dim=0
+    )  # (qbatch_size, seqlen, hidden)
+    docs_cnt = len(docs)
+    num_gpus = len(devices)
+    batch_indices = [
+        list(range(i * batch_size, min((i + 1) * batch_size, docs_cnt)))
+        for i in range((docs_cnt + batch_size - 1) // batch_size)
+    ]
+    gpu_batch_indices = [batch_indices[i::num_gpus] for i in range(num_gpus)]
+
+    def process(queries_token_embs, gpu_batch_indices, device):
+        queries_token_embs = queries_token_embs.to(device)
+        all_regl_scores = [
+            [] for _ in range(queries_token_embs.size(0))
+        ]  # 쿼리마다 별도로 저장
+        for batch in gpu_batch_indices:
+            start_idx, end_idx = batch[0], batch[-1] + 1
+            print(f"{device}| Processing batch {start_idx}-{end_idx}")
+            new_d_data_batch = renew_data(
+                queries=None, documents=d_list[start_idx:end_idx]
+            )
+            combined_embs = torch.stack(
+                # [doc["LSH"].to(device) for doc in docs[start_idx:end_idx]], dim=0
+                [doc["TOKEN_EMBS"].to(device) for doc in new_d_data_batch],
+                dim=0,
+            )  # (batch_size, seqlen, hidden)
+            regl_score = calculate_S_qd_regl_batch_batch(
+                queries_token_embs, combined_embs, device
+            )  # (qbatch_size, batch_size)
+            for q_idx in range(queries_token_embs.size(0)):
+                all_regl_scores[q_idx].extend(
+                    [
+                        (
+                            docs[start_idx + d_idx]["doc_id"],
+                            regl_score[q_idx, d_idx].item(),
+                        )
+                        for d_idx in range(end_idx - start_idx)
+                    ]
+                )
+        return all_regl_scores
+
+    with ThreadPoolExecutor(max_workers=num_gpus) as executor:
+        args = [
+            (queries_token_embs, gpu_batch_indices[i], devices[i])
+            for i in range(num_gpus)
+        ]
+        results = list(executor.map(lambda p: process(*p), args))
+    # 각 쿼리별로 결과 합치기
+    qbatch_size = len(query_ids)
+    combined_regl_scores_per_query = [[] for _ in range(qbatch_size)]
+    for gpu_result in results:
+        for q_idx, scores in enumerate(gpu_result):
+            combined_regl_scores_per_query[q_idx].extend(scores)
+    top_k_results = {}
+    for q_idx, query_id in enumerate(query_ids):
+        combined_regl_scores = combined_regl_scores_per_query[q_idx]
+        combined_regl_scores = sorted(
+            combined_regl_scores, key=lambda x: x[1], reverse=True
+        )
+        top_k_regl_docs = combined_regl_scores[:k]
+        top_k_regl_doc_ids = [x[0] for x in top_k_regl_docs]
+        top_k_results[query_id] = top_k_regl_doc_ids
+    return top_k_results
+
+
+def get_top_k_documents_partitioned(
+    q_list, d_list, k=10, batch_size=2048, qbatch_size=10
+):
+    device_count = torch.cuda.device_count()
+    devices = [torch.device(f"cuda:{i}") for i in range(device_count)]
+    print(f"Using GPUs: {devices}")
+    query_ids = [q["qid"] for q in q_list]
+    for i in range(0, len(query_ids), qbatch_size):
+        batch_query_ids = query_ids[i : i + qbatch_size]
+        batch_queries = q_list[i : i + qbatch_size]
+        batch_q_data = renew_data(queries=batch_queries, documents=None)
+        batch_results = get_top_k_documents_gpu_batch_partitioned(
+            batch_q_data, d_list, batch_query_ids, k, devices, batch_size
         )
         results.update(batch_results)
         print(f"# {i} ~ {i+len(batch_query_ids)-1} retrieving is done.")

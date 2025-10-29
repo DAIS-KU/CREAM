@@ -21,9 +21,7 @@ from ablation import (
 
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained(
-    "/home/work/.default/huijeong/bert_local"
-)
+tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -124,9 +122,9 @@ def streaming_mean_evaluation(
 
     for session_number in range(start_session_number, end_session_number):
         ts = session_number
-        model = BertModel.from_pretrained(
-            "/home/work/.default/huijeong/bert_local"
-        ).to(devices[-1])
+        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+            devices[-1]
+        )
         model.eval()
 
         print(f"Training Session {session_number}/{load_cluster}")
@@ -165,11 +163,7 @@ def streaming_mean_evaluation(
                         else init_k
                     )
                     clusters, doc2cluster = initialize_doc2cluster(
-                        model,
-                        stream.stream_docs[0],
-                        stream.docs,
-                        init_k,
-                        max_iters
+                        model, stream.stream_docs[0], stream.docs, init_k, max_iters
                     )
                     initial_size = len(stream.stream_docs[0])
                     batch_start = 1

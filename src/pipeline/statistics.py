@@ -36,5 +36,5 @@ def get_summary():
     for i in range(10):
         docs_path = f"/home/work/.default/huijeong/data/lotte_session/train_session{i}_docs_filtered.jsonl"
         query_path = f"/home/work/.default/huijeong/data/lotte_session/train_session{i}_queries.jsonl"
-        print(f'=========== Session {i} ===========')
+        print(f"=========== Session {i} ===========")
         summary(docs_path, query_path)

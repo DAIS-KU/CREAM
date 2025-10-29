@@ -40,6 +40,7 @@ def _renew_queries(model, lsh, query_batch, device, batch_size=3072, max_length=
             "text": text,
             "TOKEN_EMBS": emb,
             # "LSH": lsh.encode(emb),
+            "MEAN_EMB": emb.mean(dim=0),
             "is_query": True,
             "answer_pids": pids,
         }
@@ -75,6 +76,7 @@ def _renew_docs(model, lsh, document_batch, device, batch_size=3072, max_length=
             "doc_id": doc_id,
             "text": text,
             "TOKEN_EMBS": emb,
+            "MEAN_EMB": emb.mean(dim=0),
             # "LSH": lsh.encode(emb),
             "is_query": False,
             "answer_pids": [],
@@ -104,16 +106,22 @@ def _renew_data(
     print(
         f"Starting on {device} with {len(query_batch)} queries and {len(document_batch)} documents (batch size {batch_size})"
     )
-    new_q_data = (
-        _renew_queries(model, lsh, query_batch, device, batch_size, max_length)
-        if renew_q
-        else {}
-    )
-    new_d_data = (
-        _renew_docs(model, lsh, document_batch, device, batch_size, max_length)
-        if renew_d
-        else {}
-    )
+    if query_batch:
+        new_q_data = (
+            _renew_queries(model, lsh, query_batch, device, batch_size, max_length)
+            if renew_q
+            else {}
+        )
+    else:
+        new_q_data = None
+    if document_batch:
+        new_d_data = (
+            _renew_docs(model, lsh, document_batch, device, batch_size, max_length)
+            if renew_d
+            else {}
+        )
+    else:
+        new_d_data = None
     return new_q_data, new_d_data
 
 
@@ -149,17 +157,22 @@ def renew_data(
                 use_tensor_key=use_tensor_key,
             )
         )
-
-    query_batches = (
-        [queries[i::num_gpus] for i in range(num_gpus)]
-        if renew_q
-        else [[None] for _ in range(num_gpus)]
-    )
-    document_batches = (
-        [documents[i::num_gpus] for i in range(num_gpus)]
-        if renew_d
-        else [[None] for _ in range(num_gpus)]
-    )
+    if queries:
+        query_batches = (
+            [queries[i::num_gpus] for i in range(num_gpus)]
+            if renew_q
+            else [[None] for _ in range(num_gpus)]
+        )
+    else:
+        query_batches = None
+    if documents:
+        document_batches = (
+            [documents[i::num_gpus] for i in range(num_gpus)]
+            if renew_d
+            else [[None] for _ in range(num_gpus)]
+        )
+    else:
+        document_batches = None
 
     print("Query-Document encoding started.")
     start_time = time.time()
@@ -182,7 +195,9 @@ def renew_data(
     new_q_data = {}
     new_d_data = {}
     for result in results:
-        new_q_data.update(result[0])
-        new_d_data.update(result[1])
+        if result[0]:
+            new_q_data.update(result[0])
+        if result[1]:
+            new_d_data.update(result[1])
 
     return new_q_data, new_d_data

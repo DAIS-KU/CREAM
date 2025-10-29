@@ -1,0 +1,35 @@
+nohup: ignoring input
+Running experiments: proposal_qq_low
+Start session: 0
+End session: 1
+Load cluster: False
+Use cluster warming up: stream_seed
+Use label: False
+Use weight: False
+Use tensor key: True
+Use nbits: 12
+Use max_iters: 3
+Use warmingup_rate: None
+Use warmingup_k: 5
+Use cluster_min_size: 50
+Use required_doc_size: 50
+Use stream sampling rate: None
+Use sampling size per query: 50
+Number of Epochs: 1
+Include answer: False
+Light weight: True
+Light weight rate: 0.25
+RandomProjectionLSH use_tensor_key True
+Training Session 0/False
+queries:2430, docs:60142
+Read from: /home/work/.default/huijeong/cream/data/datasetM_large_share/train_session0_docs_filtered.jsonl
+queries:2430, documents:31643
+Using 1 GPUs: [device(type='cuda', index=0)]
+RandomProjectionLSH use_tensor_key True
+Query-Document encoding started.
+Starting on cuda:0 with 2430 queries and 31643 documents (batch size 3072)
+cuda:0 | Query encoding batch 0
+new_q_data | new_q_data:2430, query_embeddings:2430
+cuda:0 | Document encoding batch 0
+cuda:0 | Document encoding batch 3072
+cuda:0 | Document encoding batch 6144

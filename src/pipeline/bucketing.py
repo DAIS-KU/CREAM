@@ -117,7 +117,6 @@ def get_mean_pooling_success_recall(k=5):
     return {"success@k_mean": success_mean, "recall@k_mean": recall_mean}
 
 
-
 def evaluate(nbits, session_count=1):
     for session_number in range(session_count):
         _evaluate(nbits, session_number)
@@ -126,12 +125,8 @@ def evaluate(nbits, session_count=1):
 def _evaluate(nbits, session_number):
     method = f"lsh_msmarco_{nbits}"
     print(f"Evaluate Session {session_number}")
-    eval_query_path = (
-        f"/home/work/.default/huijeong/data/lotte_session/test_session{session_number}_queries.jsonl"
-    )
-    eval_doc_path = (
-        f"/home/work/.default/huijeong/data/lotte_session/train_session{session_number}_docs.jsonl"
-    )
+    eval_query_path = f"/home/work/.default/huijeong/data/lotte_session/test_session{session_number}_queries.jsonl"
+    eval_doc_path = f"/home/work/.default/huijeong/data/lotte_session/train_session{session_number}_docs.jsonl"
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
 
@@ -161,7 +156,9 @@ def _evaluate(nbits, session_number):
 
     rankings_path = f"/home/work/.default/huijeong/data/rankings/{method}_session_{session_number}.txt"
     write_file(rankings_path, result)
-    eval_log_path = f"/home/work/.default/huijeong/data/evals/{method}_{session_number}.txt"
+    eval_log_path = (
+        f"/home/work/.default/huijeong/data/evals/{method}_{session_number}.txt"
+    )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     del new_q_data, new_d_data
 
@@ -181,4 +178,3 @@ def compare(generate_data=False):
     evaluate(nbits=9)
 
     evaluate(nbits=12)
-

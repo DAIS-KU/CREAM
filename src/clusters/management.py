@@ -20,7 +20,10 @@ from .cluster import Cluster
 from .clustering import kmeans_pp
 from .encode import renew_data
 from .prototype import RandomProjectionLSH
-from .tensor_clustering import kmeans_pp_use_tensor_key, kmeans_pp_use_tensor_key_random_vectors
+from .tensor_clustering import (
+    kmeans_pp_use_tensor_key,
+    kmeans_pp_use_tensor_key_random_vectors,
+)
 from data import BM25Okapi, preprocess
 
 num_devices = torch.cuda.device_count()
@@ -69,7 +72,10 @@ def initialize_doc2cluster(stream_docs, docs, k, nbits, max_iters, use_tensor_ke
     enoded_stream_docs = stream_docs
     centroids, cluster_instances, random_vectors = (
         kmeans_pp_use_tensor_key_random_vectors(
-            enoded_stream_docs, k, max_iters, nbits
+            enoded_stream_docs,
+            k,
+            max_iters,
+            nbits,
             # list(encoded_docs.values()), k, max_iters, nbits
         )
     )
@@ -83,6 +89,7 @@ def initialize_doc2cluster(stream_docs, docs, k, nbits, max_iters, use_tensor_ke
             for doc in cluster_instances[cid]:
                 doc2cluster[doc["doc_id"]] = cid
     return clusters, doc2cluster, random_vectors
+
 
 # tensor_clustering.get_closest_clusters_use_tensor_key
 def find_k_closest_clusters(
@@ -567,13 +574,23 @@ def get_samples_top_and_farthest3_with_cache(
 
 
 def evict_clusters(
-    model, lsh, docs: dict, clusters: List[Cluster], ts, required_doc_size
+    model,
+    lsh,
+    docs: dict,
+    clusters: List[Cluster],
+    ts,
+    required_doc_size,
+    sampled=False,
+    sample_rate=0.0,
+    keep_doc_ids=None,
 ) -> List[Cluster]:
     print("evict_cluster_instances started.")
     model.eval()
     remaining_clusters = []
     for cluster in clusters:
-        is_alive = cluster.evict(model, lsh, docs, required_doc_size)
+        is_alive = cluster.evict(
+            model, lsh, docs, required_doc_size, sampled, sample_rate, keep_doc_ids
+        )
         if is_alive:
             remaining_clusters.append(cluster)
     # stride. 순서 보장 필요X

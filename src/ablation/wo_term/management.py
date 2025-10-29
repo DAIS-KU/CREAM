@@ -23,9 +23,7 @@ num_devices = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_devices)]
 
 
-def initialize(
-    model, stream_docs, docs, k, max_iters
-) -> List[Cluster]:
+def initialize(model, stream_docs, docs, k, max_iters) -> List[Cluster]:
     enoded_stream_docs = encode_cluster_data_mean_pooling(
         documents_data=stream_docs,
         model=model,
@@ -37,10 +35,9 @@ def initialize(
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
-            clusters.append(
-                Cluster(model, centroid, cluster_instances[cid], docs)
-            )
+            clusters.append(Cluster(model, centroid, cluster_instances[cid], docs))
     return clusters
+
 
 def initialize_doc2cluster(model, stream_docs, docs, k, max_iters) -> List[Cluster]:
     enoded_stream_docs = encode_cluster_data_mean_pooling(
@@ -54,9 +51,7 @@ def initialize_doc2cluster(model, stream_docs, docs, k, max_iters) -> List[Clust
     for cid, centroid in enumerate(centroids):
         if len(cluster_instances[cid]):
             print(f"Create {len(clusters)}th Cluster.")
-            clusters.append(
-                Cluster(model, centroid, cluster_instances[cid], docs)
-            )
+            clusters.append(Cluster(model, centroid, cluster_instances[cid], docs))
             for doc in cluster_instances[cid]:
                 doc2cluster[doc["doc_id"]] = cid
     return clusters, doc2cluster
@@ -263,7 +258,9 @@ def assign_instance_or_add_cluster_doc2cluster(
     print("assign_instance_or_add_cluster_doc2cluster started.")
 
     batch_cnt = min(num_devices, len(stream_docs))
-    print(f"assign_instance_or_add_cluster_doc2cluster | batch_cnt: {batch_cnt} | num_devices: {num_devices}, stream_docs:{len(stream_docs)}")
+    print(
+        f"assign_instance_or_add_cluster_doc2cluster | batch_cnt: {batch_cnt} | num_devices: {num_devices}, stream_docs:{len(stream_docs)}"
+    )
     batches = [stream_docs[i::batch_cnt] for i in range(batch_cnt)]
 
     def process_batch(batch, device):

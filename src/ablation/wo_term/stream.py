@@ -13,9 +13,9 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained(
-        "/home/work/.default/huijeong/bert_local"
-    ).to(devices[-1])
+    model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+        devices[-1]
+    )
     if model_path:
         model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
     model.eval()

@@ -206,6 +206,17 @@ if __name__ == "__main__":
         default=None,
         help="domain forgetting base domain",
     )
+    parser.add_argument(
+        "--light_weight",
+        action="store_true",
+        help="Apply sampling for training",
+    )
+    parser.add_argument(
+        "--light_weight_rate",
+        type=float,
+        default=0.0,
+        help="Sampling rate for training",
+    )
     args = parser.parse_args()
 
     print(f"Running experiments: {args.exp}")
@@ -226,6 +237,8 @@ if __name__ == "__main__":
     print(f"Use sampling size per query: {args.sspq}")
     print(f"Number of Epochs: {args.num_epochs}")
     print(f"Include answer: {args.include_answer}")
+    print(f"Light weight: {args.light_weight}")
+    print(f"Light weight rate: {args.light_weight_rate}")
     if args.exp == "proposal_qq_low":
         qq_low_train(
             start_session_number=args.start,
@@ -247,6 +260,8 @@ if __name__ == "__main__":
             warming_up_method=args.warming_up_method,
             required_doc_size=args.rdsz,
             include_answer=args.include_answer,
+            light_weight=args.light_weight,
+            light_weight_rate=args.light_weight_rate,
         )
         qq_low_evaluate()
     elif args.exp == "compare":

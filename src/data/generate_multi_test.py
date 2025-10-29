@@ -39,14 +39,15 @@ def sessioning(
     domain_answer_rate,
     need_train_query_counts,
     need_test_query_counts,
-    dataset="lotte",
+    dataset="msmarco",
 ):
     session_count = len(need_train_query_counts)
     print(f"Session count {session_count}")
 
     for domain, ans_rate in zip(domains, domain_answer_rate):
         queries = read_jsonl(
-            f"/home/work/.default/huijeong/data/raw/{dataset}/{domain}_queries.jsonl", True
+            f"/home/work/.default/huijeong/data/raw/{dataset}/{domain}_queries.jsonl",
+            True,
         )
         random.shuffle(queries)
 
@@ -208,7 +209,7 @@ def sessioning_accumulate(
     domain_answer_rate,
     need_train_query_counts,
     need_test_query_counts,
-    dataset="lotte",
+    dataset="msmarco",
 ):
     session_count = len(need_train_query_counts)
     print(f"Session count {session_count}")
@@ -216,7 +217,8 @@ def sessioning_accumulate(
     for domain, ans_rate in zip(domains, domain_answer_rate):
         # 1) 쿼리 로드 및 셔플
         queries = read_jsonl(
-            f"/home/work/.default/huijeong/data/raw/{dataset}/{domain}_queries.jsonl", True
+            f"/home/work/.default/huijeong/data/raw/{dataset}/{domain}_queries.jsonl",
+            True,
         )
         random.shuffle(queries)
 
@@ -471,16 +473,18 @@ def process_hotpot_qa(path="../data/hotpot_dev_distractor_v1.json"):
         processed.append(qna)
         if i % 1000 == 0:
             print(f"{i}th query and answer: {qna}")
-        if i == 13000:
+        if i == 112150:
             break
-    save_jsonl(processed, "/home/work/.default/huijeong/data/raw/lotte/pretrained.jsonl")
+    save_jsonl(
+        processed, "/home/work/.default/huijeong/data/raw/msmarco/pretrained.jsonl"
+    )
 
 
 def check_duplicate(session_count=12):
     doc_id_to_files = defaultdict(set)
     for i in range(session_count):
         src_docs_path = (
-            f"/home/work/.default/huijeong/data/raw/lotte/train_session{i}_docs.jsonl"
+            f"/home/work/.default/huijeong/data/raw/msmarco/train_session{i}_docs.jsonl"
         )
         with open(src_docs_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -500,23 +504,23 @@ def check_duplicate(session_count=12):
 if __name__ == "__main__":
     # msmarco 4.27
     sessioning(
-        dataset="lotte",
+        dataset="msmarco",
         domains=[
-            "technology",
-        ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
-        domain_answer_rate=[1.82],  # 1.82, 6.47, 1.47, 5.17, 6.43
+            "domain0",
+        ],  # "technology", 'lifestyle',  'science', 'recreation', 'lifestyle'
+        domain_answer_rate=[4.3],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
-            200,
+            1215,
             0,
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-            200,
-        ],  # [0,0,0,300,0 ,0,0,0,300,0, 0,0,0,300,0],
+            1215,
+        ],  # [0,0,0,1215,0 ,0,0,0,1215,0, 0,0,0,1215,0],
         need_test_query_counts=[
             30,
             30,
@@ -532,23 +536,23 @@ if __name__ == "__main__":
     )
 
     sessioning(
-        dataset="lotte",
+        dataset="msmarco",
         domains=[
-            "lifestyle",
+            "domain1",
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
-        domain_answer_rate=[ 6.47],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        domain_answer_rate=[4.3],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-        ],  # [300,0,0,0,0, 300,0,0,0,0, 300,0,0,0,0],
+        ],  # [1215,0,0,0,0, 1215,0,0,0,0, 1215,0,0,0,0],
         need_test_query_counts=[
             30,
             30,
@@ -564,23 +568,23 @@ if __name__ == "__main__":
     )
 
     sessioning(
-        dataset="lotte",
+        dataset="msmarco",
         domains=[
-            "science",
+            "domain2",
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
-        domain_answer_rate=[1.47],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        domain_answer_rate=[4.3],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
-        ],  # [0,0,300,0,0, 0,0,300,0,0, 0,0,300,0,0],
+        ],  # [0,0,1215,0,0, 0,0,1215,0,0, 0,0,1215,0,0],
         need_test_query_counts=[
             0,
             30,
@@ -595,23 +599,23 @@ if __name__ == "__main__":
         ],  # [0,0,30,30,0, 0,0,30,30,0, 0,0,30,30,0],
     )
     sessioning(
-        dataset="lotte",
+        dataset="msmarco",
         domains=[
-            "recreation",
+            "domain3",
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
-        domain_answer_rate=[5.17],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        domain_answer_rate=[4.3],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
-        ],  # [0,300,0,0,0,0,300,0,0,0, 0,300,0,0,0],
+        ],  # [0,1215,0,0,0,0,1215,0,0,0, 0,1215,0,0,0],
         need_test_query_counts=[
             0,
             0,
@@ -627,23 +631,23 @@ if __name__ == "__main__":
     )
 
     sessioning(
-        dataset="lotte",
+        dataset="msmarco",
         domains=[
-            "lifestyle",
+            "domain4",
         ],  # 'lifestyle',  'science', 'recreation', 'lifestyle'
-        domain_answer_rate=[6.43],  # 1.82, 6.47, 1.47, 5.17, 6.43
+        domain_answer_rate=[4.3],  # 1.82, 6.47, 1.47, 5.17, 6.43
         need_train_query_counts=[
             0,
             0,
             0,
-            200,
-            200,
+            1215,
+            1215,
             0,
             0,
             0,
-            200,
-            200,
-        ],  # [0,0,0,0,300, 0,0,0,0,300, 0,0,0,0,300],
+            1215,
+            1215,
+        ],  # [0,0,0,0,1215, 0,0,0,0,1215, 0,0,0,0,1215],
         need_test_query_counts=[
             0,
             0,
