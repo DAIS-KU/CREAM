@@ -205,19 +205,24 @@ class Cluster:
         required_doc_size,
         sampled=False,
         sample_rate=0.0,
-        keep_doc_ids=None,
+        keep_doc_ids=None, # 클러스터 전체 보호문서
     ) -> bool:
         temp_docids, temp_qids = [], []
         temp_prototype = torch.zeros_like(self.prototype)
-        if keep_doc_ids:
-            doc_ids = set(self.get_only_docids(docs)) - set(keep_doc_ids)
+        if sampled:
+            cluster_keep_doc_ids= set(self.doc_ids) & keep_doc_ids
+            print(f"keep_doc_ids:{len(keep_doc_ids)}, cluster_keep_doc_ids:{len(cluster_keep_doc_ids)}")
+            doc_ids = set(self.get_only_docids(docs)) - set(cluster_keep_doc_ids)
             doc_ids = list(doc_ids)
-            temp_qids = set(self.get_only_qids(docs)) - set(keep_doc_ids)
+            temp_qids = set(self.get_only_qids(docs)) - set(cluster_keep_doc_ids)
             temp_qids = list(temp_qids)
         else:
             doc_ids = self.get_only_docids(docs)
+            temp_qids = self.get_only_qids(docs)
+        # cluster_keep_doc_ids를 제외하지 않은 크기
+        before_d_n, before_q_n = len(self.get_only_docids(docs)), len(self.get_only_qids(docs))
         doc_embs = torch.stack([docs[doc_id]["TOKEN_EMBS"] for doc_id in doc_ids])
-        before_d_n, before_q_n = len(doc_ids), len(temp_qids)
+        print(f"doc_ids:{before_d_n}, temp_qids:{before_q_n}")
         mean, std, z1, z2 = (
             self.calculate_mean(),
             self.calculate_rms(),
@@ -248,18 +253,15 @@ class Cluster:
                             selected_doc_ids = random.sample(
                                 selected_doc_ids, selected_doc_cnt
                             )
-                            selected_doc_embs = batch_doc_embs[selected_indices]
                             selected_texts = [
                                 docs[doc_id]["text"] for doc_id in selected_doc_ids
                             ]
                             new_doc_embs = get_passage_embeddings(
                                 model, selected_texts
                             ).cpu()
-                        temp_docids.extend(selected_doc_ids)
-                        temp_prototype += lsh.encode_batch(selected_doc_embs)
+                            temp_docids.extend(selected_doc_ids)
+                            temp_prototype += lsh.encode_batch(new_doc_embs)
                     else:
-                        # selected_doc_embs = batch_doc_embs[selected_indices]
-                        # temp_prototype += lsh.encode_batch(selected_doc_embs)
                         selected_doc_ids = [
                             batch_doc_ids[i] for i in selected_indices.tolist()
                         ]
@@ -271,35 +273,33 @@ class Cluster:
                         ).cpu()
                         temp_docids.extend(selected_doc_ids)
                         temp_prototype += lsh.encode_batch(new_doc_embs)
-        if keep_doc_ids:
-            keep_doc_embs = torch.stack(
-                [docs[doc_id]["TOKEN_EMBS"] for doc_id in keep_doc_ids]
-            )
-            for i in range(0, len(doc_ids), self.batch_size):
-                batch_doc_ids = doc_ids[i : i + self.batch_size]
-                selected_texts = [docs[doc_id]["text"] for doc_id in batch_doc_ids]
-                new_doc_embs = get_passage_embeddings(model, selected_texts).cpu()
-                temp_docids.extend(selected_doc_ids)
+        if sampled:
+            cluster_keep_doc_ids=list(cluster_keep_doc_ids) # docs and queries
+            for i in range(0, len(cluster_keep_doc_ids), self.batch_size):
+                kept_doc_ids = cluster_keep_doc_ids[i : i + self.batch_size]
+                kept_texts = [docs[doc_id]["text"] for doc_id in kept_doc_ids]
+                new_doc_embs = get_passage_embeddings(model, kept_texts).cpu()
                 temp_prototype += lsh.encode_batch(new_doc_embs)
+            cluster_kept_doc_ids= set(self.get_only_docids(docs)) & keep_doc_ids # only docs
+            temp_docids.extend(cluster_kept_doc_ids)
 
-        after_d_n = len(temp_docids)
+        # selected_doc_ids + cluster_keep_doc_ids
+        after_d_n, after_q_n = len(temp_docids), len(temp_qids)
         if after_d_n <= required_doc_size:
             return False
 
         qsz = int(len(temp_qids) * after_d_n / before_d_n)
+        print(f"temp_docids:{after_d_n}, temp_qids:{after_q_n}, qsz:{qsz}")
         temp_qids = random.sample(temp_qids, qsz)
-        after_q_n = len(temp_qids)
         with torch.no_grad():
             for i in range(0, len(temp_qids), self.batch_size):
                 batch_qids = temp_qids[i : i + self.batch_size]
                 batch_texts = [docs[qid]["text"] for qid in batch_qids]
                 batch_embs = get_passage_embeddings(model, batch_texts).cpu()
-                temp_prototype += lsh.encode_batch(
-                    batch_embs
-                )  # (B, L, D) -> (B, hash_size, D)
+                temp_prototype += lsh.encode_batch(batch_embs)  
+                # (B, L, D) -> (B, hash_size, D)
 
         self.doc_ids = list(set(temp_docids)) + list(set(temp_qids))
-        # self.doc_ids = list(set(temp_docids))
         self.prototype = temp_prototype
         print(
             f"* Evict result docs {len(temp_docids)}, queries {len(temp_qids)}, total {len(self.doc_ids)}"

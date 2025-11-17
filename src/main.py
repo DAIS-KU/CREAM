@@ -181,7 +181,7 @@ if __name__ == "__main__":
         "--sspq",
         type=int,
         default=None,
-        help="Document stream candidates size for each query",
+        help="Document candidates size for each query",
     )
     parser.add_argument(
         "--rdsz",

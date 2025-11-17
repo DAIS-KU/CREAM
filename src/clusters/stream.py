@@ -8,6 +8,7 @@ from data import BM25Okapi, read_jsonl, read_jsonl_as_dict, preprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+
 def collect_candidates(
     bm25: BM25Okapi, doc_ids, query, sampling_size_per_query, include_answer
 ):
@@ -152,6 +153,7 @@ class Stream:
     def read_filtered_docs(self, session_number):
         # filtered_doc_path = f"/home/work/.default/huijeong/cream/data/datasetL_large_share/train_session{session_number}_docs_filtered.jsonl"
         filtered_doc_path = f"/home/work/.default/huijeong/cream/data/datasetM_large_share/train_session{session_number}_docs_filtered.jsonl"
+        # filtered_doc_path = f"/home/work/.default/huijeong/cream/data/datasetM_large_share/train_session{session_number}_docs_filtered_30.jsonl"
         # filtered_doc_path = f"/home/work/.default/huijeong/cream/data/datasetN_large/train_session{session_number}_docs_filtered.jsonl"
         print(f"Read from: {filtered_doc_path}")
         filtered_doc_list = read_jsonl(filtered_doc_path, is_query=False)

@@ -163,7 +163,7 @@ def streaming_train(
                         representive_query_id=query["doc_id"],
                         representive_doc_ids=pos_ids + neg_ids,
                     )
-
+                keep_doc_ids.add(query["doc_id"])
                 keep_doc_ids.update(pos_ids)
                 keep_doc_ids.update(neg_ids)
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
@@ -245,7 +245,7 @@ def train(
     for session_number in range(start_session_number, end_session_number):
         ts = session_number
         time_values_path = (
-            f"../data/loss/total_time_values_datasetM_large_share_{session_number}.txt"
+            f"../data/loss/total_time_values_datasetM_large_share_30_{session_number}.txt"
         )
         print(f"Training Session {session_number}/{load_cluster}")
         start_time = time.time()
@@ -288,32 +288,32 @@ def train(
             and session_number > 0
         ):
             with open(
-                f"../data/clusters_datasetM_large_share_{session_number-1}.pkl",
+                f"../data/clusters_datasetM_large_share_30_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last clusters.")
                 clusters = pickle.load(f)
             with open(
-                f"../data/prev_docs_datasetM_large_share_{session_number-1}.pkl",
+                f"../data/prev_docs_datasetM_large_share_30_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last docs.")
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetM_large_share_{session_number-1}.pkl",
+                f"../data/random_vectors_datasetM_large_share_30_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last random vectors.")
                 random_vectors = pickle.load(f)
             # with open(
-            #     f"../data/query_result_datasetM_large_share_hash9_{session_number-1}.pkl", "rb"
+            #     f"../data/query_result_datasetM_large_share_30_hash9_{session_number-1}.pkl", "rb"
             # ) as f:
             #     print(f"Load last query_result.")
             #     last_query_result = pickle.load(f)
             #     query_result.update(last_query_result)
             # with open(
-            #     f"../data/diversity_buffer_manager_datasetM_large_share_hash9_{session_number-1}.pkl",
+            #     f"../data/diversity_buffer_manager_datasetM_large_share_30_hash9_{session_number-1}.pkl",
             #     "rb",
             # ) as f:
             #     diversity_buffer_manager = pickle.load(f)
@@ -486,9 +486,8 @@ def train(
         # )
         # _evaluate(session_number)
 
-        start_time = time.time()
         # Evict
-        # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}.png")
+        start_time = time.time()
         evict_clusters(
             model,
             lsh,
@@ -511,22 +510,22 @@ def train(
         write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
         with open(
-            f"../data/clusters_datasetM_large_share_{session_number}.pkl", "wb"
+            f"../data/clusters_datasetM_large_share_30_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(clusters, f)
         with open(
-            f"../data/prev_docs_datasetM_large_share_{session_number}.pkl", "wb"
+            f"../data/prev_docs_datasetM_large_share_30_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(prev_docs, f)
         with open(
-            f"../data/random_vectors_datasetM_large_share_{session_number}.pkl",
+            f"../data/random_vectors_datasetM_large_share_30_{session_number}.pkl",
             "wb",
         ) as f:
             pickle.dump(random_vectors, f)
-        # with open(f"../data/query_result_datasetM_large_share_hash9_{session_number}.pkl", "wb") as f:
+        # with open(f"../data/query_result_datasetM_large_share_30_hash9_{session_number}.pkl", "wb") as f:
         #     pickle.dump(query_result, f)
         # with open(
-        #     f"../data/diversity_buffer_manager_datasetM_large_share_hash9_{session_number}.pkl", "wb"
+        #     f"../data/diversity_buffer_manager_datasetM_large_share_30_hash9_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
 
@@ -577,8 +576,8 @@ def evaluate_with_cluster(
 
 
 def evaluate(session_count=10):
-    for session_number in range(1):
-        _evaluate(session_number)
+    for session_number in range(10):
+        _evaluate(session_number, False)
 
 
 def _evaluate(session_number, partition=False):
@@ -621,18 +620,17 @@ def _evaluate(session_number, partition=False):
         start_time = time.time()
         result = get_top_k_documents_partitioned(eval_query_data, eval_doc_data)
         end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for retrieval.")
     else:
         start_time = time.time()
         result = get_top_k_documents(new_q_data, new_d_data)
         end_time = time.time()
-        print(f"Spend {end_time-start_time} seconds for retrieval.")
+    print(f"Spend {end_time-start_time} seconds for retrieval.")
 
     rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
     write_file(rankings_path, result)
     eval_log_path = f"../data/evals/{method}_{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    del new_q_data, new_d_data
+    # del new_q_data, new_d_data
 
 
 def eval_rankings(session_number):
@@ -651,10 +649,10 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/datasetM_large_share_{session_number}_with_cluster.txt"
+        f"../data/rankings/datasetM_large_share_30_{session_number}_with_cluster.txt"
     )
     eval_log_path = (
-        f"../data/evals/datasetM_large_share_{session_number}_with_cluster.txt"
+        f"../data/evals/datasetM_large_share_30_{session_number}_with_cluster.txt"
     )
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     rankings_path = f"../data/rankings/datasetM_large_share{session_number}.txt"
