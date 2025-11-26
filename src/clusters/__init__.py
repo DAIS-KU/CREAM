@@ -4,5 +4,5 @@ from .encode import *
 from .management import *
 from .prototype import *
 from .tensor_clustering import *
-from .visualizer import visualize_clusters
+from .visualizer import *
 from .buffer_manager import *

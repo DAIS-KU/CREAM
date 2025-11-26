@@ -127,3 +127,63 @@ def calculate_S_qd_regl_logits(E_q, E_d):
     E_d = E_d.cpu()
     torch.cuda.empty_cache()
     return S_qd_scores
+
+def calculate_S_qd_regl_batch_batch_batch(E_q, E_d, device, batch_size: int = 8):
+    """
+    E_q: (n_q, qlen, hidden)
+    E_d: (n_d, dlen, hidden)
+    -> S_qd_scores: (n_q, n_d)
+
+    메모리를 아끼기 위해 (n_q, n_d)를 한 번에 계산하지 않고
+    (batch_q, batch_d) 블록 단위로 계산.
+    """
+    import torch
+
+    E_q = E_q.to(device).float()
+    E_d = E_d.to(device).float()
+
+    E_q_normalized = torch.nn.functional.normalize(E_q, p=2, dim=2)
+    E_d_normalized = torch.nn.functional.normalize(E_d, p=2, dim=2)
+
+    n_q = E_q_normalized.size(0)
+    n_d = E_d_normalized.size(0)
+
+    # 결과 행렬은 CPU에 올려두는 게 보통 안전함 (스코어는 그렇게 크지 않으니까)
+    S_qd_scores = torch.empty(n_q, n_d, dtype=torch.float32, device="cpu")
+
+    for i in range(0, n_q, batch_size):
+        q_batch = E_q_normalized[i : i + batch_size]  # (bq, qlen, h)
+        bq = q_batch.size(0)
+
+        # GPU로 올리고
+        q_batch = q_batch.to(device)
+        q_batch_expanded = q_batch.unsqueeze(1)  # (bq, 1, qlen, h)
+
+        for j in range(0, n_d, batch_size):
+            d_batch = E_d_normalized[j : j + batch_size]  # (bd, dlen, h)
+            bd = d_batch.size(0)
+
+            d_batch = d_batch.to(device)
+            d_batch_expanded = d_batch.unsqueeze(0)  # (1, bd, dlen, h)
+
+            # (bq, bd, qlen, dlen)
+            cosine_sim_block = torch.matmul(
+                q_batch_expanded, d_batch_expanded.transpose(3, 2)
+            )
+
+            # 각 쿼리 토큰에서 문서 토큰 방향으로 max 후 sum
+            max_scores_block, _ = torch.max(cosine_sim_block, dim=3)  # (bq, bd, qlen)
+            block_scores = max_scores_block.sum(dim=2)  # (bq, bd)
+
+            # CPU에 있는 최종 행렬에 블록 채우기
+            S_qd_scores[i : i + bq, j : j + bd] = block_scores.detach().cpu()
+
+            # 메모리 정리
+            del d_batch, d_batch_expanded, cosine_sim_block, max_scores_block, block_scores
+            torch.cuda.empty_cache()
+
+        del q_batch, q_batch_expanded
+        torch.cuda.empty_cache()
+
+    # 원한다면 여기서도 한 번 더 CPU로 확실히 내려줌 (이미 CPU라 의미는 없지만)
+    return S_qd_scores

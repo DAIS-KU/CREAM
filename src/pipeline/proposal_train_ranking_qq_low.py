@@ -21,7 +21,7 @@ from clusters import (
     build_cluster_cache_table_by_cosine,
     get_samples_top_and_farthest3_with_cache,
     get_samples_top_bottom_3_with_cache,
-    visualize_clusters,
+    visualize_clusters_pairwise_distance,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -155,11 +155,14 @@ def streaming_train(
                     use_tensor_key=use_tensor_key,
                 )
                 if idx == 0:
-                    visualize_clusters(
+                    visualize_clusters_pairwise_distance(
                         clusters=clusters,
                         docs=docs,
                         save_path=f"../plot_{session_number}.png",
                         session_number=session_number,
+                        samples_per_cluster=5000,
+                        methods=["tsne", "pca", "umap"],
+                        device='cuda:0',
                         representive_query_id=query["doc_id"],
                         representive_doc_ids=pos_ids + neg_ids,
                     )
