@@ -263,7 +263,7 @@ if __name__ == "__main__":
             light_weight=args.light_weight,
             light_weight_rate=args.light_weight_rate,
         )
-        qq_low_evaluate()
+        # qq_low_evaluate()
     elif args.exp == "compare":
         compare(generate_data=True)
     # elif args.exp == "mean_clustering":

@@ -162,9 +162,7 @@ def get_top_k_documents_gpu_batch(
 
     def process(queries_token_embs, gpu_batch_indices, device):
         queries_token_embs = queries_token_embs.to(device)
-        all_regl_scores = [
-            [] for _ in range(queries_token_embs.size(0))
-        ]  # 쿼리마다 별도로 저장
+        all_regl_scores = [[] for _ in range(queries_token_embs.size(0))]  # 쿼리마다 별도로 저장
         for batch in gpu_batch_indices:
             start_idx, end_idx = batch[0], batch[-1] + 1
             print(f"{device}| Processing batch {start_idx}-{end_idx}")
@@ -249,19 +247,23 @@ def get_top_k_documents_gpu_batch_partitioned(
 
     def process(queries_token_embs, _gpu_batch_indices, device):
         queries_token_embs = queries_token_embs.to(device)
-        all_regl_scores = [
-            [] for _ in range(queries_token_embs.size(0))
-        ]  # 쿼리마다 별도로 저장
+        all_regl_scores = [[] for _ in range(queries_token_embs.size(0))]  # 쿼리마다 별도로 저장
         for batch in _gpu_batch_indices:
             start_idx, end_idx = batch[0], batch[-1] + 1
             print(f"{device}| Processing batch {start_idx}-{end_idx}")
             _, new_d_data_batch = renew_data(
-                queries=None, documents=d_list[start_idx:end_idx],  renew_q=False, renew_d=True
+                queries=None,
+                documents=d_list[start_idx:end_idx],
+                renew_q=False,
+                renew_d=True,
             )
             # print(f"new_d_data_batch: {new_d_data_batch}")
             combined_embs = torch.stack(
                 # [doc["LSH"].to(device) for doc in docs[start_idx:end_idx]], dim=0
-                [new_d_data_batch[d["doc_id"]]["TOKEN_EMBS"].to(device) for d in d_list[start_idx:end_idx]],
+                [
+                    new_d_data_batch[d["doc_id"]]["TOKEN_EMBS"].to(device)
+                    for d in d_list[start_idx:end_idx]
+                ],
                 dim=0,
             )  # (batch_size, seqlen, hidden)
             regl_score = calculate_S_qd_regl_batch_batch(
@@ -310,11 +312,13 @@ def get_top_k_documents_partitioned(
     devices = [torch.device(f"cuda:{i}") for i in range(device_count)]
     print(f"Using GPUs: {devices}")
     query_ids = [q["qid"] for q in q_list]
-    results= {}
+    results = {}
     for i in range(0, len(query_ids), qbatch_size):
         batch_query_ids = query_ids[i : i + qbatch_size]
         batch_queries = q_list[i : i + qbatch_size]
-        batch_q_data, _ = renew_data(queries=batch_queries, documents=None, renew_q=True, renew_d=False)
+        batch_q_data, _ = renew_data(
+            queries=batch_queries, documents=None, renew_q=True, renew_d=False
+        )
         batch_results = get_top_k_documents_gpu_batch_partitioned(
             batch_q_data, d_list, batch_query_ids, k, devices, batch_size
         )

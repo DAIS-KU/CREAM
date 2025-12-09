@@ -21,7 +21,8 @@ from clusters import (
     build_cluster_cache_table_by_cosine,
     get_samples_top_and_farthest3_with_cache,
     get_samples_top_bottom_3_with_cache,
-    visualize_clusters_pairwise_distance,
+    dump_session_for_global_vis,
+    global_pairwise_visualization_from_dumps,
 )
 from data import read_jsonl, read_jsonl_as_dict, write_file, write_line
 from functions import (
@@ -155,17 +156,16 @@ def streaming_train(
                     use_tensor_key=use_tensor_key,
                 )
                 if idx == 0:
-                    visualize_clusters_pairwise_distance(
+                    dump_session_for_global_vis(
+                        session_number=session_number,
                         clusters=clusters,
                         docs=docs,
-                        save_path=f"../plot_{session_number}.png",
-                        session_number=session_number,
-                        samples_per_cluster=5000,
-                        methods=["tsne", "pca", "umap"],
-                        device='cuda:0',
+                        out_dir="/home/work/.default/huijeong/cream/data/visualize",
+                        samples_per_cluster=1000,
                         representive_query_id=query["doc_id"],
                         representive_doc_ids=pos_ids + neg_ids,
                     )
+
                 keep_doc_ids.add(query["doc_id"])
                 keep_doc_ids.update(pos_ids)
                 keep_doc_ids.update(neg_ids)
@@ -248,7 +248,7 @@ def train(
     for session_number in range(start_session_number, end_session_number):
         ts = session_number
         time_values_path = (
-            f"../data/loss/total_time_values_datasetM_large_share_30_{session_number}.txt"
+            f"../data/loss/total_time_values_datasetM_a8_d025_{session_number}.txt"
         )
         print(f"Training Session {session_number}/{load_cluster}")
         start_time = time.time()
@@ -276,13 +276,13 @@ def train(
         )
         if session_number != 0:
             print("Load last session model.")
-            model_path = f"../data/model/datasetM_large_share{session_number-1}.pth"
+            model_path = f"../data/model/datasetM_a8_d025_{session_number-1}.pth"
             model.load_state_dict(torch.load(model_path, map_location=devices[-1]))
         else:
             print("Load Warming up model.")
             # model_path = f"../data/base_model_lotte.pth"
         model.train()
-        new_model_path = f"../data/model/datasetM_large_share{session_number}.pth"
+        new_model_path = f"../data/model/datasetM_a8_d025_{session_number}.pth"
 
         # Initial : 매번 로드 or 첫 세션만 로드
         if (
@@ -291,32 +291,32 @@ def train(
             and session_number > 0
         ):
             with open(
-                f"../data/clusters_datasetM_large_share_30_{session_number-1}.pkl",
+                f"../data/clusters_datasetM_a8_d025_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last clusters.")
                 clusters = pickle.load(f)
             with open(
-                f"../data/prev_docs_datasetM_large_share_30_{session_number-1}.pkl",
+                f"../data/prev_docs_datasetM_a8_d025_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last docs.")
                 prev_docs = pickle.load(f)
                 stream.docs.update(prev_docs)
             with open(
-                f"../data/random_vectors_datasetM_large_share_30_{session_number-1}.pkl",
+                f"../data/random_vectors_datasetM_a8_d025_{session_number-1}.pkl",
                 "rb",
             ) as f:
                 print(f"Load last random vectors.")
                 random_vectors = pickle.load(f)
             # with open(
-            #     f"../data/query_result_datasetM_large_share_30_hash9_{session_number-1}.pkl", "rb"
+            #     f"../data/query_result_datasetM_a8_d025_hash9_{session_number-1}.pkl", "rb"
             # ) as f:
             #     print(f"Load last query_result.")
             #     last_query_result = pickle.load(f)
             #     query_result.update(last_query_result)
             # with open(
-            #     f"../data/diversity_buffer_manager_datasetM_large_share_30_hash9_{session_number-1}.pkl",
+            #     f"../data/diversity_buffer_manager_datasetM_a8_d025_hash9_{session_number-1}.pkl",
             #     "rb",
             # ) as f:
             #     diversity_buffer_manager = pickle.load(f)
@@ -513,24 +513,30 @@ def train(
         write_line(time_values_path, f"Eviction({end_time-start_time}sec)\n", "a")
 
         with open(
-            f"../data/clusters_datasetM_large_share_30_{session_number}.pkl", "wb"
+            f"../data/clusters_datasetM_a8_d025_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(clusters, f)
         with open(
-            f"../data/prev_docs_datasetM_large_share_30_{session_number}.pkl", "wb"
+            f"../data/prev_docs_datasetM_a8_d025_{session_number}.pkl", "wb"
         ) as f:
             pickle.dump(prev_docs, f)
         with open(
-            f"../data/random_vectors_datasetM_large_share_30_{session_number}.pkl",
+            f"../data/random_vectors_datasetM_a8_d025_{session_number}.pkl",
             "wb",
         ) as f:
             pickle.dump(random_vectors, f)
-        # with open(f"../data/query_result_datasetM_large_share_30_hash9_{session_number}.pkl", "wb") as f:
+        # with open(f"../data/query_result_datasetM_a8_d025_hash9_{session_number}.pkl", "wb") as f:
         #     pickle.dump(query_result, f)
         # with open(
-        #     f"../data/diversity_buffer_manager_datasetM_large_share_30_hash9_{session_number}.pkl", "wb"
+        #     f"../data/diversity_buffer_manager_datasetM_a8_d025_hash9_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
+    global_pairwise_visualization_from_dumps(
+        dump_dir="/home/work/.default/huijeong/cream/data/visualize",
+        save_dir="/home/work/.default/huijeong/cream/data/visualize",
+        methods=["umap"],
+        batch_size=8,
+    )
 
 
 def evaluate_with_cluster(
@@ -580,7 +586,7 @@ def evaluate_with_cluster(
 
 def evaluate(session_count=10):
     for session_number in range(10):
-        _evaluate(session_number, False)
+        _evaluate(session_number, True)
 
 
 def _evaluate(session_number, partition=False):
@@ -602,7 +608,7 @@ def _evaluate(session_number, partition=False):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = f"../data/rankings/{method}_session_{session_number}.txt"
-    model_path = f"../data/model/{method}{session_number}.pth"
+    model_path = f"../data/model/{method}_{session_number}.pth"
     # model_path = f"../data/model/{method}_session_{session_number}.pth"
 
     if not partition:
@@ -652,11 +658,9 @@ def eval_rankings(session_number):
     print(f"Query count:{eval_query_count}, Document count:{eval_doc_count}")
 
     rankings_path = (
-        f"../data/rankings/datasetM_large_share_30_{session_number}_with_cluster.txt"
+        f"../data/rankings/datasetM_a8_d025_{session_number}_with_cluster.txt"
     )
-    eval_log_path = (
-        f"../data/evals/datasetM_large_share_30_{session_number}_with_cluster.txt"
-    )
+    eval_log_path = f"../data/evals/datasetM_a8_d025_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     rankings_path = f"../data/rankings/datasetM_large_share{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

@@ -190,9 +190,7 @@ class L2R_retrieve(object):
             neg_p_reps, choiced_new_reps
         )  # [bz, n-1, new_bz]
         inter_sim_sum = torch.sum(inter_sim, dim=-1)  # [bz, n-1]
-        inter_sim = (
-            inter_sim_sum * (-1.0) / inter_sim.size(-1)
-        )  # [bz, n-1], 相似度尽可能小
+        inter_sim = inter_sim_sum * (-1.0) / inter_sim.size(-1)  # [bz, n-1], 相似度尽可能小
 
         indexs = inter_sim.sort(dim=1, descending=True)[1][:, :mem_bz]
         return indexs

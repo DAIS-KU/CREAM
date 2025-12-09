@@ -61,12 +61,8 @@ class DataArguments:
     compatible: bool = field(default=False)
 
     buffer_data: str = field(default=None)
-    query_data: str = field(
-        default=None
-    )  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
-    doc_data: str = field(
-        default=None
-    )  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
+    query_data: str = field(default=None)  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
+    doc_data: str = field(default=None)  # 如果是考虑表达兼容，就传embedding data，否则就传raw data
     mem_size: int = field(default=30)
     mem_batch_size: int = field(default=2)
     cl_method: str = field(default=None)

@@ -11,44 +11,69 @@ from sklearn.manifold import TSNE
 
 try:
     from umap import UMAP
+
     _UMAP_AVAILABLE = True
 except Exception:
     _UMAP_AVAILABLE = False
 
 from clusters import Cluster
-from functions import calculate_S_qd_regl_batch_batch_batch  
+from functions import calculate_S_qd_regl_batch_batch_batch
 import json
 
-def visualize_clusters_pairwise_distance(
-    clusters: List[Cluster],
-    docs: dict,
-    save_path: str,
+import os
+import random
+import torch
+from typing import List, Optional, Dict, Any
+
+
+import glob
+import json
+from collections import defaultdict
+from typing import List, Dict, Tuple, Optional
+
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+
+try:
+    from umap import UMAP
+
+    _UMAP_AVAILABLE = True
+except ImportError:
+    _UMAP_AVAILABLE = False
+
+
+def dump_session_for_global_vis(
     session_number: int,
+    clusters: List["Cluster"],
+    docs: Dict[str, Dict[str, Any]],
+    out_dir: str,
     samples_per_cluster: int = 10,
-    methods: Optional[list] = None,  # ["tsne", "pca", "umap"]
-    device: Optional[torch.device] = None,
-    batch_size: int = 8,            # dist_matrix 계산용 batch 크기
     representive_query_id: Optional[str] = None,
-    representive_doc_ids: Optional[list] = None,
+    representive_doc_ids: Optional[List[str]] = None,
 ):
     """
-    클러스터당 N개 샘플 → TOKEN_EMBS 기반 pairwise 유사도 → 거리=256-유사도
-    → PCA / UMAP / t-SNE 시각화 (거리 행렬 기반).
+    - 각 세션별로:
+      1) 클러스터에서 문서 샘플링
+      2) TOKEN_EMBS를 스택해서 E_all (n_docs_session, L, H) 만들고
+      3) session별 메타 + E_all을 .pt 로 저장
+      4) 샘플링된 doc들 정보를 .jsonl로도 저장
 
-    representive_query_id / representive_doc_ids:
-      - 시각화 상에서 강조 표시 (색상 다르게 텍스트 라벨)
-      - 별도 JSON 메타 파일로 저장
+    🔥 대표 query / positive / negative 는 무조건 샘플링에 포함되도록 보장
+       (docs 안에 존재할 경우)
+
+    representive_doc_ids:
+      - [0] = positive, [1:] = negatives
     """
-    if methods is None:
-        methods = ["tsne", "pca", "umap"]
+    os.makedirs(out_dir, exist_ok=True)
 
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    sampled_doc_ids: List[str] = []
+    sampled_cluster_ids: List[int] = []
+    token_embs: List[torch.Tensor] = []
 
-    # 1. 클러스터별로 doc_id 샘플링
-    sampled_doc_ids = []
-    sampled_cluster_ids = []
-
+    # 1) 기본 클러스터별 랜덤 샘플링
     for cluster_id, cluster in enumerate(clusters):
         doc_ids = list(cluster.doc_ids)
         if not doc_ids:
@@ -69,143 +94,226 @@ def visualize_clusters_pairwise_distance(
                 )
             sampled_doc_ids.append(doc_id)
             sampled_cluster_ids.append(cluster_id)
+            token_embs.append(emb)
 
-    if len(sampled_doc_ids) == 0:
-        raise ValueError("샘플링된 문서가 없습니다. clusters / docs 를 확인하세요.")
+    # 2) 대표 query / positive / negative 무조건 포함
+    rep_docs = representive_doc_ids or []
+    positive_id = rep_docs[0] if len(rep_docs) > 0 else None
+    negative_ids = rep_docs[1:] if len(rep_docs) > 1 else []
 
-    # 2. TOKEN_EMBS 스택
-    token_embs = [docs[doc_id]["TOKEN_EMBS"] for doc_id in sampled_doc_ids]
+    force_ids = set()
+    if representive_query_id:
+        force_ids.add(representive_query_id)
+    force_ids.update(rep_docs)
+
+    # 클러스터를 한번 훑어서 doc_id -> cluster_id 맵핑 만들어두면 편함
+    doc_to_cluster: Dict[str, int] = {}
+    for cluster_id, cluster in enumerate(clusters):
+        for d in cluster.doc_ids:
+            # 여러 클러스터에 있을 가능성은 낮다고 가정하고 처음 것만 사용
+            if d not in doc_to_cluster:
+                doc_to_cluster[d] = cluster_id
+
+    for doc_id in force_ids:
+        # docs에 없으면 스킵
+        if doc_id not in docs:
+            print(f"[!] Session {session_number}: 대표 doc_id {doc_id} 가 docs 에 없어 포함 불가")
+            continue
+        # 이미 샘플링 되어 있으면 패스
+        if doc_id in sampled_doc_ids:
+            continue
+
+        emb = docs[doc_id]["TOKEN_EMBS"]
+        if not isinstance(emb, torch.Tensor):
+            raise TypeError(
+                f"{doc_id} TOKEN_EMBS 는 torch.Tensor 여야 합니다. 현재 타입: {type(emb)}"
+            )
+
+        # 클러스터 정보 찾기 (없으면 -1 등으로 표시)
+        cluster_id = doc_to_cluster.get(doc_id, -1)
+
+        sampled_doc_ids.append(doc_id)
+        sampled_cluster_ids.append(cluster_id)
+        token_embs.append(emb)
+
+    if len(token_embs) == 0:
+        print(f"[!] Session {session_number}: 샘플링된 문서 없음, 건너뜀")
+        return
+
+    # 3) shape 체크
     seq_lens = {emb.shape[0] for emb in token_embs}
     hidden_sizes = {emb.shape[1] for emb in token_embs}
     if len(seq_lens) != 1 or len(hidden_sizes) != 1:
         raise ValueError(
-            f"모든 TOKEN_EMBS 의 shape 이 동일해야 합니다. "
+            f"Session {session_number}: 모든 TOKEN_EMBS 의 shape 이 동일해야 합니다. "
             f"seq_lens={seq_lens}, hidden_sizes={hidden_sizes}"
         )
 
-    E_all = torch.stack(token_embs, dim=0)  # (n_docs, L, 768)
-    n_docs = E_all.shape[0]
+    E_all = torch.stack(token_embs, dim=0).cpu()  # CPU로 저장
 
-    # 3. 배치 기반 거리 행렬 계산
+    # 4) .pt 저장 (임베딩 + 메타)
+    pt_path = os.path.join(out_dir, f"session_{session_number}_samples.pt")
+    torch.save(
+        {
+            "session_number": session_number,
+            "sampled_doc_ids": sampled_doc_ids,
+            "sampled_cluster_ids": sampled_cluster_ids,
+            "E_all": E_all,
+            "representive_query_id": representive_query_id,
+            "positive_id": positive_id,
+            "negative_ids": negative_ids,
+        },
+        pt_path,
+    )
+    print(
+        f"[✓] Session {session_number}: 샘플 {len(sampled_doc_ids)}개 .pt 저장 -> {os.path.abspath(pt_path)}"
+    )
+
+    # 5) .jsonl 저장 (어떤 샘플이 선택됐는지 기록)
+    jsonl_path = os.path.join(out_dir, f"session_{session_number}_samples.jsonl")
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for doc_id, cluster_id in zip(sampled_doc_ids, sampled_cluster_ids):
+            record = {
+                "session_number": session_number,
+                "doc_id": doc_id,
+                "cluster_id": cluster_id,
+                "is_query": bool(
+                    representive_query_id and doc_id == representive_query_id
+                ),
+                "is_positive": bool(positive_id and doc_id == positive_id),
+                "is_negative": bool(doc_id in negative_ids),
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(
+        f"[✓] Session {session_number}: 샘플 메타 .jsonl 저장 -> {os.path.abspath(jsonl_path)}"
+    )
+
+
+def global_pairwise_visualization_from_dumps(
+    dump_dir: str,
+    save_dir: str,
+    methods: Optional[List[str]] = None,  # ["tsne", "pca", "umap"]
+    device: Optional[torch.device] = None,
+    batch_size: int = 8,
+):
+    """
+    dump_dir 안의 session_*_samples.pt 들을:
+      1) 로드해서 concat (전역 E_all)
+      2) 전역 pairwise distance 계산
+      3) TSNE/PCA/UMAP을 한 번씩만 실행
+      4) 세션별 인덱스로 잘라서 plot
+         - query_id: 빨강 (red)
+         - positive_id: 초록 (green)
+         - negatives: 파랑 (blue)
+    """
+    if methods is None:
+        methods = ["tsne", "pca", "umap"]
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    dump_paths = sorted(glob.glob(os.path.join(dump_dir, "session_*_samples.pt")))
+    if not dump_paths:
+        raise ValueError(f"{dump_dir} 에 session_*_samples.pt 파일이 없습니다.")
+
+    all_E = []
+    all_doc_ids: List[str] = []
+    all_session_ids: List[int] = []
+    all_cluster_keys: List[Tuple[int, int]] = []  # (session_number, cluster_id)
+    session_to_indices: Dict[int, List[int]] = defaultdict(list)
+
+    # 🔥 세션별 대표 정보
+    session_query_id: Dict[int, Optional[str]] = {}
+    session_positive_id: Dict[int, Optional[str]] = {}
+    session_negative_ids: Dict[int, Set[str]] = {}
+
+    for path in dump_paths:
+        data = torch.load(path, map_location="cpu")
+        session_number: int = data["session_number"]
+        sampled_doc_ids: List[str] = data["sampled_doc_ids"]
+        sampled_cluster_ids: List[int] = data["sampled_cluster_ids"]
+        E_session: torch.Tensor = data["E_all"]
+
+        rep_q = data.get("representive_query_id")
+        pos_id = data.get("positive_id")
+        neg_ids = data.get("negative_ids", [])
+
+        session_query_id[session_number] = rep_q
+        session_positive_id[session_number] = pos_id
+        session_negative_ids[session_number] = set(neg_ids)
+
+        n_session = E_session.shape[0]
+        start_idx = len(all_doc_ids)
+
+        all_E.append(E_session)
+        all_doc_ids.extend(sampled_doc_ids)
+
+        for local_idx in range(n_session):
+            global_idx = start_idx + local_idx
+            all_session_ids.append(session_number)
+            all_cluster_keys.append((session_number, sampled_cluster_ids[local_idx]))
+            session_to_indices[session_number].append(global_idx)
+
+        print(
+            f"[✓] 로드: session {session_number}, docs={n_session}, file={os.path.basename(path)}"
+        )
+
+    E_all = torch.cat(all_E, dim=0)  # (N_total, L, H)
+    n_docs_total = E_all.shape[0]
+    print(f"[✓] 전역 E_all shape: {E_all.shape}, 총 문서 수: {n_docs_total}")
+
+    # 2) 전역 pairwise distance 계산
     S_qd_matrix = calculate_S_qd_regl_batch_batch_batch(
         E_q=E_all,
         E_d=E_all,
         device=device,
         batch_size=batch_size,
-    )  # (n_docs, n_docs)
+    )  # (N_total, N_total)
+    print(f"[✓] 전역 pairwise distance 계산 완료")
 
-    # 거리로 변환 (예: 256 - 유사도)
-    dist_matrix = 256 - S_qd_matrix  # torch.Tensor (CPU)
-    dist_matrix = dist_matrix.numpy()  # sklearn에 넘기기 위해 numpy로
+    dist_matrix = 256 - S_qd_matrix
+    dist_matrix = dist_matrix.cpu().numpy()
 
-    # 4. 색상 매핑 (클러스터용)
-    num_clusters = len(set(sampled_cluster_ids))
-    cmap = plt.cm.get_cmap("tab10", num_clusters)
-    point_colors = [cmap(c) for c in sampled_cluster_ids]
+    # 3) 색상 (포인트 색) : cluster_id 기준
+    #    - 같은 cluster_id 는 세션이 달라도 동일 색 사용
+    all_cluster_ids = [cid for (_, cid) in all_cluster_keys]
+    unique_cluster_ids = sorted(set(all_cluster_ids))
+    cluster_id_to_idx = {cid: i for i, cid in enumerate(unique_cluster_ids)}
+    num_clusters = len(unique_cluster_ids)
 
-    # 대표 query/doc 라벨용 정보
-    label_targets = set()
-    if representive_query_id:
-        label_targets.add(representive_query_id)
+    cmap = plt.cm.get_cmap("tab20", num_clusters)
+    point_colors = [cmap(cluster_id_to_idx[cid]) for cid in all_cluster_ids]
 
-    rep_docs = representive_doc_ids or []
-    label_targets.update(rep_docs)
-
-    positive_id = rep_docs[0] if len(rep_docs) > 0 else None
-    negative_ids = set(rep_docs[1:]) if len(rep_docs) > 1 else set()
-
-    # 파일 경로 분해
-    base, ext = os.path.splitext(save_path)
-    if not ext:
-        ext = ".png"
-
-    def _plot_and_save(emb2d: np.ndarray, method_name: str):
-        plt.figure(figsize=(14, 10))
-        plt.scatter(
-            emb2d[:, 0],
-            emb2d[:, 1],
-            c=point_colors,
-            s=20,
-            alpha=0.9,
-            edgecolors="black",
-            linewidths=0.3,
-        )
-
-        # 전체 doc 라벨을 찍되, 대표들은 색상 강조
-        for i, doc_id in enumerate(sampled_doc_ids):
-            if doc_id in label_targets:
-                # 대표 쿼리/문서 색상 구분
-                if doc_id == representive_query_id:
-                    color = "red"
-                elif positive_id and doc_id == positive_id:
-                    color = "green"
-                elif doc_id in negative_ids:
-                    color = "blue"
-                else:
-                    color = "black"
-
-                plt.text(
-                    emb2d[i, 0],
-                    emb2d[i, 1],
-                    str(doc_id),
-                    fontsize=7,
-                    fontweight="bold",
-                    color=color,
-                    alpha=0.9,
-                )
-            # else:
-            #     # 나머지는 연한 회색으로 작게
-            #     plt.text(
-            #         emb2d[i, 0],
-            #         emb2d[i, 1],
-            #         str(doc_id),
-            #         fontsize=6,
-            #         color="gray",
-            #         alpha=0.5,
-            #     )
-
-        plt.title(f"Session {session_number} – Pairwise distance ({method_name.upper()})")
-        plt.xlabel(f"{method_name.upper()} 1")
-        plt.ylabel(f"{method_name.upper()} 2")
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-
-        out_path = f"{base}_pairwise_{method_name}{ext}"
-        plt.savefig(out_path, dpi=300)
-        plt.close()
-        print(f"[✓] {method_name.upper()} pairwise 시각화 저장 완료: {os.path.abspath(out_path)}")
-
-    # 5. 차원 축소 및 시각화
     n_samples = dist_matrix.shape[0]
     safe_perplexity = min(30, max(5, min(n_samples - 1, 50)))
 
-    for m in methods:
-        m_lower = m.lower()
+    def _compute_emb2d(method: str) -> np.ndarray:
+        print(f"Drawing in {method} started.")
+        m_lower = method.lower()
 
         if m_lower == "tsne":
             if n_samples <= 1:
-                print("[!] 샘플 수가 1개 이하라 t-SNE를 수행할 수 없습니다.")
-                continue
-
-            emb2d = TSNE(
+                raise ValueError("샘플 수가 1개 이하라 t-SNE를 수행할 수 없습니다.")
+            return TSNE(
                 n_components=2,
                 perplexity=safe_perplexity,
                 random_state=42,
-                metric="precomputed",  # 거리 행렬 사용
+                metric="precomputed",
                 init="random",
                 learning_rate="auto",
             ).fit_transform(dist_matrix)
-            _plot_and_save(emb2d, "tsne")
 
         elif m_lower == "pca":
-            emb2d = PCA(n_components=2, random_state=42).fit_transform(dist_matrix)
-            _plot_and_save(emb2d, "pca")
+            return PCA(n_components=2, random_state=42).fit_transform(dist_matrix)
 
         elif m_lower == "umap":
             if not _UMAP_AVAILABLE:
-                print("[!] UMAP이 설치되어 있지 않습니다. `pip install umap-learn` 후 다시 실행하세요.")
-                continue
-
+                raise RuntimeError(
+                    "UMAP이 설치되어 있지 않습니다. `pip install umap-learn` 후 다시 실행하세요."
+                )
             reducer = UMAP(
                 n_components=2,
                 n_neighbors=15,
@@ -213,201 +321,124 @@ def visualize_clusters_pairwise_distance(
                 metric="precomputed",
                 random_state=42,
             )
-            emb2d = reducer.fit_transform(dist_matrix)
-            _plot_and_save(emb2d, "umap")
+            return reducer.fit_transform(dist_matrix)
 
         else:
-            print(f"[!] 지원하지 않는 방법입니다: {m}")
+            raise ValueError(f"지원하지 않는 방법입니다: {method}")
 
-    # 6. 대표 query/doc 메타정보 JSON 저장
-    metadata = {
-        "session_number": session_number,
-        "query_id": representive_query_id,
-        "positive": [positive_id] if positive_id else [],
-        "negatives": list(negative_ids) if negative_ids else [],
-        "sampled_doc_ids": sampled_doc_ids,
-    }
+    def _plot_single_session(
+        emb2d_all: np.ndarray,
+        method_name: str,
+        axis_limits: Tuple[float, float, float, float],
+        session_number: int,
+    ):
+        print(f"_plot_single_session in session {session_number} started.")
+        indices = session_to_indices[session_number]
+        if not indices:
+            return
 
-    meta_save_path = os.path.join(
-        os.path.dirname(save_path),
-        f"session_{session_number}_pairwise_representatives.json",
-    )
-    with open(meta_save_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=4)
+        emb2d = emb2d_all[indices]
+        colors = [point_colors[i] for i in indices]
+        doc_ids = [all_doc_ids[i] for i in indices]
 
-    print(f"[✓] 대표 문서 정보 저장 완료: {os.path.abspath(meta_save_path)}")
+        rep_q = session_query_id.get(session_number)
+        pos_id = session_positive_id.get(session_number)
+        neg_ids = session_negative_ids.get(session_number, set())
 
-# import os
-# import json
-# import numpy as np
-# import matplotlib.pyplot as plt
-# from typing import List, Optional
+        label_targets = set()
+        if rep_q:
+            label_targets.add(rep_q)
+        if pos_id:
+            label_targets.add(pos_id)
+        label_targets.update(neg_ids)
 
-# import torch
-# from sklearn.decomposition import PCA
-# from sklearn.manifold import TSNE
+        plt.figure(figsize=(14, 10))
+        plt.scatter(
+            emb2d[:, 0],
+            emb2d[:, 1],
+            c=colors,  # 점 색: 클러스터/세션 기반
+            s=20,
+            alpha=0.9,
+            edgecolors="black",
+            linewidths=0.3,
+        )
 
-# try:
-#     from umap import UMAP
-#     _UMAP_AVAILABLE = True
-# except Exception:
-#     _UMAP_AVAILABLE = False
+        # 🔥 라벨 색:
+        #   - query_id -> red
+        #   - positive_id -> green
+        #   - negatives -> blue
+        for i, doc_id in enumerate(doc_ids):
+            if doc_id not in label_targets:
+                continue
 
-# from .cluster import Cluster
+            if doc_id == rep_q:
+                txt_color = "red"  # query
+                fw = "bold"
+            elif pos_id and doc_id == pos_id:
+                txt_color = "green"  # positive
+                fw = "bold"
+            elif doc_id in neg_ids:
+                txt_color = "blue"  # negatives
+                fw = "bold"
+            else:
+                txt_color = "black"
+                fw = "normal"
 
+            plt.text(
+                emb2d[i, 0],
+                emb2d[i, 1],
+                str(doc_id),
+                fontsize=20,
+                fontweight=fw,
+                color=txt_color,
+                alpha=0.9,
+            )
 
-# def visualize_clusters(
-#     clusters: List[Cluster],
-#     docs: dict,
-#     save_path: str,
-#     session_number: int,
-#     representive_query_id: Optional[str] = None,
-#     representive_doc_ids: Optional[list] = None,
-#     methods: Optional[list] = None,  # ["tsne", "pca", "umap"] 중 선택
-# ):
-#     """
-#     clusters: Cluster 리스트 (각 Cluster는 .doc_ids 보유)
-#     docs: {doc_id: {"TOKEN_EMBS": torch.Tensor(shape=(254,768))}, ...}
-#     save_path: 저장할 기본 파일 경로(예: /path/plot.png) → _tsne/_pca/_umap 접미사로 저장됨
-#     session_number: 세션 번호
-#     representive_query_id: 라벨로 표시할 대표 쿼리 ID
-#     representive_doc_ids: [positive, negative1, negative2, ...] 형태
-#     methods: 생성할 차원축소 방법 리스트. 미지정 시 ["tsne", "pca", "umap"]
-#     """
-#     if methods is None:
-#         methods = ["tsne", "pca", "umap"]
+        plt.title(f"Session {session_number} – Global pairwise ({method_name.upper()})")
+        plt.xlabel(f"{method_name.upper()} 1")
+        plt.ylabel(f"{method_name.upper()} 2")
+        plt.grid(True, alpha=0.3)
 
-#     # 수집
-#     all_points = []
-#     all_labels = []
-#     all_clusters = []
+        xmin, xmax, ymin, ymax = axis_limits
+        plt.xlim(xmin, xmax)
+        plt.ylim(ymin, ymax)
 
-#     for cluster_id, cluster in enumerate(clusters):
-#         for doc_id in cluster.doc_ids:
-#             emb = docs[doc_id]["TOKEN_EMBS"]
-#             assert emb.shape == (254, 768), f"{doc_id} 임베딩 shape 오류: {emb.shape}"
-#             pooled_embedding = emb.mean(dim=0)
-#             all_points.append(pooled_embedding.detach().cpu().numpy())
-#             all_labels.append(doc_id)
-#             all_clusters.append(cluster_id)
+        plt.tight_layout()
 
-#     all_points = np.asarray(all_points)
-#     all_clusters = np.asarray(all_clusters)
-#     all_labels = np.asarray(all_labels)
+        out_path = os.path.join(
+            save_dir,
+            f"session_{session_number}_pairwise_{method_name}.png",
+        )
+        plt.savefig(out_path, dpi=300)
+        plt.close()
+        print(
+            f"[✓] Session {session_number} – {method_name.upper()} 시각화: {os.path.abspath(out_path)}"
+        )
 
-#     # 색상 매핑
-#     num_clusters = len(set(all_clusters))
-#     cmap = plt.cm.get_cmap("tab10", num_clusters)
-#     cluster_colors = [cmap(i) for i in all_clusters]
+    # 4) method 별로 전역 축소 → 세션별 그림
+    for m in methods:
+        try:
+            emb2d_all = _compute_emb2d(m)
+        except Exception as e:
+            print(f"[!] {m} 계산 중 오류: {e}")
+            continue
 
-#     # 라벨 대상 선정(안전 처리)
-#     label_targets = set()
-#     if representive_query_id:
-#         label_targets.add(representive_query_id)
-#     rep_docs = representive_doc_ids or []
-#     label_targets.update(rep_docs)
-#     positive_id = rep_docs[0] if len(rep_docs) > 0 else None
-#     negative_ids = set(rep_docs[1:]) if len(rep_docs) > 1 else set()
+        x_vals = emb2d_all[:, 0]
+        y_vals = emb2d_all[:, 1]
+        margin_x = (x_vals.max() - x_vals.min()) * 0.05
+        margin_y = (y_vals.max() - y_vals.min()) * 0.05
 
-#     # 파일 경로 분해
-#     base, ext = os.path.splitext(save_path)
-#     if not ext:
-#         ext = ".png"
+        axis_limits = (
+            x_vals.min() - margin_x,
+            x_vals.max() + margin_x,
+            y_vals.min() - margin_y,
+            y_vals.max() + margin_y,
+        )
 
-#     # 공통 그리기 함수
-#     def _plot_and_save(emb2d: np.ndarray, method_name: str):
-#         plt.figure(figsize=(14, 10))
-#         plt.scatter(
-#             emb2d[:, 0],
-#             emb2d[:, 1],
-#             c=cluster_colors,
-#             s=10,
-#             alpha=0.8,
-#             edgecolors="black",
-#             linewidths=0.3,
-#         )
-
-#         # 대표 문서 라벨링
-#         for i, doc_id in enumerate(all_labels):
-#             if doc_id in label_targets:
-#                 if doc_id == representive_query_id:
-#                     color = "red"
-#                 elif positive_id and doc_id == positive_id:
-#                     color = "green"
-#                 elif doc_id in negative_ids:
-#                     color = "blue"
-#                 else:
-#                     color = "black"
-#                 plt.text(
-#                     emb2d[i, 0],
-#                     emb2d[i, 1],
-#                     str(doc_id),
-#                     fontsize=7,
-#                     fontweight="bold",
-#                     color=color,
-#                     alpha=0.8,
-#                 )
-
-#         plt.title(f"Session {session_number} – {method_name.upper()}")
-#         plt.xlabel(f"{method_name.upper()} 1")
-#         plt.ylabel(f"{method_name.upper()} 2")
-#         plt.grid(True)
-#         plt.tight_layout()
-
-#         out_path = f"{base}_{method_name}{ext}"
-#         plt.savefig(out_path, dpi=300)
-#         plt.close()
-#         print(f"[✓] {method_name.upper()} 시각화 저장 완료: {os.path.abspath(out_path)}")
-
-#     # 각 방법으로 차원 축소
-#     # t-SNE perplexity는 샘플 수에 맞게 안전하게 보정
-#     n_samples = max(1, all_points.shape[0])
-#     safe_perplexity = min(30, max(5, min(n_samples - 1, 50)))
-
-#     for m in methods:
-#         m_lower = m.lower()
-#         if m_lower == "tsne":
-#             emb2d = TSNE(
-#                 n_components=2,
-#                 perplexity=safe_perplexity,
-#                 random_state=42,
-#                 init="pca",
-#                 learning_rate="auto",
-#             ).fit_transform(all_points)
-#             _plot_and_save(emb2d, "tsne")
-
-#         elif m_lower == "pca":
-#             emb2d = PCA(n_components=2, random_state=42).fit_transform(all_points)
-#             _plot_and_save(emb2d, "pca")
-
-#         elif m_lower == "umap":
-#             if not _UMAP_AVAILABLE:
-#                 print("[!] UMAP이 설치되어 있지 않습니다. `pip install umap-learn` 후 다시 실행하세요.")
-#                 continue
-#             emb2d = UMAP(
-#                 n_components=2,
-#                 n_neighbors=15,
-#                 min_dist=0.1,
-#                 random_state=42,
-#             ).fit_transform(all_points)
-#             _plot_and_save(emb2d, "umap")
-
-#         else:
-#             print(f"[!] 지원하지 않는 방법입니다: {m}")
-
-#     # 대표 query_id 및 doc_ids 메타 저장(기존 로직 보강)
-#     metadata = {
-#         "session_number": session_number,
-#         "query_id": representive_query_id,
-#         "positive": [positive_id] if positive_id else [],
-#         "negatives": list(negative_ids) if negative_ids else [],
-#     }
-
-#     meta_save_path = os.path.join(
-#         os.path.dirname(save_path),
-#         f"session_{session_number}_representatives.json",
-#     )
-#     with open(meta_save_path, "w", encoding="utf-8") as f:
-#         json.dump(metadata, f, ensure_ascii=False, indent=4)
-
-#     print(f"[✓] 대표 문서 정보 저장 완료: {os.path.abspath(meta_save_path)}")
+        for session_number in session_to_indices.keys():
+            _plot_single_session(
+                emb2d_all=emb2d_all,
+                method_name=m,
+                axis_limits=axis_limits,
+                session_number=session_number,
+            )

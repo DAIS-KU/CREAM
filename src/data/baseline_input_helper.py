@@ -397,11 +397,7 @@ def _prepare_inputs(
         if not compatible or session_number == 0:
             qid_lst, docids_lst = inputs[0], inputs[1]
             # mem_passage: training(data selection)    candidate_neg_docids: candidate for updating (난 res_did_lst로)
-            (
-                mem_passage,
-                pos_docids,
-                res_did_lst,
-            ) = buffer.retrieve(
+            (mem_passage, pos_docids, res_did_lst,) = buffer.retrieve(
                 qid_lst=qid_lst,
                 docids_lst=docids_lst,
                 q_lst=prepared[0],

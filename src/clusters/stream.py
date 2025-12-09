@@ -8,7 +8,6 @@ from data import BM25Okapi, read_jsonl, read_jsonl_as_dict, preprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-
 def collect_candidates(
     bm25: BM25Okapi, doc_ids, query, sampling_size_per_query, include_answer
 ):
