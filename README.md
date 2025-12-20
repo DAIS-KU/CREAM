@@ -4,7 +4,7 @@ CREAM learns continual retrieval **in a fully unsupervised setting** with **adap
 
 <p align="center">
   <a href="assets/motivation.jpg">
-    <img src="assets/motivation.jpg" width="800" />
+    <img src="assets/motivation.jpg" width="600" />
   </a>
 </p>
 
