@@ -13,15 +13,12 @@ CREAM proposes **soft memory** for practical continual IR under **unbounded / un
 1) **Fine-grained similarity** (token-level semantics) 
 2) **Regularized cluster prototypes** (fixed token length prototypes via LSH-style regularization) 
 3) **Stratified coreset sampling** (diverse training samples from memory)  
-The paper reports strong gains on real-world continual retrieval benchmarks (LoTTE / MSMARCO). 
 
 ### Method Overview
 CREAM repeats three stages per streaming session:  
 - **Retrieval**: return relevant documents with the up-to-date encoder  
 - **Memory Update**: streaming clustering with regularized prototypes (soft memory maintenance)  
 - **Encoder Update**: self-supervised training via contrastive objective using pseudo pos/neg sampled from memory   
-See Figure 2 in the paper for the overall flow. 
-
 ![method_overview](assets/method_overview.jpg)
 
 
