@@ -363,37 +363,56 @@ def global_pairwise_visualization_from_dumps(
             linewidths=0.3,
         )
 
-        # 🔥 라벨 색:
-        #   - query_id -> red
-        #   - positive_id -> green
-        #   - negatives -> blue
+       
+        q_cnt, pos_cnt, neg_cnt = 0, 0, 0
         for i, doc_id in enumerate(doc_ids):
             if doc_id not in label_targets:
                 continue
 
+            # 이미 다 하나씩 찍었으면 이제 그만
+            if q_cnt == 1 and pos_cnt == 1 and neg_cnt == 1:
+                break
+
             if doc_id == rep_q:
-                txt_color = "red"  # query
+                if q_cnt == 1:
+                    continue  # 이미 query 찍었으면 건너뛰기
+                txt_color = "red"
+                plot_doc_id = "query"
+                q_cnt = 1
                 fw = "bold"
-            elif pos_id and doc_id == pos_id:
-                txt_color = "green"  # positive
+
+            elif doc_id == pos_id:
+                if pos_cnt == 1:
+                    continue  # 이미 positive 찍었으면 건너뛰기
+                txt_color = "green"
+                plot_doc_id = "positive"
+                pos_cnt = 1
                 fw = "bold"
+
             elif doc_id in neg_ids:
-                txt_color = "blue"  # negatives
+                if neg_cnt == 1:
+                    continue  # 이미 negative 찍었으면 건너뛰기
+                txt_color = "blue"
+                plot_doc_id = "negative"
+                neg_cnt = 1
                 fw = "bold"
+
             else:
                 txt_color = "black"
                 fw = "normal"
+                print(f"doc_id {doc_id} not in anything in sesion {session_number}")
+                continue
 
             plt.text(
                 emb2d[i, 0],
                 emb2d[i, 1],
-                str(doc_id),
-                fontsize=20,
+                plot_doc_id,
+                fontsize=15,
                 fontweight=fw,
                 color=txt_color,
                 alpha=0.9,
             )
-
+            
         plt.title(f"Session {session_number} – Global pairwise ({method_name.upper()})")
         plt.xlabel(f"{method_name.upper()} 1")
         plt.ylabel(f"{method_name.upper()} 2")

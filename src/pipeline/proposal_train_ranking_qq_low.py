@@ -134,6 +134,7 @@ def streaming_train(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     time_values = []
     keep_doc_ids = set()
+    sample_q_id, sampled_doc_ids = None, None
     for epoch in range(num_epochs):
         total_loss, total_sec, batch_cnt = 0, 0, 0
 
@@ -155,20 +156,12 @@ def streaming_train(
                     ts=ts,
                     use_tensor_key=use_tensor_key,
                 )
-                if idx == 0:
-                    dump_session_for_global_vis(
-                        session_number=session_number,
-                        clusters=clusters,
-                        docs=docs,
-                        out_dir="/home/work/.default/huijeong/cream/data/visualize",
-                        samples_per_cluster=1000,
-                        representive_query_id=query["doc_id"],
-                        representive_doc_ids=pos_ids + neg_ids,
-                    )
-
-                keep_doc_ids.add(query["doc_id"])
-                keep_doc_ids.update(pos_ids)
-                keep_doc_ids.update(neg_ids)
+                if idx == 0 :
+                    sample_q_id = query["doc_id"]
+                    sampled_doc_ids = pos_ids + neg_ids
+                    keep_doc_ids.add(query["doc_id"])
+                    keep_doc_ids.update(pos_ids)
+                    keep_doc_ids.update(neg_ids)
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
                 query_batch.append(query["text"])
@@ -206,7 +199,7 @@ def streaming_train(
         print(
             f"Epoch {epoch} | Total {total_sec} seconds, Avg {total_sec / batch_cnt} seconds."
         )
-    return time_values, ts, keep_doc_ids
+    return time_values, ts, keep_doc_ids, sample_q_id, sampled_doc_ids
 
 
 def train(
@@ -456,7 +449,7 @@ def train(
         )
 
         start_time = time.time()
-        time_values, ts, keep_doc_ids = streaming_train(
+        time_values, ts, keep_doc_ids, sample_q_id, sampled_doc_ids = streaming_train(
             caches=cluster_caches,
             queries=train_queries,
             docs=stream.docs,
@@ -503,6 +496,15 @@ def train(
             keep_doc_ids,
         )
         # visualize_clusters(clusters, stream.docs, f"../cluster_plot_{session_number}_right_after_eviction.png")
+        dump_session_for_global_vis(
+            session_number=session_number,
+            clusters=clusters,
+            docs=stream.docs,
+            out_dir="/home/work/.default/huijeong/cream/data/visualize",
+            samples_per_cluster=1500,
+            representive_query_id=sample_q_id,
+            representive_doc_ids=sampled_doc_ids,
+        )
         stream.docs = clear_unused_documents(clusters, stream.docs)
         # Accumulate
         prev_docs = stream.docs  # {**stream.docs, **eval_stream_docs}
@@ -531,6 +533,10 @@ def train(
         #     f"../data/diversity_buffer_manager_datasetM_a8_d025_hash9_{session_number}.pkl", "wb"
         # ) as f:
         #     pickle.dump(diversity_buffer_manager, f)
+
+        print(
+            f"############################################VISUALIZATION############################################"
+        )
     global_pairwise_visualization_from_dumps(
         dump_dir="/home/work/.default/huijeong/cream/data/visualize",
         save_dir="/home/work/.default/huijeong/cream/data/visualize",
