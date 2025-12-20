@@ -1,7 +1,12 @@
 # CREAM: Continual Retrieval on Dynamic Streaming Corpora with Adaptive Soft Memory
 Official implementation of **CREAM**, a self-supervised framework for **memory-based continual retrieval** on dynamic streaming corpora.  
 CREAM learns continual retrieval **in a fully unsupervised setting** with **adaptive soft memory**. 
-![motivation](cream/assets/motivation.jpg)
+
+<p align="center">
+  <a href="assets/motivation.jpg">
+    <img src="assets/motivation.jpg" width="800" />
+  </a>
+</p>
 
 ### TL;DR
 CREAM proposes **soft memory** for practical continual IR under **unbounded / unlabeled / topic-shifting** streaming corpora, and introduces three key techniques:  
@@ -17,7 +22,7 @@ CREAM repeats three stages per streaming session:
 - **Encoder Update**: self-supervised training via contrastive objective using pseudo pos/neg sampled from memory   
 See Figure 2 in the paper for the overall flow. 
 
-![method_overview](cream/assets/method_overview.jpg)
+![method_overview](assets/method_overview.jpg)
 
 
 ### Datasets
