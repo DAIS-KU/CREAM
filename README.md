@@ -1,4 +1,11 @@
-# CREAM: Continual Retrieval on Dynamic Streaming Corpora with Adaptive Soft Memory
+<div align="center">
+
+# CREAM: Continual Retrieval on Dynamic Streaming Corpora with Adaptive Soft Memory 
+  
+[![KDD](https://img.shields.io/badge/KDD'26-Paper-orange)](https://arxiv.org/pdf/2601.02708)
+
+</div>
+
 Official implementation of **CREAM**, a self-supervised framework for **memory-based continual retrieval** on dynamic streaming corpora.  
 CREAM learns continual retrieval **in a fully unsupervised setting** with **adaptive soft memory**. 
 
