@@ -60,7 +60,7 @@ def generate_pooling_data(qnt=200):
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+    model = BertModel.from_pretrained("google-bert/bert-base-uncased").to(
         devices[-1]
     )
     if model_path:

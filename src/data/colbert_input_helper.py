@@ -7,7 +7,7 @@ from .bm25 import BM25Okapi, preprocess
 from .loader import load_train_docs, read_jsonl, read_jsonl_as_dict
 from transformers import BertTokenizerFast
 
-tokenizer = BertTokenizerFast.from_pretrained("/home/work/.default/huijeong/bert_local")
+tokenizer = BertTokenizerFast.from_pretrained("google-bert/bert-base-uncased")
 special_tokens_dict = {"additional_special_tokens": ["[Q]", "[D]"]}
 num_new = tokenizer.add_special_tokens(special_tokens_dict)
 

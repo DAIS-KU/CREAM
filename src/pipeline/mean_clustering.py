@@ -35,7 +35,7 @@ def initialize(model, docs, k, max_iters, use_tensor_key=True) -> List[Cluster]:
 
 
 def model_builder(model_path=None):
-    return BertModel.from_pretrained("/home/work/.default/huijeong/bert_local")
+    return BertModel.from_pretrained("google-bert/bert-base-uncased")
 
 
 def evaluate_success_recall(queries, clusters, doc2cluster, verbose=False):

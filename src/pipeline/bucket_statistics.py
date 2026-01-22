@@ -311,8 +311,8 @@ def get_bucket_sim(
     device = devices[-1]
 
     # 토크나이저/모델 (로컬 경로)
-    tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
-    model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local")
+    tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
+    model = BertModel.from_pretrained("google-bert/bert-base-uncased")
     model.eval().to(device)
 
     # LSH 랜덤 투영 벡터 (키 생성용) — CPU 텐서로 두고, 내부에서 필요 시 이동

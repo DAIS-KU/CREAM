@@ -20,7 +20,7 @@ from buffer import (
 
 def get_tokenizer():
     tokenizer = BertTokenizerFast.from_pretrained(
-        "/home/work/.default/huijeong/bert_local"
+        "google-bert/bert-base-uncased"
     )
     # ColBERT 논문에 등장하는 [Q], [D] 두 토큰을 신규 등록
     special_tokens_dict = {"additional_special_tokens": ["[Q]", "[D]"]}

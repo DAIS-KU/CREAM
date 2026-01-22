@@ -15,7 +15,7 @@ from buffer import (
 )
 from .encode import get_passage_embeddings
 
-tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
+tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 
 def _renew_queries(model, query_batch, device, batch_size=3072, max_length=256):
@@ -140,7 +140,7 @@ def renew_data(
     models, hashes = [], []
     random_vectors = torch.randn(nbits, embedding_dim)
     for device in devices:
-        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+        model = BertModel.from_pretrained("google-bert/bert-base-uncased").to(
             device
         )
         if model_path is not None:

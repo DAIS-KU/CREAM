@@ -33,7 +33,7 @@ from functions import (
 )
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
+tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -156,12 +156,12 @@ def streaming_train(
                     ts=ts,
                     use_tensor_key=use_tensor_key,
                 )
-                if idx == 0 :
-                    sample_q_id = query["doc_id"]
-                    sampled_doc_ids = pos_ids + neg_ids
-                    keep_doc_ids.add(query["doc_id"])
-                    keep_doc_ids.update(pos_ids)
-                    keep_doc_ids.update(neg_ids)
+                # if idx == 0 :
+                #     sample_q_id = query["doc_id"]
+                #     sampled_doc_ids = pos_ids + neg_ids
+                #     keep_doc_ids.add(query["doc_id"])
+                #     keep_doc_ids.update(pos_ids)
+                #     keep_doc_ids.update(neg_ids)
                 pos_docs = [docs[_id]["text"] for _id in pos_ids]
                 neg_docs = [docs[_id]["text"] for _id in neg_ids]
                 query_batch.append(query["text"])
@@ -247,8 +247,8 @@ def train(
         start_time = time.time()
         stream = Stream(
             session_number=session_number,
-            query_path=f"../data/datasetM_large_share/train_session{session_number}_queries.jsonl",
-            doc_path=f"../data/datasetM_large_share/train_session{session_number}_docs.jsonl",
+            query_path=f"../data/datasetL_large_share/train_session{session_number}_queries.jsonl",
+            doc_path=f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl",
             warmingup_rate=warmingup_rate,
             sampling_rate=sampling_rate,
             prev_docs=prev_docs,
@@ -264,7 +264,7 @@ def train(
         )
         write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
 
-        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+        model = BertModel.from_pretrained("google-bert/bert-base-uncased").to(
             devices[-1]
         )
         if session_number != 0:
@@ -481,7 +481,15 @@ def train(
         #     use_tensor_key=use_tensor_key,
         # )
         # _evaluate(session_number)
-
+        dump_session_for_global_vis(
+            session_number=session_number,
+            clusters=clusters,
+            docs=stream.docs,
+            out_dir="/home/jovyan/cream/data/visualize/before",
+            samples_per_cluster=5000,
+            # representive_query_id=sample_q_id,
+            # representive_doc_ids=sampled_doc_ids,
+        )
         # Evict
         start_time = time.time()
         evict_clusters(
@@ -500,10 +508,10 @@ def train(
             session_number=session_number,
             clusters=clusters,
             docs=stream.docs,
-            out_dir="/home/work/.default/huijeong/cream/data/visualize",
-            samples_per_cluster=1500,
-            representive_query_id=sample_q_id,
-            representive_doc_ids=sampled_doc_ids,
+            out_dir="/home/jovyan/cream/data/visualize/after",
+            samples_per_cluster=5000,
+            # representive_query_id=sample_q_id,
+            # representive_doc_ids=sampled_doc_ids,
         )
         stream.docs = clear_unused_documents(clusters, stream.docs)
         # Accumulate
@@ -538,10 +546,16 @@ def train(
             f"############################################VISUALIZATION############################################"
         )
     global_pairwise_visualization_from_dumps(
-        dump_dir="/home/work/.default/huijeong/cream/data/visualize",
-        save_dir="/home/work/.default/huijeong/cream/data/visualize",
+        dump_dir="/home/jovyan/cream/data/visualize/before",
+        save_dir="/home/jovyan/cream/data/visualize/before",
         methods=["umap"],
-        batch_size=8,
+        batch_size=64,
+    )
+    global_pairwise_visualization_from_dumps(
+        dump_dir="/home/jovyan/cream/data/visualize/after",
+        save_dir="/home/jovyan/cream/data/visualize/after",
+        methods=["umap"],
+        batch_size=64,
     )
 
 
@@ -554,10 +568,10 @@ def evaluate_with_cluster(
     clusters: List[Cluster],
 ) -> List[Cluster]:
     eval_query_path = (
-        f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
     )
     eval_doc_path = (
-        f"../data/datasetM_large_share/test_session{session_number}_docs.jsonl"
+        f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
     )
     stream = Stream(
         session_number=session_number,
@@ -583,9 +597,9 @@ def evaluate_with_cluster(
     # end_time = time.time()
     # print(f"Spend {end_time-start_time} seconds for retrieval.")
 
-    # rankings_path = f"../data/rankings/datasetM_large_share_hash9_{session_number}_with_cluster.txt"
+    # rankings_path = f"../data/rankings/datasetL_large_share_hash9_{session_number}_with_cluster.txt"
     # write_file(rankings_path, result)
-    # eval_log_path = f"../data/evals/proposa_datasetM_large_share_hash9_{session_number}_with_cluster.txt"
+    # eval_log_path = f"../data/evals/proposa_datasetL_large_share_hash9_{session_number}_with_cluster.txt"
     # evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
     return clusters, stream.docs
 
@@ -596,15 +610,15 @@ def evaluate(session_count=10):
 
 
 def _evaluate(session_number, partition=False):
-    method = "datasetM_large_share"
+    method = "datasetL_large_share"
     print(f"Evaluate Session {session_number}")
     eval_query_path = (
-        f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
     )
     eval_doc_path = (
-        f"../data/datasetM_large_share/train_session{session_number}_docs.jsonl"
+        f"../data/datasetL_large_share/train_session{session_number}_docs.jsonl"
     )
-    # eval_doc_path = f"../data/datasetM_large_share/test_session{session_number}_docs.jsonl"
+    # eval_doc_path = f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
 
     eval_query_data = read_jsonl(eval_query_path, True)
     eval_doc_data = read_jsonl(eval_doc_path, False)
@@ -650,10 +664,10 @@ def _evaluate(session_number, partition=False):
 
 def eval_rankings(session_number):
     eval_query_path = (
-        f"../data/datasetM_large_share/test_session{session_number}_queries.jsonl"
+        f"../data/datasetL_large_share/test_session{session_number}_queries.jsonl"
     )
     eval_doc_path = (
-        f"../data/datasetM_large_share/test_session{session_number}_docs.jsonl"
+        f"../data/datasetL_large_share/test_session{session_number}_docs.jsonl"
     )
 
     eval_query_data = read_jsonl(eval_query_path, True)
@@ -668,5 +682,5 @@ def eval_rankings(session_number):
     )
     eval_log_path = f"../data/evals/datasetM_a8_d025_{session_number}_with_cluster.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)
-    rankings_path = f"../data/rankings/datasetM_large_share{session_number}.txt"
+    rankings_path = f"../data/rankings/datasetL_large_share{session_number}.txt"
     evaluate_dataset(eval_query_path, rankings_path, eval_doc_count, eval_log_path)

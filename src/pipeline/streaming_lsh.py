@@ -21,7 +21,7 @@ from clusters import (
 from data import write_line
 
 torch.autograd.set_detect_anomaly(True)
-tokenizer = BertTokenizer.from_pretrained("/home/work/.default/huijeong/bert_local")
+tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
@@ -159,7 +159,7 @@ def streaming_lsh_evaluation(
         )
         write_line(time_values_path, f"Initialize({end_time-start_time}sec)\n", "a")
 
-        model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+        model = BertModel.from_pretrained("google-bert/bert-base-uncased").to(
             devices[-1]
         )
         model.eval()

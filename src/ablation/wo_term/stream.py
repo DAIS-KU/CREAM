@@ -13,7 +13,7 @@ devices = [torch.device(f"cuda:{i}") for i in range(num_gpus)]
 
 
 def model_builder(model_path):
-    model = BertModel.from_pretrained("/home/work/.default/huijeong/bert_local").to(
+    model = BertModel.from_pretrained("google-bert/bert-base-uncased").to(
         devices[-1]
     )
     if model_path:
